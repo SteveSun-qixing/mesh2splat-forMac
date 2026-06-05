@@ -40,6 +40,31 @@
     [fileMenu addItem:openItem];
     fileMenuItem.submenu = fileMenu;
 
+    NSMenuItem* viewMenuItem = [[NSMenuItem alloc] initWithTitle:@"View"
+                                                          action:nil
+                                                   keyEquivalent:@""];
+    [mainMenu addItem:viewMenuItem];
+
+    NSMenu* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+    NSMenuItem* combinedItem = [[NSMenuItem alloc] initWithTitle:@"Combined"
+                                                          action:@selector(showCombinedView:)
+                                                   keyEquivalent:@"1"];
+    combinedItem.target = nil;
+    [viewMenu addItem:combinedItem];
+
+    NSMenuItem* meshItem = [[NSMenuItem alloc] initWithTitle:@"Mesh"
+                                                      action:@selector(showMeshView:)
+                                               keyEquivalent:@"2"];
+    meshItem.target = nil;
+    [viewMenu addItem:meshItem];
+
+    NSMenuItem* gaussianItem = [[NSMenuItem alloc] initWithTitle:@"Gaussians"
+                                                          action:@selector(showGaussianView:)
+                                                   keyEquivalent:@"3"];
+    gaussianItem.target = nil;
+    [viewMenu addItem:gaussianItem];
+    viewMenuItem.submenu = viewMenu;
+
     NSApp.mainMenu = mainMenu;
 }
 

@@ -26,6 +26,7 @@
 
 - (instancetype)initWithView:(Mesh2SplatMetalView*)view;
 - (BOOL)loadMeshAtPath:(NSString*)path;
+- (void)setViewMode:(mesh2splat::metal::RenderViewMode)mode;
 
 @end
 
@@ -89,6 +90,13 @@
     }
 
     return _renderer->loadMeshFile(std::string(path.UTF8String)) ? YES : NO;
+}
+
+- (void)setViewMode:(mesh2splat::metal::RenderViewMode)mode
+{
+    if (_renderer != nullptr) {
+        _renderer->setViewMode(mode);
+    }
 }
 
 @end
@@ -181,6 +189,24 @@
     [self openMeshDocument];
 }
 
+- (IBAction)showCombinedView:(id)sender
+{
+    (void)sender;
+    [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::Combined];
+}
+
+- (IBAction)showMeshView:(id)sender
+{
+    (void)sender;
+    [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::MeshOnly];
+}
+
+- (IBAction)showGaussianView:(id)sender
+{
+    (void)sender;
+    [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::GaussianOnly];
+}
+
 - (void)updateMousePosition:(NSEvent*)event
 {
     NSPoint location = [self convertPoint:event.locationInWindow fromView:nil];
@@ -253,6 +279,18 @@
     NSString* key = event.charactersIgnoringModifiers.lowercaseString;
     if ((event.modifierFlags & NSEventModifierFlagCommand) != 0 && [key isEqualToString:@"o"]) {
         [self openMeshDocument];
+        return;
+    }
+    if ([key isEqualToString:@"1"]) {
+        [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::Combined];
+        return;
+    }
+    if ([key isEqualToString:@"2"]) {
+        [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::MeshOnly];
+        return;
+    }
+    if ([key isEqualToString:@"3"]) {
+        [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::GaussianOnly];
         return;
     }
 

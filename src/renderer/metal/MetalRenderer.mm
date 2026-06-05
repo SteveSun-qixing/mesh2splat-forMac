@@ -127,6 +127,7 @@ struct MetalRenderer::Impl {
     core::FrameUniforms frameUniforms;
     core::NativeCamera camera;
     std::string loadedMeshPath;
+    RenderViewMode viewMode = RenderViewMode::Combined;
     uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -293,6 +294,16 @@ void MetalRenderer::resize(uint32_t width, uint32_t height)
     m_impl->frameUniforms.viewport[3] = height == 0 ? 1.0f : 1.0f / static_cast<float>(height);
 }
 
+void MetalRenderer::setViewMode(RenderViewMode mode)
+{
+    m_impl->viewMode = mode;
+}
+
+RenderViewMode MetalRenderer::viewMode() const
+{
+    return m_impl->viewMode;
+}
+
 void MetalRenderer::draw(
     void* renderPassDescriptor,
     void* drawable,
@@ -308,6 +319,7 @@ void MetalRenderer::draw(
     m_impl->camera.update(inputState, deltaTimeSeconds);
     m_impl->camera.writeFrameUniforms(m_impl->frameUniforms);
     m_impl->frameUniforms.frameIndex = m_impl->frameResources.currentFrameIndex();
+    m_impl->frameUniforms.renderMode = static_cast<uint32_t>(m_impl->viewMode);
     if (m_impl->frameUniformBuffer != nullptr) {
         m_impl->frameUniformBuffer->update(
             m_impl->frameResources.currentFrameIndex(),
@@ -326,14 +338,17 @@ void MetalRenderer::draw(
 
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
     encoder.label = @"Mesh2Splat Drawable Render";
-    if (m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
+    const bool showMesh = m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::MeshOnly;
+    const bool showGaussians =
+        m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
+    if (showMesh && m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
         m_impl->frameUniformBuffer != nullptr) {
         m_impl->meshRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->sceneResources,
             m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
     }
-    if (m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
+    if (showGaussians && m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
         m_impl->frameUniformBuffer != nullptr) {
         m_impl->gaussianRenderPass->encode(
             (__bridge void*)encoder,
