@@ -67,13 +67,20 @@ fragment float4 meshFragment(
     constant MeshMaterial* materials [[buffer(0)]],
     constant uint& materialIndex [[buffer(1)]],
     texture2d<float> baseColorTexture [[texture(0)]],
+    texture2d<float> metallicRoughnessTexture [[texture(1)]],
     sampler baseColorSampler [[sampler(0)]])
 {
     const MeshMaterial material = materials[materialIndex];
     const float4 textureColor = baseColorTexture.sample(baseColorSampler, in.uv);
+    const float4 metallicRoughness = metallicRoughnessTexture.sample(baseColorSampler, in.uv);
+    const float roughness = clamp(material.roughnessFactor * metallicRoughness.g, 0.04, 1.0);
+    const float metallic = clamp(material.metallicFactor * metallicRoughness.b, 0.0, 1.0);
     const float3 normal = normalize(in.normal);
     const float3 lightDirection = normalize(float3(0.35, 0.8, 0.45));
     const float diffuse = saturate(dot(normal, lightDirection)) * 0.75 + 0.25;
     const float4 baseColor = material.baseColorFactor * textureColor;
-    return float4(baseColor.rgb * diffuse + material.emissiveFactor.rgb, baseColor.a);
+    const float specular = pow(saturate(dot(normal, lightDirection)), mix(32.0, 2.0, roughness)) *
+        mix(0.04, 0.35, metallic) * (1.0 - roughness);
+    const float diffuseWeight = mix(1.0, 0.65, metallic);
+    return float4(baseColor.rgb * diffuse * diffuseWeight + specular + material.emissiveFactor.rgb, baseColor.a);
 }
