@@ -1,7 +1,7 @@
 #include "MetalRenderer.hpp"
 
 #import <Metal/Metal.h>
-#import <QuartzCore/CAMetalDrawable.h>
+#import <QuartzCore/CAMetalLayer.h>
 
 namespace mesh2splat::metal {
 

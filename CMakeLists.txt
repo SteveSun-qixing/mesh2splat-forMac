@@ -4,6 +4,11 @@ project(Mesh2Splat)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(APPLE)
+    enable_language(OBJCXX)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS deployment target")
+endif()
+
 set(THIRD_PARTY_DIR         ${CMAKE_SOURCE_DIR}/thirdParty)
 set(GLFW_DIR                ${THIRD_PARTY_DIR}/glfw)
 set(GLEW_DIR                ${THIRD_PARTY_DIR}/glew)
@@ -120,3 +125,81 @@ set_target_properties(Mesh2Splat PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/lib/Debug
     LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib/Release
 )
+
+if(APPLE)
+    set(METAL_APP_SOURCES
+        ${CMAKE_SOURCE_DIR}/src/app/macos/MacApp.mm
+        ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.mm
+        ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.hpp
+    )
+
+    add_executable(Mesh2SplatMetal MACOSX_BUNDLE ${METAL_APP_SOURCES})
+    target_compile_features(Mesh2SplatMetal PRIVATE cxx_std_17)
+    target_compile_options(Mesh2SplatMetal PRIVATE -fobjc-arc)
+    target_include_directories(Mesh2SplatMetal PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+    find_library(APPKIT_LIBRARY AppKit REQUIRED)
+    find_library(METAL_LIBRARY Metal REQUIRED)
+    find_library(METALKIT_LIBRARY MetalKit REQUIRED)
+    find_library(QUARTZCORE_LIBRARY QuartzCore REQUIRED)
+
+    target_link_libraries(Mesh2SplatMetal PRIVATE
+        ${APPKIT_LIBRARY}
+        ${METAL_LIBRARY}
+        ${METALKIT_LIBRARY}
+        ${QUARTZCORE_LIBRARY}
+    )
+
+    set_target_properties(Mesh2SplatMetal PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "Mesh2Splat Metal"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.mesh2splat.metal"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/Metal
+    )
+
+    set(METAL_SHADER_DIR ${CMAKE_SOURCE_DIR}/shaders/metal)
+    file(GLOB METAL_SHADER_SOURCES ${METAL_SHADER_DIR}/*.metal)
+    if(METAL_SHADER_SOURCES)
+        execute_process(
+            COMMAND xcrun -sdk macosx --find metal
+            RESULT_VARIABLE METAL_COMPILER_RESULT
+            OUTPUT_VARIABLE METAL_COMPILER
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        execute_process(
+            COMMAND xcrun -sdk macosx --find metallib
+            RESULT_VARIABLE METALLIB_RESULT
+            OUTPUT_VARIABLE METALLIB
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+
+        if(METAL_COMPILER_RESULT EQUAL 0 AND METALLIB_RESULT EQUAL 0)
+            set(METAL_AIR_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/Mesh2SplatMetal.air)
+            set(METAL_LIBRARY_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/Mesh2SplatMetal.metallib)
+
+            add_custom_command(
+                OUTPUT ${METAL_LIBRARY_OUTPUT}
+                COMMAND ${METAL_COMPILER} -c ${METAL_SHADER_SOURCES} -o ${METAL_AIR_OUTPUT}
+                COMMAND ${METALLIB} ${METAL_AIR_OUTPUT} -o ${METAL_LIBRARY_OUTPUT}
+                DEPENDS ${METAL_SHADER_SOURCES}
+                COMMENT "Compiling Mesh2Splat Metal shaders"
+                VERBATIM
+            )
+            add_custom_target(Mesh2SplatMetalShaders DEPENDS ${METAL_LIBRARY_OUTPUT})
+            add_dependencies(Mesh2SplatMetal Mesh2SplatMetalShaders)
+            add_custom_command(TARGET Mesh2SplatMetal POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:Mesh2SplatMetal>/Resources"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${METAL_LIBRARY_OUTPUT}
+                    "$<TARGET_BUNDLE_CONTENT_DIR:Mesh2SplatMetal>/Resources/Mesh2SplatMetal.metallib"
+            )
+        else()
+            message(WARNING "Metal shader tools are unavailable; skipping .metallib generation for now.")
+        endif()
+    endif()
+endif()
