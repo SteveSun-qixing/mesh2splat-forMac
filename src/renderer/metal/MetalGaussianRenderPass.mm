@@ -39,7 +39,7 @@ bool MetalGaussianRenderPass::initialize(
     pipelineDesc.colorFormat = colorFormat;
     pipelineDesc.depthFormat = depthFormat;
     pipelineDesc.depthEnabled = true;
-    pipelineDesc.blendingEnabled = true;
+    pipelineDesc.blendMode = MetalBlendMode::PremultipliedAlpha;
 
     m_impl->renderPipelineState = pipelineCache.renderPipeline(shaderLibrary, pipelineDesc);
     if (m_impl->renderPipelineState == nullptr) {

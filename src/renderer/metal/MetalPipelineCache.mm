@@ -39,7 +39,7 @@ std::string renderKey(const MetalRenderPipelineDesc& desc)
         << static_cast<int>(desc.colorFormat) << '|'
         << static_cast<int>(desc.depthFormat) << '|'
         << desc.depthEnabled << '|'
-        << desc.blendingEnabled;
+        << static_cast<int>(desc.blendMode);
     return key.str();
 }
 
@@ -130,10 +130,11 @@ void* MetalPipelineCache::renderPipeline(
         pipelineDescriptor.depthAttachmentPixelFormat = toPixelFormat(desc.depthFormat);
     }
 
-    if (desc.blendingEnabled) {
+    if (desc.blendMode != MetalBlendMode::Disabled) {
         MTLRenderPipelineColorAttachmentDescriptor* colorAttachment = pipelineDescriptor.colorAttachments[0];
         colorAttachment.blendingEnabled = YES;
-        colorAttachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        colorAttachment.sourceRGBBlendFactor =
+            desc.blendMode == MetalBlendMode::PremultipliedAlpha ? MTLBlendFactorOne : MTLBlendFactorSourceAlpha;
         colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
         colorAttachment.rgbBlendOperation = MTLBlendOperationAdd;
         colorAttachment.sourceAlphaBlendFactor = MTLBlendFactorOne;

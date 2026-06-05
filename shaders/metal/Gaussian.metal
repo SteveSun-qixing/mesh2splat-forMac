@@ -97,5 +97,5 @@ fragment float4 gaussianPreviewFragment(GaussianVertexOut in [[stage_in]])
     }
 
     const float alpha = exp(-radiusSquared * 2.5) * in.color.a * 0.75;
-    return float4(in.color.rgb, alpha);
+    return float4(in.color.rgb * alpha, alpha);
 }

@@ -41,7 +41,7 @@ bool MetalMeshRenderPass::initialize(
     pipelineDesc.colorFormat = colorFormat;
     pipelineDesc.depthFormat = depthFormat;
     pipelineDesc.depthEnabled = true;
-    pipelineDesc.blendingEnabled = false;
+    pipelineDesc.blendMode = MetalBlendMode::Disabled;
 
     m_impl->renderPipelineState = pipelineCache.renderPipeline(shaderLibrary, pipelineDesc);
     if (m_impl->renderPipelineState == nullptr) {

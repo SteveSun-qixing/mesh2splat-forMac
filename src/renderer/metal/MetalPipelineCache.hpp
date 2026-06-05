@@ -10,6 +10,12 @@ namespace mesh2splat::metal {
 class MetalDeviceContext;
 class MetalShaderLibrary;
 
+enum class MetalBlendMode {
+    Disabled,
+    Alpha,
+    PremultipliedAlpha,
+};
+
 struct MetalRenderPipelineDesc {
     std::string label;
     std::string vertexFunction;
@@ -17,7 +23,7 @@ struct MetalRenderPipelineDesc {
     MetalTextureFormat colorFormat = MetalTextureFormat::BGRA8Unorm;
     MetalTextureFormat depthFormat = MetalTextureFormat::Depth32Float;
     bool depthEnabled = false;
-    bool blendingEnabled = false;
+    MetalBlendMode blendMode = MetalBlendMode::Disabled;
 };
 
 struct MetalComputePipelineDesc {
