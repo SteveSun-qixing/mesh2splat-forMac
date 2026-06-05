@@ -24,7 +24,7 @@ struct MeshConversionParams {
     uint vertexOffset;
     uint triangleCount;
     uint materialIndex;
-    uint outputOffset;
+    uint maxGaussianCount;
     float gaussianScale;
     float normalScale;
     uint flags;
@@ -42,9 +42,15 @@ kernel void meshVertexConversionKernel(
     const device float* vertices [[buffer(0)]],
     constant MeshMaterial* materials [[buffer(1)]],
     device GaussianRecord* gaussians [[buffer(2)]],
-    constant MeshConversionParams& params [[buffer(3)]])
+    constant MeshConversionParams& params [[buffer(3)]],
+    device atomic_uint* gaussianCounter [[buffer(4)]])
 {
     if (threadID >= params.triangleCount) {
+        return;
+    }
+
+    const uint outputBase = atomic_fetch_add_explicit(gaussianCounter, 3u, memory_order_relaxed);
+    if (outputBase + 2u >= params.maxGaussianCount) {
         return;
     }
 
@@ -71,7 +77,7 @@ kernel void meshVertexConversionKernel(
             float3(vertices[base + 3], vertices[base + 4], vertices[base + 5]),
             faceNormal);
         const float3 normal = safeNormalize(vertexNormal + faceNormal * params.normalScale, faceNormal);
-        const uint outputIndex = params.outputOffset + threadID * 3 + corner;
+        const uint outputIndex = outputBase + corner;
 
         GaussianRecord gaussian;
         gaussian.position = float4(position, 1.0);

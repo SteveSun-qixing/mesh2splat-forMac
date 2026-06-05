@@ -160,6 +160,10 @@ bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nex
         return false;
     }
 
+    if (!nextGaussianBuffer->readGpuCounter()) {
+        return false;
+    }
+
     convertedGaussianCount = nextGaussianBuffer->count();
     gaussianBuffer = std::move(nextGaussianBuffer);
     return convertedGaussianCount > 0;

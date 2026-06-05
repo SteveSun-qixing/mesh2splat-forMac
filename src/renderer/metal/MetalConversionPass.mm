@@ -18,7 +18,7 @@ struct MeshConversionParams {
     uint32_t vertexOffset = 0;
     uint32_t triangleCount = 0;
     uint32_t materialIndex = 0;
-    uint32_t outputOffset = 0;
+    uint32_t maxGaussianCount = 0;
     float gaussianScale = 1.0f;
     float normalScale = 1.0f;
     uint32_t flags = 0;
@@ -71,7 +71,9 @@ bool MetalConversionPass::encode(
     id<MTLComputePipelineState> pipelineState =
         (__bridge id<MTLComputePipelineState>)m_impl->computePipelineState;
     id<MTLBuffer> outputBuffer = (__bridge id<MTLBuffer>)gaussianBuffer.nativeBuffer();
-    if (nativeCommandBuffer == nil || pipelineState == nil || outputBuffer == nil) {
+    id<MTLBuffer> counterBuffer = (__bridge id<MTLBuffer>)gaussianBuffer.nativeCounterBuffer();
+    if (nativeCommandBuffer == nil || pipelineState == nil || outputBuffer == nil || counterBuffer == nil ||
+        gaussianBuffer.capacity() > static_cast<std::size_t>(UINT32_MAX) || !gaussianBuffer.resetGpuCounter()) {
         return false;
     }
 
@@ -83,8 +85,8 @@ bool MetalConversionPass::encode(
     encoder.label = @"Mesh2Splat Mesh Vertex Conversion";
     [encoder setComputePipelineState:pipelineState];
     [encoder setBuffer:outputBuffer offset:0 atIndex:2];
+    [encoder setBuffer:counterBuffer offset:0 atIndex:4];
 
-    uint32_t outputOffset = 0;
     const NSUInteger threadExecutionWidth = std::max<NSUInteger>(1, pipelineState.threadExecutionWidth);
     const NSUInteger maxThreads = std::max<NSUInteger>(1, pipelineState.maxTotalThreadsPerThreadgroup);
     const NSUInteger threadsPerGroup = std::min<NSUInteger>(threadExecutionWidth, maxThreads);
@@ -110,18 +112,13 @@ bool MetalConversionPass::encode(
                 range->materialIndex >= mesh->materialCount()) {
                 continue;
             }
-            if (outputOffset > gaussianBuffer.capacity() ||
-                range->vertexCount > gaussianBuffer.capacity() - outputOffset) {
-                [encoder endEncoding];
-                return false;
-            }
 
             const uint32_t triangleCount = range->vertexCount / 3;
             MeshConversionParams params;
             params.vertexOffset = range->vertexOffset;
             params.triangleCount = triangleCount;
             params.materialIndex = range->materialIndex;
-            params.outputOffset = outputOffset;
+            params.maxGaussianCount = static_cast<uint32_t>(gaussianBuffer.capacity());
             params.gaussianScale = 0.33f;
             params.normalScale = 1.0f;
 
@@ -129,12 +126,11 @@ bool MetalConversionPass::encode(
             const MTLSize gridSize = MTLSizeMake(triangleCount, 1, 1);
             const MTLSize threadgroupSize = MTLSizeMake(threadsPerGroup, 1, 1);
             [encoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
-            outputOffset += range->vertexCount;
         }
     }
 
     [encoder endEncoding];
-    return gaussianBuffer.setCount(outputOffset);
+    return true;
 }
 
 } // namespace mesh2splat::metal
