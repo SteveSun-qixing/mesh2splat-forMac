@@ -19,6 +19,7 @@
 - (const mesh2splat::core::InputState&)inputState;
 - (void)beginInputFrame;
 - (void)openMeshDocument;
+- (void)updateWindowTitle;
 
 @end
 
@@ -27,6 +28,7 @@
 - (instancetype)initWithView:(Mesh2SplatMetalView*)view;
 - (BOOL)loadMeshAtPath:(NSString*)path;
 - (void)setViewMode:(mesh2splat::metal::RenderViewMode)mode;
+- (NSString*)rendererStatusTitle;
 
 @end
 
@@ -99,6 +101,37 @@
     }
 }
 
+- (NSString*)rendererStatusTitle
+{
+    if (_renderer == nullptr) {
+        return @"Mesh2Splat Metal";
+    }
+
+    NSString* mode = @"Combined";
+    switch (_renderer->viewMode()) {
+    case mesh2splat::metal::RenderViewMode::Combined:
+        mode = @"Combined";
+        break;
+    case mesh2splat::metal::RenderViewMode::MeshOnly:
+        mode = @"Mesh";
+        break;
+    case mesh2splat::metal::RenderViewMode::GaussianOnly:
+        mode = @"Gaussians";
+        break;
+    }
+
+    NSString* assetName = @"Preview";
+    const std::string& loadedPath = _renderer->loadedMeshPath();
+    if (!loadedPath.empty()) {
+        assetName = [[NSString stringWithUTF8String:loadedPath.c_str()] lastPathComponent];
+    }
+
+    return [NSString stringWithFormat:@"Mesh2Splat Metal - %@ - %@ - %u gaussians",
+                                      assetName,
+                                      mode,
+                                      _renderer->convertedGaussianCount()];
+}
+
 @end
 
 @implementation Mesh2SplatMetalView {
@@ -140,6 +173,7 @@
 {
     [super viewDidMoveToWindow];
     [self.window makeFirstResponder:self];
+    [self updateWindowTitle];
 }
 
 - (void)beginInputFrame
@@ -179,8 +213,18 @@
         NSURL* url = panel.URL;
         if (url == nil || ![strongSelf.meshDelegate loadMeshAtPath:url.path]) {
             NSBeep();
+            return;
         }
+
+        [strongSelf updateWindowTitle];
     }];
+}
+
+- (void)updateWindowTitle
+{
+    if (self.window != nil) {
+        self.window.title = [self.meshDelegate rendererStatusTitle];
+    }
 }
 
 - (IBAction)openDocument:(id)sender
@@ -193,18 +237,21 @@
 {
     (void)sender;
     [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::Combined];
+    [self updateWindowTitle];
 }
 
 - (IBAction)showMeshView:(id)sender
 {
     (void)sender;
     [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::MeshOnly];
+    [self updateWindowTitle];
 }
 
 - (IBAction)showGaussianView:(id)sender
 {
     (void)sender;
     [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::GaussianOnly];
+    [self updateWindowTitle];
 }
 
 - (void)updateMousePosition:(NSEvent*)event
@@ -283,14 +330,17 @@
     }
     if ([key isEqualToString:@"1"]) {
         [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::Combined];
+        [self updateWindowTitle];
         return;
     }
     if ([key isEqualToString:@"2"]) {
         [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::MeshOnly];
+        [self updateWindowTitle];
         return;
     }
     if ([key isEqualToString:@"3"]) {
         [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::GaussianOnly];
+        [self updateWindowTitle];
         return;
     }
 

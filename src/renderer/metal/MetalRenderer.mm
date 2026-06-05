@@ -334,6 +334,16 @@ RenderViewMode MetalRenderer::viewMode() const
     return m_impl->viewMode;
 }
 
+uint32_t MetalRenderer::convertedGaussianCount() const
+{
+    return m_impl->convertedGaussianCount;
+}
+
+const std::string& MetalRenderer::loadedMeshPath() const
+{
+    return m_impl->loadedMeshPath;
+}
+
 void MetalRenderer::draw(
     void* renderPassDescriptor,
     void* drawable,
