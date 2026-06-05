@@ -1,12 +1,15 @@
 #include "MetalRenderer.hpp"
 
 #include "core/FrameData.hpp"
+#include "core/GaussianData.hpp"
 #include "core/GltfMeshLoader.hpp"
 #include "core/NativeCamera.hpp"
 #include "core/PrimitiveMeshFactory.hpp"
+#include "MetalConversionPass.hpp"
 #include "MetalDeviceContext.hpp"
 #include "MetalFrameUniformBuffer.hpp"
 #include "MetalFrameResources.hpp"
+#include "MetalGaussianBuffer.hpp"
 #include "MetalMeshRenderPass.hpp"
 #include "MetalPipelineCache.hpp"
 #include "MetalRenderStateCache.hpp"
@@ -104,6 +107,8 @@ core::MeshBounds aggregateMeshBounds(const std::vector<core::MeshData>& meshes)
 } // namespace
 
 struct MetalRenderer::Impl {
+    bool convertSceneToGaussians(const MetalSceneResources& nextSceneResources);
+
     std::unique_ptr<MetalDeviceContext> deviceContext;
     MetalFrameResources frameResources;
     std::unique_ptr<MetalFrameUniformBuffer> frameUniformBuffer;
@@ -111,13 +116,52 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalPipelineCache> pipelineCache;
     std::unique_ptr<MetalRenderStateCache> renderStateCache;
     std::unique_ptr<MetalSceneResources> sceneResources;
+    std::unique_ptr<MetalGaussianBuffer> gaussianBuffer;
+    std::unique_ptr<MetalConversionPass> conversionPass;
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     core::FrameUniforms frameUniforms;
     core::NativeCamera camera;
     std::string loadedMeshPath;
+    uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
     uint32_t height = 0;
 };
+
+bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nextSceneResources)
+{
+    if (deviceContext == nullptr || !deviceContext->isValid() ||
+        conversionPass == nullptr || !conversionPass->isReady() ||
+        !nextSceneResources.isValid() || !core::gaussianCountFitsBuffer(nextSceneResources.totalVertexCount())) {
+        return false;
+    }
+
+    auto nextGaussianBuffer = std::make_unique<MetalGaussianBuffer>(*deviceContext);
+    if (!nextGaussianBuffer->create(nextSceneResources.totalVertexCount(), "Mesh2Splat Converted Gaussians")) {
+        return false;
+    }
+
+    id<MTLCommandQueue> commandQueue =
+        (__bridge id<MTLCommandQueue>)deviceContext->nativeCommandQueue();
+    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+    if (commandBuffer == nil) {
+        return false;
+    }
+
+    commandBuffer.label = @"Mesh2Splat Mesh Conversion";
+    if (!conversionPass->encode((__bridge void*)commandBuffer, nextSceneResources, *nextGaussianBuffer)) {
+        return false;
+    }
+
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+    if (commandBuffer.status != MTLCommandBufferStatusCompleted) {
+        return false;
+    }
+
+    convertedGaussianCount = nextGaussianBuffer->count();
+    gaussianBuffer = std::move(nextGaussianBuffer);
+    return convertedGaussianCount > 0;
+}
 
 MetalRenderer::MetalRenderer(void* metalDevice)
     : m_impl(std::make_unique<Impl>())
@@ -152,6 +196,13 @@ bool MetalRenderer::initialize()
     m_impl->sceneResources->uploadMeshes(previewMeshes);
 
     if (loadRendererShaderLibrary(*m_impl->shaderLibrary)) {
+        m_impl->conversionPass = std::make_unique<MetalConversionPass>();
+        if (!m_impl->conversionPass->initialize(*m_impl->shaderLibrary, *m_impl->pipelineCache)) {
+            m_impl->conversionPass.reset();
+        } else if (!m_impl->convertSceneToGaussians(*m_impl->sceneResources)) {
+            NSLog(@"Initial Metal mesh conversion did not produce gaussians.");
+        }
+
         m_impl->meshRenderPass = std::make_unique<MetalMeshRenderPass>(*m_impl->deviceContext);
         if (!m_impl->meshRenderPass->initialize(
                 *m_impl->shaderLibrary,
@@ -187,6 +238,10 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
 
     if (!loadResult.warning.empty()) {
         NSLog(@"glTF load warning: %s", loadResult.warning.c_str());
+    }
+
+    if (!m_impl->convertSceneToGaussians(*nextSceneResources)) {
+        NSLog(@"Metal mesh conversion did not produce gaussians: %s", filePath.c_str());
     }
 
     m_impl->sceneResources = std::move(nextSceneResources);
