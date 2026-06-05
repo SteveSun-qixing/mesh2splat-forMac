@@ -55,7 +55,8 @@ vertex GaussianVertexOut gaussianPreviewVertex(
     uint vertexID [[vertex_id]],
     uint instanceID [[instance_id]],
     const device GaussianRecord* gaussians [[buffer(0)]],
-    constant FrameUniforms& frame [[buffer(1)]])
+    constant FrameUniforms& frame [[buffer(1)]],
+    const device uint* gaussianIndices [[buffer(2)]])
 {
     constexpr float2 corners[6] = {
         float2(-1.0, -1.0),
@@ -66,7 +67,7 @@ vertex GaussianVertexOut gaussianPreviewVertex(
         float2(-1.0, 1.0),
     };
 
-    const GaussianRecord gaussian = gaussians[instanceID];
+    const GaussianRecord gaussian = gaussians[gaussianIndices[instanceID]];
     const float2 corner = corners[vertexID % 6];
     const float4 clipPosition = transformPoint(frame.modelViewProjectionMatrix, gaussian.position.xyz);
     const float2 inverseViewport = max(frame.viewport.zw, float2(1.0 / 8192.0));

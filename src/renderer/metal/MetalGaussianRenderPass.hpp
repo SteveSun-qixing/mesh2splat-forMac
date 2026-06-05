@@ -7,6 +7,7 @@
 namespace mesh2splat::metal {
 
 class MetalGaussianBuffer;
+class MetalGaussianSortBuffer;
 class MetalDeviceContext;
 class MetalPipelineCache;
 class MetalRenderStateCache;
@@ -31,7 +32,11 @@ public:
         MetalTextureFormat depthFormat);
 
     bool isReady() const;
-    void encode(void* renderCommandEncoder, const MetalGaussianBuffer& gaussianBuffer, void* frameUniformBuffer) const;
+    void encode(
+        void* renderCommandEncoder,
+        const MetalGaussianBuffer& gaussianBuffer,
+        const MetalGaussianSortBuffer& sortBuffer,
+        void* frameUniformBuffer) const;
 
 private:
     struct Impl;

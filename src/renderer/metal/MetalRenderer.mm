@@ -373,10 +373,11 @@ void MetalRenderer::draw(
             m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
     }
     if (showGaussians && m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
-        m_impl->frameUniformBuffer != nullptr) {
+        m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr) {
         m_impl->gaussianRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->gaussianBuffer,
+            *m_impl->gaussianSortBuffer,
             m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
     }
     [encoder endEncoding];

@@ -1,6 +1,7 @@
 #include "MetalGaussianRenderPass.hpp"
 
 #include "MetalGaussianBuffer.hpp"
+#include "MetalGaussianSortBuffer.hpp"
 #include "MetalPipelineCache.hpp"
 #include "MetalRenderStateCache.hpp"
 #include "MetalShaderLibrary.hpp"
@@ -63,10 +64,12 @@ bool MetalGaussianRenderPass::isReady() const
 void MetalGaussianRenderPass::encode(
     void* renderCommandEncoder,
     const MetalGaussianBuffer& gaussianBuffer,
+    const MetalGaussianSortBuffer& sortBuffer,
     void* frameUniformBuffer) const
 {
     if (!isReady() || renderCommandEncoder == nullptr || frameUniformBuffer == nullptr ||
-        !gaussianBuffer.isValid() || gaussianBuffer.count() == 0) {
+        !gaussianBuffer.isValid() || !sortBuffer.isValid() ||
+        gaussianBuffer.count() == 0 || sortBuffer.count() == 0) {
         return;
     }
 
@@ -74,9 +77,10 @@ void MetalGaussianRenderPass::encode(
     id<MTLRenderPipelineState> pipelineState = (__bridge id<MTLRenderPipelineState>)m_impl->renderPipelineState;
     id<MTLDepthStencilState> depthStencilState = (__bridge id<MTLDepthStencilState>)m_impl->depthStencilState;
     id<MTLBuffer> gaussianBufferHandle = (__bridge id<MTLBuffer>)gaussianBuffer.nativeBuffer();
+    id<MTLBuffer> indexBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeIndexBuffer();
     id<MTLBuffer> frameBuffer = (__bridge id<MTLBuffer>)frameUniformBuffer;
     if (encoder == nil || pipelineState == nil || depthStencilState == nil ||
-        gaussianBufferHandle == nil || frameBuffer == nil) {
+        gaussianBufferHandle == nil || indexBuffer == nil || frameBuffer == nil) {
         return;
     }
 
@@ -84,10 +88,11 @@ void MetalGaussianRenderPass::encode(
     [encoder setDepthStencilState:depthStencilState];
     [encoder setVertexBuffer:gaussianBufferHandle offset:0 atIndex:0];
     [encoder setVertexBuffer:frameBuffer offset:0 atIndex:1];
+    [encoder setVertexBuffer:indexBuffer offset:0 atIndex:2];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                 vertexStart:0
                 vertexCount:6
-              instanceCount:gaussianBuffer.count()];
+              instanceCount:sortBuffer.count()];
 }
 
 } // namespace mesh2splat::metal
