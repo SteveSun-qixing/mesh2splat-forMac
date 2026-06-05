@@ -37,6 +37,44 @@ static float3 safeNormalize(float3 value, float3 fallback)
     return lengthSquared > 1.0e-12 ? value * rsqrt(lengthSquared) : fallback;
 }
 
+static float4 quaternionFromBasis(float3 xAxis, float3 yAxis, float3 zAxis)
+{
+    const float trace = xAxis.x + yAxis.y + zAxis.z;
+    float4 q;
+
+    if (trace > 0.0) {
+        const float scale = sqrt(trace + 1.0) * 2.0;
+        q = float4(
+            0.25 * scale,
+            (yAxis.z - zAxis.y) / scale,
+            (zAxis.x - xAxis.z) / scale,
+            (xAxis.y - yAxis.x) / scale);
+    } else if (xAxis.x > yAxis.y && xAxis.x > zAxis.z) {
+        const float scale = sqrt(1.0 + xAxis.x - yAxis.y - zAxis.z) * 2.0;
+        q = float4(
+            (yAxis.z - zAxis.y) / scale,
+            0.25 * scale,
+            (yAxis.x + xAxis.y) / scale,
+            (zAxis.x + xAxis.z) / scale);
+    } else if (yAxis.y > zAxis.z) {
+        const float scale = sqrt(1.0 + yAxis.y - xAxis.x - zAxis.z) * 2.0;
+        q = float4(
+            (zAxis.x - xAxis.z) / scale,
+            (yAxis.x + xAxis.y) / scale,
+            0.25 * scale,
+            (zAxis.y + yAxis.z) / scale);
+    } else {
+        const float scale = sqrt(1.0 + zAxis.z - xAxis.x - yAxis.y) * 2.0;
+        q = float4(
+            (xAxis.y - yAxis.x) / scale,
+            (zAxis.x + xAxis.z) / scale,
+            (zAxis.y + yAxis.z) / scale,
+            0.25 * scale);
+    }
+
+    return normalize(q);
+}
+
 kernel void meshVertexConversionKernel(
     uint threadID [[thread_position_in_grid]],
     const device float* vertices [[buffer(0)]],
@@ -75,6 +113,9 @@ kernel void meshVertexConversionKernel(
     const float3 edge0 = p1 - p0;
     const float3 edge1 = p2 - p0;
     const float3 faceNormal = safeNormalize(cross(edge0, edge1), float3(0.0, 1.0, 0.0));
+    const float3 xAxis = safeNormalize(edge0, float3(1.0, 0.0, 0.0));
+    const float3 yAxis = safeNormalize(cross(faceNormal, xAxis), float3(0.0, 1.0, 0.0));
+    const float4 rotation = quaternionFromBasis(xAxis, yAxis, faceNormal);
     const float scaleX = max(length(edge0) * params.gaussianScale, 1.0e-7);
     const float scaleY = max(length(edge1) * params.gaussianScale, 1.0e-7);
 
@@ -122,7 +163,7 @@ kernel void meshVertexConversionKernel(
     gaussian.color = float4(baseColor.rgb + emissive, baseColor.a);
     gaussian.scale = float4(scaleX, scaleY, 1.0e-7, 0.0);
     gaussian.normal = float4(normal, 0.0);
-    gaussian.rotation = float4(1.0, 0.0, 0.0, 0.0);
+    gaussian.rotation = rotation;
     gaussian.pbr = float4(
         material.metallicFactor * metallicRoughness.b,
         material.roughnessFactor * metallicRoughness.g,

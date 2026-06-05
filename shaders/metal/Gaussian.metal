@@ -51,6 +51,14 @@ static float2 clipToNdc(float4 clipPosition)
     return clipPosition.xy / safeW;
 }
 
+static float3 rotateByQuaternion(float4 quaternion, float3 value)
+{
+    const float4 q = normalize(quaternion);
+    const float3 vector = q.yzw;
+    const float3 t = 2.0 * cross(vector, value);
+    return value + q.x * t + cross(vector, t);
+}
+
 vertex GaussianVertexOut gaussianPreviewVertex(
     uint vertexID [[vertex_id]],
     uint instanceID [[instance_id]],
@@ -71,8 +79,10 @@ vertex GaussianVertexOut gaussianPreviewVertex(
     const float2 corner = corners[vertexID % 6];
     const float4 clipPosition = transformPoint(frame.modelViewProjectionMatrix, gaussian.position.xyz);
     const float2 inverseViewport = max(frame.viewport.zw, float2(1.0 / 8192.0));
-    const float3 scaleXPosition = gaussian.position.xyz + float3(max(abs(gaussian.scale.x), 1.0e-7), 0.0, 0.0);
-    const float3 scaleYPosition = gaussian.position.xyz + float3(0.0, max(abs(gaussian.scale.y), 1.0e-7), 0.0);
+    const float3 scaleXPosition = gaussian.position.xyz +
+        rotateByQuaternion(gaussian.rotation, float3(max(abs(gaussian.scale.x), 1.0e-7), 0.0, 0.0));
+    const float3 scaleYPosition = gaussian.position.xyz +
+        rotateByQuaternion(gaussian.rotation, float3(0.0, max(abs(gaussian.scale.y), 1.0e-7), 0.0));
     const float2 centerNdc = clipToNdc(clipPosition);
     const float2 scaleXNdc = clipToNdc(transformPoint(frame.modelViewProjectionMatrix, scaleXPosition));
     const float2 scaleYNdc = clipToNdc(transformPoint(frame.modelViewProjectionMatrix, scaleYPosition));
