@@ -46,6 +46,7 @@ kernel void meshVertexConversionKernel(
     device atomic_uint* gaussianCounter [[buffer(4)]],
     texture2d<float> baseColorTexture [[texture(0)]],
     texture2d<float> metallicRoughnessTexture [[texture(1)]],
+    texture2d<float> normalTexture [[texture(2)]],
     sampler textureSampler [[sampler(0)]])
 {
     const uint samplesPerTriangle = max(params.samplesPerTriangle, 1u);
@@ -87,13 +88,29 @@ kernel void meshVertexConversionKernel(
     const float3 n1 = safeNormalize(float3(vertices[base1 + 3], vertices[base1 + 4], vertices[base1 + 5]), faceNormal);
     const float3 n2 = safeNormalize(float3(vertices[base2 + 3], vertices[base2 + 4], vertices[base2 + 5]), faceNormal);
     const float3 vertexNormal = safeNormalize(n0 * barycentric.x + n1 * barycentric.y + n2 * barycentric.z, faceNormal);
-    const float3 normal = safeNormalize(vertexNormal + faceNormal * params.normalScale, faceNormal);
     const float2 uv0 = float2(vertices[base0 + 10], vertices[base0 + 11]);
     const float2 uv1 = float2(vertices[base1 + 10], vertices[base1 + 11]);
     const float2 uv2 = float2(vertices[base2 + 10], vertices[base2 + 11]);
     const float2 uv = uv0 * barycentric.x + uv1 * barycentric.y + uv2 * barycentric.z;
     const float4 baseColor = material.baseColorFactor * baseColorTexture.sample(textureSampler, uv);
     const float4 metallicRoughness = metallicRoughnessTexture.sample(textureSampler, uv);
+    const float3 t0 = float3(vertices[base0 + 6], vertices[base0 + 7], vertices[base0 + 8]);
+    const float3 t1 = float3(vertices[base1 + 6], vertices[base1 + 7], vertices[base1 + 8]);
+    const float3 t2 = float3(vertices[base2 + 6], vertices[base2 + 7], vertices[base2 + 8]);
+    const float tangentW = sign(
+        vertices[base0 + 9] * barycentric.x +
+        vertices[base1 + 9] * barycentric.y +
+        vertices[base2 + 9] * barycentric.z);
+    const float3 tangentBasis = safeNormalize(
+        (t0 * barycentric.x + t1 * barycentric.y + t2 * barycentric.z) -
+            vertexNormal * dot(vertexNormal, t0 * barycentric.x + t1 * barycentric.y + t2 * barycentric.z),
+        float3(1.0, 0.0, 0.0));
+    const float3 bitangentBasis = safeNormalize(cross(vertexNormal, tangentBasis) * tangentW, float3(0.0, 0.0, 1.0));
+    float3 normalSample = normalTexture.sample(textureSampler, uv).xyz * 2.0 - 1.0;
+    normalSample.xy *= material.normalScale;
+    const float3 normal = safeNormalize(
+        tangentBasis * normalSample.x + bitangentBasis * normalSample.y + vertexNormal * normalSample.z,
+        faceNormal);
 
     GaussianRecord gaussian;
     gaussian.position = float4(position, 1.0);

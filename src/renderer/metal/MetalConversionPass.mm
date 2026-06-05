@@ -139,12 +139,14 @@ bool MetalConversionPass::encode(
             id<MTLTexture> baseColorTexture = (__bridge id<MTLTexture>)mesh->baseColorTexture(range->materialIndex);
             id<MTLTexture> metallicRoughnessTexture =
                 (__bridge id<MTLTexture>)mesh->metallicRoughnessTexture(range->materialIndex);
-            if (baseColorTexture == nil || metallicRoughnessTexture == nil) {
+            id<MTLTexture> normalTexture = (__bridge id<MTLTexture>)mesh->normalTexture(range->materialIndex);
+            if (baseColorTexture == nil || metallicRoughnessTexture == nil || normalTexture == nil) {
                 continue;
             }
 
             [encoder setTexture:baseColorTexture atIndex:0];
             [encoder setTexture:metallicRoughnessTexture atIndex:1];
+            [encoder setTexture:normalTexture atIndex:2];
 
             const uint32_t triangleCount = range->vertexCount / 3;
             MeshConversionParams params;
