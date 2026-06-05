@@ -59,6 +59,16 @@ static float3 rotateByQuaternion(float4 quaternion, float3 value)
     return value + q.x * t + cross(vector, t);
 }
 
+static float2 clampedAxisPixels(float2 axisPixels, float2 fallback, float minimumPixels, float maximumPixels)
+{
+    const float lengthPixels = length(axisPixels);
+    if (lengthPixels <= 1.0e-4) {
+        return fallback * minimumPixels;
+    }
+
+    return axisPixels * (clamp(lengthPixels, minimumPixels, maximumPixels) / lengthPixels);
+}
+
 vertex GaussianVertexOut gaussianPreviewVertex(
     uint vertexID [[vertex_id]],
     uint instanceID [[instance_id]],
@@ -87,10 +97,18 @@ vertex GaussianVertexOut gaussianPreviewVertex(
     const float2 scaleXNdc = clipToNdc(transformPoint(frame.modelViewProjectionMatrix, scaleXPosition));
     const float2 scaleYNdc = clipToNdc(transformPoint(frame.modelViewProjectionMatrix, scaleYPosition));
     const float2 viewportPixels = max(frame.viewport.xy, float2(1.0));
-    const float radiusX = length((scaleXNdc - centerNdc) * viewportPixels * 0.5);
-    const float radiusY = length((scaleYNdc - centerNdc) * viewportPixels * 0.5);
-    const float radiusPixels = clamp(max(radiusX, radiusY) * max(frame.gaussianParams.x, 1.0), 1.5, 24.0);
-    const float2 ndcOffset = corner * radiusPixels * 2.0 * inverseViewport;
+    const float previewScale = max(frame.gaussianParams.x, 1.0);
+    const float2 axisXPixels = clampedAxisPixels(
+        (scaleXNdc - centerNdc) * viewportPixels * 0.5 * previewScale,
+        float2(1.0, 0.0),
+        1.5,
+        24.0);
+    const float2 axisYPixels = clampedAxisPixels(
+        (scaleYNdc - centerNdc) * viewportPixels * 0.5 * previewScale,
+        float2(0.0, 1.0),
+        1.5,
+        24.0);
+    const float2 ndcOffset = (axisXPixels * corner.x + axisYPixels * corner.y) * 2.0 * inverseViewport;
 
     GaussianVertexOut out;
     out.position = clipPosition;
