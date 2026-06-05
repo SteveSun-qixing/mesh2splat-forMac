@@ -49,11 +49,13 @@ void MetalRenderer::draw(void* renderPassDescriptor, void* drawable)
 
     auto* descriptor = (__bridge MTLRenderPassDescriptor*)renderPassDescriptor;
     id<CAMetalDrawable> metalDrawable = (__bridge id<CAMetalDrawable>)drawable;
-    id<MTLCommandBuffer> commandBuffer =
-        (__bridge id<MTLCommandBuffer>)m_impl->deviceContext->createCommandBuffer("Mesh2Splat Metal Frame");
+    id<MTLCommandQueue> commandQueue =
+        (__bridge id<MTLCommandQueue>)m_impl->deviceContext->nativeCommandQueue();
+    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
     if (commandBuffer == nil) {
         return;
     }
+    commandBuffer.label = @"Mesh2Splat Metal Frame";
 
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
     encoder.label = @"Clear Drawable";

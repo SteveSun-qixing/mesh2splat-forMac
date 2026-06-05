@@ -44,18 +44,4 @@ void* MetalDeviceContext::nativeCommandQueue() const
     return (__bridge void*)m_impl->commandQueue;
 }
 
-void* MetalDeviceContext::createCommandBuffer(const char* label) const
-{
-    if (m_impl->commandQueue == nil) {
-        return nullptr;
-    }
-
-    id<MTLCommandBuffer> commandBuffer = [m_impl->commandQueue commandBuffer];
-    if (label != nullptr) {
-        commandBuffer.label = [NSString stringWithUTF8String:label];
-    }
-
-    return (__bridge void*)commandBuffer;
-}
-
 } // namespace mesh2splat::metal

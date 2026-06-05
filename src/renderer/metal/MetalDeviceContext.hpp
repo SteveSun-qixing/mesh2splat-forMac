@@ -17,7 +17,6 @@ public:
 
     void* nativeDevice() const;
     void* nativeCommandQueue() const;
-    void* createCommandBuffer(const char* label) const;
 
 private:
     struct Impl;
