@@ -1,6 +1,7 @@
 #include "MetalRenderer.hpp"
 
 #include "MetalDeviceContext.hpp"
+#include "MetalFrameResources.hpp"
 
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -9,6 +10,7 @@ namespace mesh2splat::metal {
 
 struct MetalRenderer::Impl {
     std::unique_ptr<MetalDeviceContext> deviceContext;
+    MetalFrameResources frameResources;
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -42,6 +44,8 @@ void MetalRenderer::draw(void* renderPassDescriptor, void* drawable)
         renderPassDescriptor == nullptr || drawable == nullptr) {
         return;
     }
+
+    m_impl->frameResources.beginFrame();
 
     auto* descriptor = (__bridge MTLRenderPassDescriptor*)renderPassDescriptor;
     id<CAMetalDrawable> metalDrawable = (__bridge id<CAMetalDrawable>)drawable;

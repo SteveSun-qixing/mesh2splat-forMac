@@ -135,6 +135,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.cpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.hpp
     )
