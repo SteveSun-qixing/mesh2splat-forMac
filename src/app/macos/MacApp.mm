@@ -63,6 +63,25 @@
                                                    keyEquivalent:@"3"];
     gaussianItem.target = nil;
     [viewMenu addItem:gaussianItem];
+    [viewMenu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem* smallerItem = [[NSMenuItem alloc] initWithTitle:@"Smaller Gaussians"
+                                                         action:@selector(decreaseGaussianScale:)
+                                                  keyEquivalent:@"["];
+    smallerItem.target = nil;
+    [viewMenu addItem:smallerItem];
+
+    NSMenuItem* largerItem = [[NSMenuItem alloc] initWithTitle:@"Larger Gaussians"
+                                                        action:@selector(increaseGaussianScale:)
+                                                 keyEquivalent:@"]"];
+    largerItem.target = nil;
+    [viewMenu addItem:largerItem];
+
+    NSMenuItem* resetScaleItem = [[NSMenuItem alloc] initWithTitle:@"Reset Gaussian Size"
+                                                            action:@selector(resetGaussianScale:)
+                                                     keyEquivalent:@"0"];
+    resetScaleItem.target = nil;
+    [viewMenu addItem:resetScaleItem];
     viewMenuItem.submenu = viewMenu;
 
     NSApp.mainMenu = mainMenu;

@@ -28,6 +28,8 @@
 - (instancetype)initWithView:(Mesh2SplatMetalView*)view;
 - (BOOL)loadMeshAtPath:(NSString*)path;
 - (void)setViewMode:(mesh2splat::metal::RenderViewMode)mode;
+- (void)setGaussianScale:(float)scale;
+- (float)gaussianScale;
 - (NSString*)rendererStatusTitle;
 
 @end
@@ -101,6 +103,18 @@
     }
 }
 
+- (void)setGaussianScale:(float)scale
+{
+    if (_renderer != nullptr) {
+        _renderer->setGaussianScale(scale);
+    }
+}
+
+- (float)gaussianScale
+{
+    return _renderer == nullptr ? 1.0f : _renderer->gaussianScale();
+}
+
 - (NSString*)rendererStatusTitle
 {
     if (_renderer == nullptr) {
@@ -126,10 +140,11 @@
         assetName = [[NSString stringWithUTF8String:loadedPath.c_str()] lastPathComponent];
     }
 
-    return [NSString stringWithFormat:@"Mesh2Splat Metal - %@ - %@ - %u gaussians",
+    return [NSString stringWithFormat:@"Mesh2Splat Metal - %@ - %@ - %u gaussians - scale x%.2f",
                                       assetName,
                                       mode,
-                                      _renderer->convertedGaussianCount()];
+                                      _renderer->convertedGaussianCount(),
+                                      _renderer->gaussianScale()];
 }
 
 @end
@@ -254,6 +269,27 @@
     [self updateWindowTitle];
 }
 
+- (IBAction)increaseGaussianScale:(id)sender
+{
+    (void)sender;
+    [self.meshDelegate setGaussianScale:[self.meshDelegate gaussianScale] * 1.2f];
+    [self updateWindowTitle];
+}
+
+- (IBAction)decreaseGaussianScale:(id)sender
+{
+    (void)sender;
+    [self.meshDelegate setGaussianScale:[self.meshDelegate gaussianScale] / 1.2f];
+    [self updateWindowTitle];
+}
+
+- (IBAction)resetGaussianScale:(id)sender
+{
+    (void)sender;
+    [self.meshDelegate setGaussianScale:1.0f];
+    [self updateWindowTitle];
+}
+
 - (void)updateMousePosition:(NSEvent*)event
 {
     NSPoint location = [self convertPoint:event.locationInWindow fromView:nil];
@@ -341,6 +377,18 @@
     if ([key isEqualToString:@"3"]) {
         [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::GaussianOnly];
         [self updateWindowTitle];
+        return;
+    }
+    if ([key isEqualToString:@"]"]) {
+        [self increaseGaussianScale:self];
+        return;
+    }
+    if ([key isEqualToString:@"["]) {
+        [self decreaseGaussianScale:self];
+        return;
+    }
+    if ([key isEqualToString:@"0"]) {
+        [self resetGaussianScale:self];
         return;
     }
 

@@ -27,6 +27,8 @@ public:
     void resize(uint32_t width, uint32_t height);
     void setViewMode(RenderViewMode mode);
     RenderViewMode viewMode() const;
+    void setGaussianScale(float scale);
+    float gaussianScale() const;
     uint32_t convertedGaussianCount() const;
     const std::string& loadedMeshPath() const;
     void draw(

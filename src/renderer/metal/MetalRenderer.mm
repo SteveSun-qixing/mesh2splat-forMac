@@ -158,6 +158,7 @@ struct MetalRenderer::Impl {
     std::string loadedMeshPath;
     RenderViewMode viewMode = RenderViewMode::Combined;
     bool hasSortedGaussianDepths = false;
+    float gaussianScale = 1.0f;
     uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -348,6 +349,16 @@ RenderViewMode MetalRenderer::viewMode() const
     return m_impl->viewMode;
 }
 
+void MetalRenderer::setGaussianScale(float scale)
+{
+    m_impl->gaussianScale = std::clamp(scale, 0.1f, 8.0f);
+}
+
+float MetalRenderer::gaussianScale() const
+{
+    return m_impl->gaussianScale;
+}
+
 uint32_t MetalRenderer::convertedGaussianCount() const
 {
     return m_impl->convertedGaussianCount;
@@ -374,6 +385,7 @@ void MetalRenderer::draw(
     m_impl->camera.writeFrameUniforms(m_impl->frameUniforms);
     m_impl->frameUniforms.frameIndex = m_impl->frameResources.currentFrameIndex();
     m_impl->frameUniforms.renderMode = static_cast<uint32_t>(m_impl->viewMode);
+    m_impl->frameUniforms.gaussianParams[0] = m_impl->gaussianScale;
     if (m_impl->frameUniformBuffer != nullptr) {
         m_impl->frameUniformBuffer->update(
             m_impl->frameResources.currentFrameIndex(),
