@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace mesh2splat::metal {
 
@@ -16,6 +17,7 @@ public:
     MetalRenderer& operator=(const MetalRenderer&) = delete;
 
     bool initialize();
+    bool loadMeshFile(const std::string& filePath);
     void resize(uint32_t width, uint32_t height);
     void draw(
         void* renderPassDescriptor,

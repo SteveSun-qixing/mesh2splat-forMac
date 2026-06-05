@@ -5,8 +5,10 @@
 
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <memory>
+#include <string>
 
 @class Mesh2SplatMetalViewDelegate;
 
@@ -16,12 +18,14 @@
 
 - (const mesh2splat::core::InputState&)inputState;
 - (void)beginInputFrame;
+- (void)openMeshDocument;
 
 @end
 
 @interface Mesh2SplatMetalViewDelegate : NSObject <MTKViewDelegate>
 
 - (instancetype)initWithView:(Mesh2SplatMetalView*)view;
+- (BOOL)loadMeshAtPath:(NSString*)path;
 
 @end
 
@@ -78,6 +82,15 @@
     [owner beginInputFrame];
 }
 
+- (BOOL)loadMeshAtPath:(NSString*)path
+{
+    if (_renderer == nullptr || path == nil) {
+        return NO;
+    }
+
+    return _renderer->loadMeshFile(std::string(path.UTF8String)) ? YES : NO;
+}
+
 @end
 
 @implementation Mesh2SplatMetalView {
@@ -129,6 +142,37 @@
 - (const mesh2splat::core::InputState&)inputState
 {
     return _inputState;
+}
+
+- (void)openMeshDocument
+{
+    NSOpenPanel* panel = [NSOpenPanel openPanel];
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = NO;
+    panel.allowsMultipleSelection = NO;
+    NSMutableArray<UTType*>* contentTypes = [NSMutableArray array];
+    UTType* glbType = [UTType typeWithFilenameExtension:@"glb"];
+    UTType* gltfType = [UTType typeWithFilenameExtension:@"gltf"];
+    if (glbType != nil) {
+        [contentTypes addObject:glbType];
+    }
+    if (gltfType != nil) {
+        [contentTypes addObject:gltfType];
+    }
+    panel.allowedContentTypes = contentTypes;
+
+    __weak Mesh2SplatMetalView* weakSelf = self;
+    [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
+        Mesh2SplatMetalView* strongSelf = weakSelf;
+        if (strongSelf == nil || response != NSModalResponseOK) {
+            return;
+        }
+
+        NSURL* url = panel.URL;
+        if (url == nil || ![strongSelf.meshDelegate loadMeshAtPath:url.path]) {
+            NSBeep();
+        }
+    }];
 }
 
 - (void)updateMousePosition:(NSEvent*)event
@@ -200,6 +244,12 @@
 
 - (void)keyDown:(NSEvent*)event
 {
+    NSString* key = event.charactersIgnoringModifiers.lowercaseString;
+    if ((event.modifierFlags & NSEventModifierFlagCommand) != 0 && [key isEqualToString:@"o"]) {
+        [self openMeshDocument];
+        return;
+    }
+
     _inputState.setKey(event.keyCode, true);
 }
 

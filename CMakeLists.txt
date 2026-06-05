@@ -179,12 +179,14 @@ if(APPLE)
     find_library(METAL_LIBRARY Metal REQUIRED)
     find_library(METALKIT_LIBRARY MetalKit REQUIRED)
     find_library(QUARTZCORE_LIBRARY QuartzCore REQUIRED)
+    find_library(UNIFORMTYPEIDENTIFIERS_LIBRARY UniformTypeIdentifiers REQUIRED)
 
     target_link_libraries(Mesh2SplatMetal PRIVATE
         ${APPKIT_LIBRARY}
         ${METAL_LIBRARY}
         ${METALKIT_LIBRARY}
         ${QUARTZCORE_LIBRARY}
+        ${UNIFORMTYPEIDENTIFIERS_LIBRARY}
     )
 
     set_target_properties(Mesh2SplatMetal PROPERTIES

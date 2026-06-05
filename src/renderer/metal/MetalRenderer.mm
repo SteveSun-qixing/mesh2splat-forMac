@@ -1,6 +1,7 @@
 #include "MetalRenderer.hpp"
 
 #include "core/FrameData.hpp"
+#include "core/GltfMeshLoader.hpp"
 #include "core/NativeCamera.hpp"
 #include "core/PrimitiveMeshFactory.hpp"
 #include "MetalDeviceContext.hpp"
@@ -18,6 +19,7 @@
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace mesh2splat::metal {
@@ -87,6 +89,7 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     core::FrameUniforms frameUniforms;
     core::NativeCamera camera;
+    std::string loadedMeshPath;
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -136,6 +139,33 @@ bool MetalRenderer::initialize()
     }
 
     m_impl->frameUniforms = core::makeDefaultFrameUniforms(m_impl->width, m_impl->height);
+    return true;
+}
+
+bool MetalRenderer::loadMeshFile(const std::string& filePath)
+{
+    if (m_impl->deviceContext == nullptr || !m_impl->deviceContext->isValid() || filePath.empty()) {
+        return false;
+    }
+
+    core::GltfMeshLoadResult loadResult;
+    if (!core::loadGltfMeshData(filePath, loadResult)) {
+        NSLog(@"Failed to load mesh: %s", loadResult.error.c_str());
+        return false;
+    }
+
+    auto nextSceneResources = std::make_unique<MetalSceneResources>(*m_impl->deviceContext);
+    if (!nextSceneResources->uploadMeshes(loadResult.meshes)) {
+        NSLog(@"Failed to upload mesh resources: %s", filePath.c_str());
+        return false;
+    }
+
+    if (!loadResult.warning.empty()) {
+        NSLog(@"glTF load warning: %s", loadResult.warning.c_str());
+    }
+
+    m_impl->sceneResources = std::move(nextSceneResources);
+    m_impl->loadedMeshPath = filePath;
     return true;
 }
 
