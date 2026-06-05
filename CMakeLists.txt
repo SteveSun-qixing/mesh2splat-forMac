@@ -155,6 +155,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.cpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianRenderPass.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianRenderPass.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMeshRenderPass.mm

@@ -10,6 +10,7 @@
 #include "MetalFrameUniformBuffer.hpp"
 #include "MetalFrameResources.hpp"
 #include "MetalGaussianBuffer.hpp"
+#include "MetalGaussianRenderPass.hpp"
 #include "MetalMeshRenderPass.hpp"
 #include "MetalPipelineCache.hpp"
 #include "MetalRenderStateCache.hpp"
@@ -118,6 +119,7 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalSceneResources> sceneResources;
     std::unique_ptr<MetalGaussianBuffer> gaussianBuffer;
     std::unique_ptr<MetalConversionPass> conversionPass;
+    std::unique_ptr<MetalGaussianRenderPass> gaussianRenderPass;
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     core::FrameUniforms frameUniforms;
     core::NativeCamera camera;
@@ -201,6 +203,16 @@ bool MetalRenderer::initialize()
             m_impl->conversionPass.reset();
         } else if (!m_impl->convertSceneToGaussians(*m_impl->sceneResources)) {
             NSLog(@"Initial Metal mesh conversion did not produce gaussians.");
+        }
+
+        m_impl->gaussianRenderPass = std::make_unique<MetalGaussianRenderPass>(*m_impl->deviceContext);
+        if (!m_impl->gaussianRenderPass->initialize(
+                *m_impl->shaderLibrary,
+                *m_impl->pipelineCache,
+                *m_impl->renderStateCache,
+                MetalTextureFormat::BGRA8Unorm,
+                MetalTextureFormat::Depth32Float)) {
+            m_impl->gaussianRenderPass.reset();
         }
 
         m_impl->meshRenderPass = std::make_unique<MetalMeshRenderPass>(*m_impl->deviceContext);
@@ -299,6 +311,13 @@ void MetalRenderer::draw(
         m_impl->meshRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->sceneResources,
+            m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
+    }
+    if (m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
+        m_impl->frameUniformBuffer != nullptr) {
+        m_impl->gaussianRenderPass->encode(
+            (__bridge void*)encoder,
+            *m_impl->gaussianBuffer,
             m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
     }
     [encoder endEncoding];
