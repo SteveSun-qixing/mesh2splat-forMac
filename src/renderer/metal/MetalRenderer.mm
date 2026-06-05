@@ -11,6 +11,8 @@
 #include "MetalFrameResources.hpp"
 #include "MetalGaussianBuffer.hpp"
 #include "MetalGaussianRenderPass.hpp"
+#include "MetalGaussianSortBuffer.hpp"
+#include "MetalGaussianSortPass.hpp"
 #include "MetalMeshRenderPass.hpp"
 #include "MetalPipelineCache.hpp"
 #include "MetalRenderStateCache.hpp"
@@ -121,8 +123,10 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalRenderStateCache> renderStateCache;
     std::unique_ptr<MetalSceneResources> sceneResources;
     std::unique_ptr<MetalGaussianBuffer> gaussianBuffer;
+    std::unique_ptr<MetalGaussianSortBuffer> gaussianSortBuffer;
     std::unique_ptr<MetalConversionPass> conversionPass;
     std::unique_ptr<MetalGaussianRenderPass> gaussianRenderPass;
+    std::unique_ptr<MetalGaussianSortPass> gaussianSortPass;
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     core::FrameUniforms frameUniforms;
     core::NativeCamera camera;
@@ -180,6 +184,12 @@ bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nex
 
     convertedGaussianCount = nextGaussianBuffer->count();
     gaussianBuffer = std::move(nextGaussianBuffer);
+    gaussianSortBuffer = std::make_unique<MetalGaussianSortBuffer>(*deviceContext);
+    if (!gaussianSortBuffer->create(convertedGaussianCount, "Mesh2Splat Gaussian Sort")) {
+        gaussianSortBuffer.reset();
+        return false;
+    }
+
     return convertedGaussianCount > 0;
 }
 
@@ -234,6 +244,11 @@ bool MetalRenderer::initialize()
                 MetalTextureFormat::BGRA8Unorm,
                 MetalTextureFormat::Depth32Float)) {
             m_impl->gaussianRenderPass.reset();
+        }
+
+        m_impl->gaussianSortPass = std::make_unique<MetalGaussianSortPass>();
+        if (!m_impl->gaussianSortPass->initialize(*m_impl->shaderLibrary, *m_impl->pipelineCache)) {
+            m_impl->gaussianSortPass.reset();
         }
 
         m_impl->meshRenderPass = std::make_unique<MetalMeshRenderPass>(*m_impl->deviceContext);
@@ -336,11 +351,20 @@ void MetalRenderer::draw(
     }
     commandBuffer.label = @"Mesh2Splat Metal Frame";
 
+    const bool showGaussians =
+        m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
+    if (showGaussians && m_impl->gaussianSortPass != nullptr && m_impl->gaussianBuffer != nullptr &&
+        m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr) {
+        m_impl->gaussianSortPass->encodeDepthKeys(
+            (__bridge void*)commandBuffer,
+            *m_impl->gaussianBuffer,
+            *m_impl->gaussianSortBuffer,
+            m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
+    }
+
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
     encoder.label = @"Mesh2Splat Drawable Render";
     const bool showMesh = m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::MeshOnly;
-    const bool showGaussians =
-        m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
     if (showMesh && m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
         m_impl->frameUniformBuffer != nullptr) {
         m_impl->meshRenderPass->encode(
