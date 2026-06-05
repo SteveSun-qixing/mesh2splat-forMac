@@ -52,6 +52,7 @@ public:
     void* materialBuffer() const;
     void* baseColorTexture(uint32_t materialIndex) const;
     void* metallicRoughnessTexture(uint32_t materialIndex) const;
+    void* normalTexture(uint32_t materialIndex) const;
 
 private:
     struct Impl;

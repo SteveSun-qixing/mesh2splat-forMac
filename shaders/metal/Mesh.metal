@@ -34,6 +34,7 @@ struct MeshMaterial {
 struct MeshVertexOut {
     float4 position [[position]];
     float3 normal;
+    float4 tangent;
     float2 uv;
     float2 normalizedUv;
 };
@@ -57,6 +58,9 @@ vertex MeshVertexOut meshVertex(
     const float3 position = float3(vertices[base + 0], vertices[base + 1], vertices[base + 2]);
     out.position = transformPoint(frame.modelViewProjectionMatrix, position);
     out.normal = normalize(float3(vertices[base + 3], vertices[base + 4], vertices[base + 5]));
+    out.tangent = float4(
+        normalize(float3(vertices[base + 6], vertices[base + 7], vertices[base + 8])),
+        vertices[base + 9]);
     out.uv = float2(vertices[base + 10], vertices[base + 11]);
     out.normalizedUv = float2(vertices[base + 12], vertices[base + 13]);
     return out;
@@ -68,6 +72,7 @@ fragment float4 meshFragment(
     constant uint& materialIndex [[buffer(1)]],
     texture2d<float> baseColorTexture [[texture(0)]],
     texture2d<float> metallicRoughnessTexture [[texture(1)]],
+    texture2d<float> normalTexture [[texture(2)]],
     sampler baseColorSampler [[sampler(0)]])
 {
     const MeshMaterial material = materials[materialIndex];
@@ -75,7 +80,12 @@ fragment float4 meshFragment(
     const float4 metallicRoughness = metallicRoughnessTexture.sample(baseColorSampler, in.uv);
     const float roughness = clamp(material.roughnessFactor * metallicRoughness.g, 0.04, 1.0);
     const float metallic = clamp(material.metallicFactor * metallicRoughness.b, 0.0, 1.0);
-    const float3 normal = normalize(in.normal);
+    const float3 vertexNormal = normalize(in.normal);
+    const float3 tangent = normalize(in.tangent.xyz - vertexNormal * dot(vertexNormal, in.tangent.xyz));
+    const float3 bitangent = normalize(cross(vertexNormal, tangent) * in.tangent.w);
+    float3 normalSample = normalTexture.sample(baseColorSampler, in.uv).xyz * 2.0 - 1.0;
+    normalSample.xy *= material.normalScale;
+    const float3 normal = normalize(tangent * normalSample.x + bitangent * normalSample.y + vertexNormal * normalSample.z);
     const float3 lightDirection = normalize(float3(0.35, 0.8, 0.45));
     const float diffuse = saturate(dot(normal, lightDirection)) * 0.75 + 0.25;
     const float4 baseColor = material.baseColorFactor * textureColor;

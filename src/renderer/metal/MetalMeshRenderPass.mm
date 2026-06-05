@@ -117,12 +117,14 @@ void MetalMeshRenderPass::encode(
             id<MTLTexture> baseColorTexture = (__bridge id<MTLTexture>)mesh->baseColorTexture(materialIndex);
             id<MTLTexture> metallicRoughnessTexture =
                 (__bridge id<MTLTexture>)mesh->metallicRoughnessTexture(materialIndex);
-            if (baseColorTexture == nil || metallicRoughnessTexture == nil) {
+            id<MTLTexture> normalTexture = (__bridge id<MTLTexture>)mesh->normalTexture(materialIndex);
+            if (baseColorTexture == nil || metallicRoughnessTexture == nil || normalTexture == nil) {
                 continue;
             }
 
             [encoder setFragmentTexture:baseColorTexture atIndex:0];
             [encoder setFragmentTexture:metallicRoughnessTexture atIndex:1];
+            [encoder setFragmentTexture:normalTexture atIndex:2];
             [encoder setFragmentBytes:&materialIndex length:sizeof(materialIndex) atIndex:1];
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                          vertexStart:range->vertexOffset

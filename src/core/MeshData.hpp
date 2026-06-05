@@ -27,6 +27,7 @@ struct MeshMaterial {
     float normalScale = 1.0f;
     int32_t baseColorTextureIndex = -1;
     int32_t metallicRoughnessTextureIndex = -1;
+    int32_t normalTextureIndex = -1;
 };
 
 struct MeshDrawRange {

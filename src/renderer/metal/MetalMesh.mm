@@ -54,6 +54,18 @@ bool createDefaultMetallicRoughnessTexture(MetalTexture& texture)
         texture.upload2D(defaultPixel, sizeof(defaultPixel), 1, 1);
 }
 
+bool createDefaultNormalTexture(MetalTexture& texture)
+{
+    const uint8_t defaultPixel[4] = {128, 128, 255, 255};
+    return texture.create2D(
+        1,
+        1,
+        MetalTextureFormat::RGBA8Unorm,
+        MetalTextureUsage::ShaderRead,
+        "Default Normal Texture") &&
+        texture.upload2D(defaultPixel, sizeof(defaultPixel), 1, 1);
+}
+
 bool createMaterialTexture(
     MetalDeviceContext& deviceContext,
     const core::MeshImageData& image,
@@ -84,8 +96,10 @@ struct MetalMesh::Impl {
     std::unique_ptr<MetalBuffer> materialBuffer;
     std::vector<std::unique_ptr<MetalTexture>> baseColorTextures;
     std::vector<std::unique_ptr<MetalTexture>> metallicRoughnessTextures;
+    std::vector<std::unique_ptr<MetalTexture>> normalTextures;
     std::vector<uint32_t> materialBaseColorTextureIndices;
     std::vector<uint32_t> materialMetallicRoughnessTextureIndices;
+    std::vector<uint32_t> materialNormalTextureIndices;
     std::vector<MetalMeshDrawRange> drawRanges;
     std::size_t vertexCount = 0;
     uint32_t drawRangeCount = 0;
@@ -166,14 +180,19 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     auto materialBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     std::vector<std::unique_ptr<MetalTexture>> baseColorTextures;
     std::vector<std::unique_ptr<MetalTexture>> metallicRoughnessTextures;
+    std::vector<std::unique_ptr<MetalTexture>> normalTextures;
     std::vector<uint32_t> materialBaseColorTextureIndices;
     std::vector<uint32_t> materialMetallicRoughnessTextureIndices;
+    std::vector<uint32_t> materialNormalTextureIndices;
     std::unordered_map<int32_t, uint32_t> baseColorTextureMap;
     std::unordered_map<int32_t, uint32_t> metallicRoughnessTextureMap;
+    std::unordered_map<int32_t, uint32_t> normalTextureMap;
     baseColorTextures.reserve(meshData.images.size() + 1);
     metallicRoughnessTextures.reserve(meshData.images.size() + 1);
+    normalTextures.reserve(meshData.images.size() + 1);
     materialBaseColorTextureIndices.reserve(materials.size());
     materialMetallicRoughnessTextureIndices.reserve(materials.size());
+    materialNormalTextureIndices.reserve(materials.size());
 
     const std::string vertexLabel = baseLabel + " Vertices";
     const std::string drawRangeLabel = baseLabel + " Draw Ranges";
@@ -190,6 +209,12 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
         return false;
     }
     metallicRoughnessTextures.push_back(std::move(defaultMetallicRoughnessTexture));
+
+    auto defaultNormalTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
+    if (!createDefaultNormalTexture(*defaultNormalTexture)) {
+        return false;
+    }
+    normalTextures.push_back(std::move(defaultNormalTexture));
 
     auto resolveMaterialTexture = [this, &meshData, &baseLabel](
                                       int32_t imageIndex,
@@ -232,12 +257,21 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
             "Metallic Roughness",
             metallicRoughnessTextures,
             metallicRoughnessTextureMap));
+        materialNormalTextureIndices.push_back(resolveMaterialTexture(
+            material.normalTextureIndex,
+            MetalTextureFormat::RGBA8Unorm,
+            "Normal",
+            normalTextures,
+            normalTextureMap));
     }
     if (materialBaseColorTextureIndices.empty()) {
         materialBaseColorTextureIndices.push_back(0);
     }
     if (materialMetallicRoughnessTextureIndices.empty()) {
         materialMetallicRoughnessTextureIndices.push_back(0);
+    }
+    if (materialNormalTextureIndices.empty()) {
+        materialNormalTextureIndices.push_back(0);
     }
 
     if (!vertexBuffer->createShared(
@@ -260,8 +294,10 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     m_impl->materialBuffer = std::move(materialBuffer);
     m_impl->baseColorTextures = std::move(baseColorTextures);
     m_impl->metallicRoughnessTextures = std::move(metallicRoughnessTextures);
+    m_impl->normalTextures = std::move(normalTextures);
     m_impl->materialBaseColorTextureIndices = std::move(materialBaseColorTextureIndices);
     m_impl->materialMetallicRoughnessTextureIndices = std::move(materialMetallicRoughnessTextureIndices);
+    m_impl->materialNormalTextureIndices = std::move(materialNormalTextureIndices);
     m_impl->drawRanges = std::move(drawRanges);
     m_impl->vertexCount = meshData.vertices.size();
     m_impl->drawRangeCount = static_cast<uint32_t>(m_impl->drawRanges.size());
@@ -276,8 +312,10 @@ void MetalMesh::reset()
     m_impl->materialBuffer.reset();
     m_impl->baseColorTextures.clear();
     m_impl->metallicRoughnessTextures.clear();
+    m_impl->normalTextures.clear();
     m_impl->materialBaseColorTextureIndices.clear();
     m_impl->materialMetallicRoughnessTextureIndices.clear();
+    m_impl->materialNormalTextureIndices.clear();
     m_impl->drawRanges.clear();
     m_impl->vertexCount = 0;
     m_impl->drawRangeCount = 0;
@@ -354,6 +392,21 @@ void* MetalMesh::metallicRoughnessTexture(uint32_t materialIndex) const
     }
 
     const std::unique_ptr<MetalTexture>& texture = m_impl->metallicRoughnessTextures[textureIndex];
+    return texture == nullptr ? nullptr : texture->nativeTexture();
+}
+
+void* MetalMesh::normalTexture(uint32_t materialIndex) const
+{
+    if (materialIndex >= m_impl->materialNormalTextureIndices.size()) {
+        return nullptr;
+    }
+
+    const uint32_t textureIndex = m_impl->materialNormalTextureIndices[materialIndex];
+    if (textureIndex >= m_impl->normalTextures.size()) {
+        return nullptr;
+    }
+
+    const std::unique_ptr<MetalTexture>& texture = m_impl->normalTextures[textureIndex];
     return texture == nullptr ? nullptr : texture->nativeTexture();
 }
 
