@@ -16,7 +16,7 @@ namespace {
 
 struct MeshConversionParams {
     uint32_t vertexOffset = 0;
-    uint32_t vertexCount = 0;
+    uint32_t triangleCount = 0;
     uint32_t materialIndex = 0;
     uint32_t outputOffset = 0;
     float gaussianScale = 1.0f;
@@ -106,7 +106,8 @@ bool MetalConversionPass::encode(
 
         for (uint32_t rangeIndex = 0; rangeIndex < mesh->drawRangeCount(); ++rangeIndex) {
             const MetalMeshDrawRange* range = mesh->drawRange(rangeIndex);
-            if (range == nullptr || range->vertexCount == 0 || range->materialIndex >= mesh->materialCount()) {
+            if (range == nullptr || range->vertexCount == 0 || range->vertexCount % 3 != 0 ||
+                range->materialIndex >= mesh->materialCount()) {
                 continue;
             }
             if (outputOffset > gaussianBuffer.capacity() ||
@@ -115,16 +116,17 @@ bool MetalConversionPass::encode(
                 return false;
             }
 
+            const uint32_t triangleCount = range->vertexCount / 3;
             MeshConversionParams params;
             params.vertexOffset = range->vertexOffset;
-            params.vertexCount = range->vertexCount;
+            params.triangleCount = triangleCount;
             params.materialIndex = range->materialIndex;
             params.outputOffset = outputOffset;
-            params.gaussianScale = 1.0f;
+            params.gaussianScale = 0.33f;
             params.normalScale = 1.0f;
 
             [encoder setBytes:&params length:sizeof(params) atIndex:3];
-            const MTLSize gridSize = MTLSizeMake(range->vertexCount, 1, 1);
+            const MTLSize gridSize = MTLSizeMake(triangleCount, 1, 1);
             const MTLSize threadgroupSize = MTLSizeMake(threadsPerGroup, 1, 1);
             [encoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
             outputOffset += range->vertexCount;
