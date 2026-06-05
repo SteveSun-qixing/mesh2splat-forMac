@@ -175,6 +175,12 @@
     }];
 }
 
+- (IBAction)openDocument:(id)sender
+{
+    (void)sender;
+    [self openMeshDocument];
+}
+
 - (void)updateMousePosition:(NSEvent*)event
 {
     NSPoint location = [self convertPoint:event.locationInWindow fromView:nil];

@@ -10,9 +10,44 @@
 
 @implementation Mesh2SplatAppDelegate
 
+- (void)configureMainMenu
+{
+    NSMenu* mainMenu = [[NSMenu alloc] initWithTitle:@"Main Menu"];
+
+    NSMenuItem* appMenuItem = [[NSMenuItem alloc] initWithTitle:@""
+                                                         action:nil
+                                                  keyEquivalent:@""];
+    [mainMenu addItem:appMenuItem];
+
+    NSMenu* appMenu = [[NSMenu alloc] initWithTitle:@"Mesh2Splat Metal"];
+    NSMenuItem* quitItem = [[NSMenuItem alloc] initWithTitle:@"Quit Mesh2Splat Metal"
+                                                      action:@selector(terminate:)
+                                               keyEquivalent:@"q"];
+    quitItem.target = NSApp;
+    [appMenu addItem:quitItem];
+    appMenuItem.submenu = appMenu;
+
+    NSMenuItem* fileMenuItem = [[NSMenuItem alloc] initWithTitle:@"File"
+                                                          action:nil
+                                                   keyEquivalent:@""];
+    [mainMenu addItem:fileMenuItem];
+
+    NSMenu* fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+    NSMenuItem* openItem = [[NSMenuItem alloc] initWithTitle:@"Open..."
+                                                      action:@selector(openDocument:)
+                                               keyEquivalent:@"o"];
+    openItem.target = nil;
+    [fileMenu addItem:openItem];
+    fileMenuItem.submenu = fileMenu;
+
+    NSApp.mainMenu = mainMenu;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification*)notification
 {
     (void)notification;
+
+    [self configureMainMenu];
 
     NSRect frame = NSMakeRect(0, 0, 1280, 800);
     NSUInteger styleMask = NSWindowStyleMaskTitled |
