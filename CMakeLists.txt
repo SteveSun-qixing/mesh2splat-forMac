@@ -139,6 +139,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalTexture.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalTexture.hpp
     )
 
     add_executable(Mesh2SplatMetal MACOSX_BUNDLE ${METAL_APP_SOURCES})
