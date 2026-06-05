@@ -148,6 +148,31 @@ void NativeCamera::resize(uint32_t width, uint32_t height)
     m_height = std::max<uint32_t>(height, 1);
 }
 
+void NativeCamera::frameBounds(const MeshBounds& bounds)
+{
+    const Vec3 center{
+        (bounds.min[0] + bounds.max[0]) * 0.5f,
+        (bounds.min[1] + bounds.max[1]) * 0.5f,
+        (bounds.min[2] + bounds.max[2]) * 0.5f,
+    };
+    const Vec3 extent{
+        std::max(bounds.max[0] - bounds.min[0], 0.0f),
+        std::max(bounds.max[1] - bounds.min[1], 0.0f),
+        std::max(bounds.max[2] - bounds.min[2], 0.0f),
+    };
+    const float radius = std::max(std::sqrt(dot(extent, extent)) * 0.5f, 0.5f);
+    const float distance = radius / std::tan(radians(m_verticalFovDegrees) * 0.5f) * 1.35f;
+
+    m_position[0] = center.x;
+    m_position[1] = center.y;
+    m_position[2] = center.z + distance;
+    m_yawDegrees = -90.0f;
+    m_pitchDegrees = 0.0f;
+    m_nearPlane = std::max(radius * 0.001f, 0.001f);
+    m_farPlane = std::max(distance + radius * 4.0f, m_nearPlane + 1.0f);
+    m_movementScale = std::max(radius, 1.0f);
+}
+
 void NativeCamera::update(const InputState& inputState, double deltaTimeSeconds)
 {
     if (inputState.mouseButtonsDown[1]) {
@@ -165,7 +190,8 @@ void NativeCamera::update(const InputState& inputState, double deltaTimeSeconds)
     const Vec3 worldUp{0.0f, 1.0f, 0.0f};
     const Vec3 right = normalize(cross(forward, worldUp));
     const bool boosted = isKeyDown(inputState, kKeyLeftShift) || isKeyDown(inputState, kKeyRightShift);
-    const float speed = (boosted ? 4.0f : 1.4f) * static_cast<float>(std::min(deltaTimeSeconds, 0.05));
+    const float speed = (boosted ? 4.0f : 1.4f) * m_movementScale *
+        static_cast<float>(std::min(deltaTimeSeconds, 0.05));
 
     Vec3 movement{};
     if (isKeyDown(inputState, kKeyW)) {

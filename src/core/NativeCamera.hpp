@@ -2,6 +2,7 @@
 
 #include "FrameData.hpp"
 #include "InputState.hpp"
+#include "MeshData.hpp"
 
 #include <cstdint>
 
@@ -12,6 +13,7 @@ public:
     NativeCamera();
 
     void resize(uint32_t width, uint32_t height);
+    void frameBounds(const MeshBounds& bounds);
     void update(const InputState& inputState, double deltaTimeSeconds);
     void writeFrameUniforms(FrameUniforms& uniforms) const;
 
@@ -22,6 +24,7 @@ private:
     float m_verticalFovDegrees = 45.0f;
     float m_nearPlane = 0.01f;
     float m_farPlane = 100.0f;
+    float m_movementScale = 1.0f;
     uint32_t m_width = 1;
     uint32_t m_height = 1;
 };

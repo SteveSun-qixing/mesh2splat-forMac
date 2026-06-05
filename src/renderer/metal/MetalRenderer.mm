@@ -76,6 +76,31 @@ bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary)
     return !source.empty() && shaderLibrary.compileSource(source, "Mesh2Splat Runtime Metal Library");
 }
 
+core::MeshBounds aggregateMeshBounds(const std::vector<core::MeshData>& meshes)
+{
+    core::MeshBounds bounds;
+    bool hasBounds = false;
+
+    for (const core::MeshData& mesh : meshes) {
+        if (mesh.empty()) {
+            continue;
+        }
+
+        if (!hasBounds) {
+            bounds = mesh.bounds;
+            hasBounds = true;
+            continue;
+        }
+
+        for (int axis = 0; axis < 3; ++axis) {
+            bounds.min[axis] = std::min(bounds.min[axis], mesh.bounds.min[axis]);
+            bounds.max[axis] = std::max(bounds.max[axis], mesh.bounds.max[axis]);
+        }
+    }
+
+    return bounds;
+}
+
 } // namespace
 
 struct MetalRenderer::Impl {
@@ -165,6 +190,7 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
     }
 
     m_impl->sceneResources = std::move(nextSceneResources);
+    m_impl->camera.frameBounds(aggregateMeshBounds(loadResult.meshes));
     m_impl->loadedMeshPath = filePath;
     return true;
 }
