@@ -33,9 +33,16 @@ struct GaussianRecord {
 
 struct GaussianSortParams {
     uint gaussianCount;
-    uint flags;
+    uint sortCapacity;
     uint reserved0;
     uint reserved1;
+};
+
+struct BitonicSortParams {
+    uint sortCapacity;
+    uint stageSize;
+    uint passSize;
+    uint reserved;
 };
 
 static float4 transformPoint(Matrix4 matrix, float3 position)
@@ -61,13 +68,50 @@ kernel void gaussianDepthKeyKernel(
     device uint* indices [[buffer(3)]],
     constant GaussianSortParams& params [[buffer(4)]])
 {
+    if (threadID >= params.sortCapacity) {
+        return;
+    }
+
     if (threadID >= params.gaussianCount) {
+        depthKeys[threadID] = 0xffffffffu;
+        indices[threadID] = 0u;
         return;
     }
 
     const GaussianRecord gaussian = gaussians[threadID];
     const float4 viewPosition = transformPoint(frame.viewMatrix, gaussian.position.xyz);
     const float positiveDepth = max(-viewPosition.z, 0.0);
-    depthKeys[threadID] = sortableFloatKey(positiveDepth);
+    depthKeys[threadID] = 0xffffffffu - sortableFloatKey(positiveDepth);
     indices[threadID] = threadID;
+}
+
+kernel void gaussianBitonicSortKernel(
+    uint threadID [[thread_position_in_grid]],
+    device uint* depthKeys [[buffer(0)]],
+    device uint* indices [[buffer(1)]],
+    constant BitonicSortParams& params [[buffer(2)]])
+{
+    if (threadID >= params.sortCapacity) {
+        return;
+    }
+
+    const uint partner = threadID ^ params.passSize;
+    if (partner <= threadID || partner >= params.sortCapacity) {
+        return;
+    }
+
+    const bool ascending = (threadID & params.stageSize) == 0;
+    const uint key = depthKeys[threadID];
+    const uint partnerKey = depthKeys[partner];
+    const bool shouldSwap = ascending ? key > partnerKey : key < partnerKey;
+    if (!shouldSwap) {
+        return;
+    }
+
+    depthKeys[threadID] = partnerKey;
+    depthKeys[partner] = key;
+
+    const uint index = indices[threadID];
+    indices[threadID] = indices[partner];
+    indices[partner] = index;
 }

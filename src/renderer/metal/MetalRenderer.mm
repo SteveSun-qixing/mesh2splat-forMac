@@ -85,6 +85,19 @@ bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary)
     return !source.empty() && shaderLibrary.compileSource(source, "Mesh2Splat Runtime Metal Library");
 }
 
+std::size_t nextPowerOfTwo(std::size_t value)
+{
+    if (value <= 1) {
+        return 1;
+    }
+
+    --value;
+    for (std::size_t shift = 1; shift < sizeof(std::size_t) * 8; shift <<= 1) {
+        value |= value >> shift;
+    }
+    return value + 1;
+}
+
 core::MeshBounds aggregateMeshBounds(const std::vector<core::MeshData>& meshes)
 {
     core::MeshBounds bounds;
@@ -185,7 +198,9 @@ bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nex
     convertedGaussianCount = nextGaussianBuffer->count();
     gaussianBuffer = std::move(nextGaussianBuffer);
     gaussianSortBuffer = std::make_unique<MetalGaussianSortBuffer>(*deviceContext);
-    if (!gaussianSortBuffer->create(convertedGaussianCount, "Mesh2Splat Gaussian Sort")) {
+    const std::size_t sortCapacity = nextPowerOfTwo(convertedGaussianCount);
+    if (sortCapacity < convertedGaussianCount ||
+        !gaussianSortBuffer->create(sortCapacity, "Mesh2Splat Gaussian Sort")) {
         gaussianSortBuffer.reset();
         return false;
     }
