@@ -226,16 +226,17 @@ bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nex
         return false;
     }
 
-    convertedGaussianCount = nextGaussianBuffer->count();
-    gaussianBuffer = std::move(nextGaussianBuffer);
-    gaussianSortBuffer = std::make_unique<MetalGaussianSortBuffer>(*deviceContext);
-    const std::size_t sortCapacity = nextPowerOfTwo(convertedGaussianCount);
-    if (sortCapacity < convertedGaussianCount ||
-        !gaussianSortBuffer->create(sortCapacity, "Mesh2Splat Gaussian Sort")) {
-        gaussianSortBuffer.reset();
+    const uint32_t nextConvertedGaussianCount = nextGaussianBuffer->count();
+    auto nextSortBuffer = std::make_unique<MetalGaussianSortBuffer>(*deviceContext);
+    const std::size_t sortCapacity = nextPowerOfTwo(nextConvertedGaussianCount);
+    if (sortCapacity < nextConvertedGaussianCount ||
+        !nextSortBuffer->create(sortCapacity, "Mesh2Splat Gaussian Sort")) {
         return false;
     }
 
+    convertedGaussianCount = nextConvertedGaussianCount;
+    gaussianBuffer = std::move(nextGaussianBuffer);
+    gaussianSortBuffer = std::move(nextSortBuffer);
     hasSortedGaussianDepths = false;
     return convertedGaussianCount > 0;
 }
@@ -383,9 +384,11 @@ bool MetalRenderer::setConversionSamplesPerTriangle(uint32_t samplesPerTriangle)
         return true;
     }
 
+    const uint32_t previousSamples = m_impl->conversionSamplesPerTriangle;
     m_impl->conversionSamplesPerTriangle = normalizedSamples;
     if (m_impl->sceneResources != nullptr && m_impl->sceneResources->isValid() &&
         !m_impl->convertSceneToGaussians(*m_impl->sceneResources)) {
+        m_impl->conversionSamplesPerTriangle = previousSamples;
         NSLog(@"Metal mesh reconversion did not produce gaussians.");
         return false;
     }
