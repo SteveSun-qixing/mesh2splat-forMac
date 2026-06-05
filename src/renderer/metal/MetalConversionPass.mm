@@ -21,11 +21,13 @@ struct MeshConversionParams {
     uint32_t maxGaussianCount = 0;
     float gaussianScale = 1.0f;
     float normalScale = 1.0f;
-    uint32_t flags = 0;
+    uint32_t samplesPerTriangle = 1;
     uint32_t reserved = 0;
 };
 
 static_assert(sizeof(MeshConversionParams) == 32, "MeshConversionParams must match the Metal shader layout.");
+
+constexpr uint32_t kSamplesPerTriangle = 4;
 
 } // namespace
 
@@ -119,11 +121,12 @@ bool MetalConversionPass::encode(
             params.triangleCount = triangleCount;
             params.materialIndex = range->materialIndex;
             params.maxGaussianCount = static_cast<uint32_t>(gaussianBuffer.capacity());
-            params.gaussianScale = 0.33f;
+            params.gaussianScale = 0.22f;
             params.normalScale = 1.0f;
+            params.samplesPerTriangle = kSamplesPerTriangle;
 
             [encoder setBytes:&params length:sizeof(params) atIndex:3];
-            const MTLSize gridSize = MTLSizeMake(triangleCount, 1, 1);
+            const MTLSize gridSize = MTLSizeMake(triangleCount * kSamplesPerTriangle, 1, 1);
             const MTLSize threadgroupSize = MTLSizeMake(threadsPerGroup, 1, 1);
             [encoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
         }

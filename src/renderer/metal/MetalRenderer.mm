@@ -22,12 +22,15 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace mesh2splat::metal {
 namespace {
+
+constexpr std::size_t kMetalConversionSamplesPerTriangle = 4;
 
 std::string bundledMetallibPath()
 {
@@ -137,8 +140,18 @@ bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nex
         return false;
     }
 
+    const std::size_t triangleCount = nextSceneResources.totalVertexCount() / 3;
+    if (triangleCount == 0 || triangleCount > std::numeric_limits<std::size_t>::max() / kMetalConversionSamplesPerTriangle) {
+        return false;
+    }
+
+    const std::size_t gaussianCapacity = triangleCount * kMetalConversionSamplesPerTriangle;
+    if (!core::gaussianCountFitsBuffer(gaussianCapacity)) {
+        return false;
+    }
+
     auto nextGaussianBuffer = std::make_unique<MetalGaussianBuffer>(*deviceContext);
-    if (!nextGaussianBuffer->create(nextSceneResources.totalVertexCount(), "Mesh2Splat Converted Gaussians")) {
+    if (!nextGaussianBuffer->create(gaussianCapacity, "Mesh2Splat Converted Gaussians")) {
         return false;
     }
 

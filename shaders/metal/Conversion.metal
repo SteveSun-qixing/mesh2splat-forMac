@@ -27,7 +27,7 @@ struct MeshConversionParams {
     uint maxGaussianCount;
     float gaussianScale;
     float normalScale;
-    uint flags;
+    uint samplesPerTriangle;
     uint reserved;
 };
 
@@ -45,16 +45,19 @@ kernel void meshVertexConversionKernel(
     constant MeshConversionParams& params [[buffer(3)]],
     device atomic_uint* gaussianCounter [[buffer(4)]])
 {
-    if (threadID >= params.triangleCount) {
+    const uint samplesPerTriangle = max(params.samplesPerTriangle, 1u);
+    const uint triangleID = threadID / samplesPerTriangle;
+    const uint sampleID = threadID - triangleID * samplesPerTriangle;
+    if (triangleID >= params.triangleCount) {
         return;
     }
 
-    const uint outputBase = atomic_fetch_add_explicit(gaussianCounter, 3u, memory_order_relaxed);
-    if (outputBase + 2u >= params.maxGaussianCount) {
+    const uint outputIndex = atomic_fetch_add_explicit(gaussianCounter, 1u, memory_order_relaxed);
+    if (outputIndex >= params.maxGaussianCount) {
         return;
     }
 
-    const uint firstVertexIndex = params.vertexOffset + threadID * 3;
+    const uint firstVertexIndex = params.vertexOffset + triangleID * 3;
     const MeshMaterial material = materials[params.materialIndex];
 
     const uint base0 = firstVertexIndex * 17;
@@ -69,23 +72,26 @@ kernel void meshVertexConversionKernel(
     const float scaleX = max(length(edge0) * params.gaussianScale, 1.0e-7);
     const float scaleY = max(length(edge1) * params.gaussianScale, 1.0e-7);
 
-    for (uint corner = 0; corner < 3; ++corner) {
-        const uint vertexIndex = firstVertexIndex + corner;
-        const uint base = vertexIndex * 17;
-        const float3 position = float3(vertices[base + 0], vertices[base + 1], vertices[base + 2]);
-        const float3 vertexNormal = safeNormalize(
-            float3(vertices[base + 3], vertices[base + 4], vertices[base + 5]),
-            faceNormal);
-        const float3 normal = safeNormalize(vertexNormal + faceNormal * params.normalScale, faceNormal);
-        const uint outputIndex = outputBase + corner;
+    const float3 barycentricSamples[4] = {
+        float3(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+        float3(0.6, 0.2, 0.2),
+        float3(0.2, 0.6, 0.2),
+        float3(0.2, 0.2, 0.6),
+    };
+    const float3 barycentric = barycentricSamples[sampleID % 4];
+    const float3 position = p0 * barycentric.x + p1 * barycentric.y + p2 * barycentric.z;
+    const float3 n0 = safeNormalize(float3(vertices[base0 + 3], vertices[base0 + 4], vertices[base0 + 5]), faceNormal);
+    const float3 n1 = safeNormalize(float3(vertices[base1 + 3], vertices[base1 + 4], vertices[base1 + 5]), faceNormal);
+    const float3 n2 = safeNormalize(float3(vertices[base2 + 3], vertices[base2 + 4], vertices[base2 + 5]), faceNormal);
+    const float3 vertexNormal = safeNormalize(n0 * barycentric.x + n1 * barycentric.y + n2 * barycentric.z, faceNormal);
+    const float3 normal = safeNormalize(vertexNormal + faceNormal * params.normalScale, faceNormal);
 
-        GaussianRecord gaussian;
-        gaussian.position = float4(position, 1.0);
-        gaussian.color = material.baseColorFactor;
-        gaussian.scale = float4(scaleX, scaleY, 1.0e-7, 0.0);
-        gaussian.normal = float4(normal, 0.0);
-        gaussian.rotation = float4(1.0, 0.0, 0.0, 0.0);
-        gaussian.pbr = float4(material.metallicFactor, material.roughnessFactor, material.occlusionStrength, 1.0);
-        gaussians[outputIndex] = gaussian;
-    }
+    GaussianRecord gaussian;
+    gaussian.position = float4(position, 1.0);
+    gaussian.color = material.baseColorFactor;
+    gaussian.scale = float4(scaleX, scaleY, 1.0e-7, 0.0);
+    gaussian.normal = float4(normal, 0.0);
+    gaussian.rotation = float4(1.0, 0.0, 0.0, 0.0);
+    gaussian.pbr = float4(material.metallicFactor, material.roughnessFactor, material.occlusionStrength, 1.0);
+    gaussians[outputIndex] = gaussian;
 }
