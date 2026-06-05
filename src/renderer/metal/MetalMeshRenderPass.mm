@@ -86,8 +86,22 @@ void MetalMeshRenderPass::encode(
         }
 
         id<MTLBuffer> vertexBuffer = (__bridge id<MTLBuffer>)mesh->vertexBuffer();
+        id<MTLBuffer> materialBuffer = (__bridge id<MTLBuffer>)mesh->materialBuffer();
         [encoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
-        [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:mesh->vertexCount()];
+        [encoder setFragmentBuffer:materialBuffer offset:0 atIndex:0];
+
+        for (uint32_t rangeIndex = 0; rangeIndex < mesh->drawRangeCount(); ++rangeIndex) {
+            const MetalMeshDrawRange* range = mesh->drawRange(rangeIndex);
+            if (range == nullptr || range->vertexCount == 0 || range->materialIndex >= mesh->materialCount()) {
+                continue;
+            }
+
+            uint32_t materialIndex = range->materialIndex;
+            [encoder setFragmentBytes:&materialIndex length:sizeof(materialIndex) atIndex:1];
+            [encoder drawPrimitives:MTLPrimitiveTypeTriangle
+                         vertexStart:range->vertexOffset
+                         vertexCount:range->vertexCount];
+        }
     }
 }
 

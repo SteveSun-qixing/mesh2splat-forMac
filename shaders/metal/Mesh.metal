@@ -22,6 +22,15 @@ struct FrameUniforms {
     uint reserved;
 };
 
+struct MeshMaterial {
+    float4 baseColorFactor;
+    float4 emissiveFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    float occlusionStrength;
+    float normalScale;
+};
+
 struct MeshVertexOut {
     float4 position [[position]];
     float3 normal;
@@ -53,9 +62,15 @@ vertex MeshVertexOut meshVertex(
     return out;
 }
 
-fragment float4 meshFragment(MeshVertexOut in [[stage_in]])
+fragment float4 meshFragment(
+    MeshVertexOut in [[stage_in]],
+    constant MeshMaterial* materials [[buffer(0)]],
+    constant uint& materialIndex [[buffer(1)]])
 {
-    const float3 normalColor = in.normal * 0.5 + 0.5;
-    const float3 uvColor = float3(in.normalizedUv.x, in.normalizedUv.y, 1.0 - in.normalizedUv.x);
-    return float4(mix(normalColor, uvColor, 0.65), 1.0);
+    const MeshMaterial material = materials[materialIndex];
+    const float3 normal = normalize(in.normal);
+    const float3 lightDirection = normalize(float3(0.35, 0.8, 0.45));
+    const float diffuse = saturate(dot(normal, lightDirection)) * 0.75 + 0.25;
+    const float3 baseColor = material.baseColorFactor.rgb * diffuse + material.emissiveFactor.rgb;
+    return float4(baseColor, material.baseColorFactor.a);
 }

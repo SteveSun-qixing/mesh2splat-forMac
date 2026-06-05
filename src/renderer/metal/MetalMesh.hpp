@@ -44,6 +44,7 @@ public:
     std::size_t vertexCount() const;
     uint32_t drawRangeCount() const;
     uint32_t materialCount() const;
+    const MetalMeshDrawRange* drawRange(uint32_t index) const;
 
     void* vertexBuffer() const;
     void* drawRangeBuffer() const;

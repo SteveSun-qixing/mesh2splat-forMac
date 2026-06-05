@@ -36,6 +36,7 @@ struct MetalMesh::Impl {
     std::unique_ptr<MetalBuffer> vertexBuffer;
     std::unique_ptr<MetalBuffer> drawRangeBuffer;
     std::unique_ptr<MetalBuffer> materialBuffer;
+    std::vector<MetalMeshDrawRange> drawRanges;
     std::size_t vertexCount = 0;
     uint32_t drawRangeCount = 0;
     uint32_t materialCount = 0;
@@ -136,8 +137,9 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     m_impl->vertexBuffer = std::move(vertexBuffer);
     m_impl->drawRangeBuffer = std::move(drawRangeBuffer);
     m_impl->materialBuffer = std::move(materialBuffer);
+    m_impl->drawRanges = std::move(drawRanges);
     m_impl->vertexCount = meshData.vertices.size();
-    m_impl->drawRangeCount = static_cast<uint32_t>(drawRanges.size());
+    m_impl->drawRangeCount = static_cast<uint32_t>(m_impl->drawRanges.size());
     m_impl->materialCount = static_cast<uint32_t>(materials.size());
     return true;
 }
@@ -147,6 +149,7 @@ void MetalMesh::reset()
     m_impl->vertexBuffer.reset();
     m_impl->drawRangeBuffer.reset();
     m_impl->materialBuffer.reset();
+    m_impl->drawRanges.clear();
     m_impl->vertexCount = 0;
     m_impl->drawRangeCount = 0;
     m_impl->materialCount = 0;
@@ -173,6 +176,11 @@ uint32_t MetalMesh::drawRangeCount() const
 uint32_t MetalMesh::materialCount() const
 {
     return m_impl->materialCount;
+}
+
+const MetalMeshDrawRange* MetalMesh::drawRange(uint32_t index) const
+{
+    return index < m_impl->drawRanges.size() ? &m_impl->drawRanges[index] : nullptr;
 }
 
 void* MetalMesh::vertexBuffer() const
