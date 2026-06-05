@@ -193,6 +193,13 @@ if(APPLE)
     set(METAL_SHADER_DIR ${CMAKE_SOURCE_DIR}/shaders/metal)
     file(GLOB METAL_SHADER_SOURCES ${METAL_SHADER_DIR}/*.metal)
     if(METAL_SHADER_SOURCES)
+        add_custom_command(TARGET Mesh2SplatMetal POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:Mesh2SplatMetal>/Resources/Shaders"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${METAL_SHADER_SOURCES}
+                "$<TARGET_BUNDLE_CONTENT_DIR:Mesh2SplatMetal>/Resources/Shaders"
+        )
+
         execute_process(
             COMMAND xcrun -sdk macosx --find metal
             RESULT_VARIABLE METAL_COMPILER_RESULT
@@ -209,15 +216,27 @@ if(APPLE)
         )
 
         if(METAL_COMPILER_RESULT EQUAL 0 AND METALLIB_RESULT EQUAL 0)
-            set(METAL_AIR_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/Mesh2SplatMetal.air)
             set(METAL_LIBRARY_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/Mesh2SplatMetal.metallib)
+            set(METAL_AIR_OUTPUTS)
+
+            foreach(METAL_SHADER_SOURCE IN LISTS METAL_SHADER_SOURCES)
+                get_filename_component(METAL_SHADER_NAME ${METAL_SHADER_SOURCE} NAME_WE)
+                set(METAL_AIR_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${METAL_SHADER_NAME}.air)
+                add_custom_command(
+                    OUTPUT ${METAL_AIR_OUTPUT}
+                    COMMAND ${METAL_COMPILER} -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR_OUTPUT}
+                    DEPENDS ${METAL_SHADER_SOURCE}
+                    COMMENT "Compiling ${METAL_SHADER_NAME}.metal"
+                    VERBATIM
+                )
+                list(APPEND METAL_AIR_OUTPUTS ${METAL_AIR_OUTPUT})
+            endforeach()
 
             add_custom_command(
                 OUTPUT ${METAL_LIBRARY_OUTPUT}
-                COMMAND ${METAL_COMPILER} -c ${METAL_SHADER_SOURCES} -o ${METAL_AIR_OUTPUT}
-                COMMAND ${METALLIB} ${METAL_AIR_OUTPUT} -o ${METAL_LIBRARY_OUTPUT}
-                DEPENDS ${METAL_SHADER_SOURCES}
-                COMMENT "Compiling Mesh2Splat Metal shaders"
+                COMMAND ${METALLIB} ${METAL_AIR_OUTPUTS} -o ${METAL_LIBRARY_OUTPUT}
+                DEPENDS ${METAL_AIR_OUTPUTS}
+                COMMENT "Linking Mesh2Splat Metal shader library"
                 VERBATIM
             )
             add_custom_target(Mesh2SplatMetalShaders DEPENDS ${METAL_LIBRARY_OUTPUT})

@@ -16,6 +16,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,36 @@ std::string bundledMetallibPath()
     return path == nil ? std::string{} : std::string(path.UTF8String);
 }
 
+std::string bundledShaderSource()
+{
+    NSArray<NSString*>* shaderPaths = [[NSBundle mainBundle] pathsForResourcesOfType:@"metal" inDirectory:@"Shaders"];
+    std::vector<std::string> paths;
+    paths.reserve(shaderPaths.count);
+    for (NSString* path in shaderPaths) {
+        paths.push_back(path.UTF8String);
+    }
+    std::sort(paths.begin(), paths.end());
+
+    std::string source;
+    for (const std::string& path : paths) {
+        NSError* error = nil;
+        NSString* fileSource = [NSString stringWithContentsOfFile:[NSString stringWithUTF8String:path.c_str()]
+                                                         encoding:NSUTF8StringEncoding
+                                                            error:&error];
+        if (fileSource == nil) {
+            continue;
+        }
+
+        source += "\n#line 1 \"";
+        source += path;
+        source += "\"\n";
+        source += fileSource.UTF8String;
+        source += "\n";
+    }
+
+    return source;
+}
+
 bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary)
 {
     const std::string metallibPath = bundledMetallibPath();
@@ -35,7 +66,12 @@ bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary)
         return true;
     }
 
-    return shaderLibrary.loadDefault("Mesh2Splat Default Metal Library");
+    if (shaderLibrary.loadDefault("Mesh2Splat Default Metal Library")) {
+        return true;
+    }
+
+    const std::string source = bundledShaderSource();
+    return !source.empty() && shaderLibrary.compileSource(source, "Mesh2Splat Runtime Metal Library");
 }
 
 } // namespace
