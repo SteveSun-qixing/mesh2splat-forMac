@@ -131,6 +131,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/app/macos/MacApp.mm
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.mm
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.hpp
     )

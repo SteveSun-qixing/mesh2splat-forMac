@@ -1,13 +1,14 @@
 #include "MetalRenderer.hpp"
 
+#include "MetalDeviceContext.hpp"
+
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
 namespace mesh2splat::metal {
 
 struct MetalRenderer::Impl {
-    id<MTLDevice> device = nil;
-    id<MTLCommandQueue> commandQueue = nil;
+    std::unique_ptr<MetalDeviceContext> deviceContext;
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -15,20 +16,18 @@ struct MetalRenderer::Impl {
 MetalRenderer::MetalRenderer(void* metalDevice)
     : m_impl(std::make_unique<Impl>())
 {
-    m_impl->device = (__bridge id<MTLDevice>)metalDevice;
+    m_impl->deviceContext = std::make_unique<MetalDeviceContext>(metalDevice);
 }
 
 MetalRenderer::~MetalRenderer() = default;
 
 bool MetalRenderer::initialize()
 {
-    if (m_impl->device == nil) {
+    if (m_impl->deviceContext == nullptr) {
         return false;
     }
 
-    m_impl->commandQueue = [m_impl->device newCommandQueue];
-    m_impl->commandQueue.label = @"Mesh2Splat Metal Command Queue";
-    return m_impl->commandQueue != nil;
+    return m_impl->deviceContext->initialize();
 }
 
 void MetalRenderer::resize(uint32_t width, uint32_t height)
@@ -39,14 +38,18 @@ void MetalRenderer::resize(uint32_t width, uint32_t height)
 
 void MetalRenderer::draw(void* renderPassDescriptor, void* drawable)
 {
-    if (m_impl->commandQueue == nil || renderPassDescriptor == nullptr || drawable == nullptr) {
+    if (m_impl->deviceContext == nullptr || !m_impl->deviceContext->isValid() ||
+        renderPassDescriptor == nullptr || drawable == nullptr) {
         return;
     }
 
     auto* descriptor = (__bridge MTLRenderPassDescriptor*)renderPassDescriptor;
     id<CAMetalDrawable> metalDrawable = (__bridge id<CAMetalDrawable>)drawable;
-    id<MTLCommandBuffer> commandBuffer = [m_impl->commandQueue commandBuffer];
-    commandBuffer.label = @"Mesh2Splat Metal Frame";
+    id<MTLCommandBuffer> commandBuffer =
+        (__bridge id<MTLCommandBuffer>)m_impl->deviceContext->createCommandBuffer("Mesh2Splat Metal Frame");
+    if (commandBuffer == nil) {
+        return;
+    }
 
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
     encoder.label = @"Clear Drawable";
