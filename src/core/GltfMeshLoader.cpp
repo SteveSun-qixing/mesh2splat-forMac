@@ -523,6 +523,8 @@ bool appendPrimitive(
         material.metallicRoughnessTextureIndex =
             appendTextureImage(model, gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index, mesh);
         material.normalTextureIndex = appendTextureImage(model, gltfMaterial.normalTexture.index, mesh);
+        material.occlusionTextureIndex = appendTextureImage(model, gltfMaterial.occlusionTexture.index, mesh);
+        material.emissiveTextureIndex = appendTextureImage(model, gltfMaterial.emissiveTexture.index, mesh);
     }
 
     const uint32_t materialIndex = static_cast<uint32_t>(mesh.materials.size());

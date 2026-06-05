@@ -53,6 +53,8 @@ public:
     void* baseColorTexture(uint32_t materialIndex) const;
     void* metallicRoughnessTexture(uint32_t materialIndex) const;
     void* normalTexture(uint32_t materialIndex) const;
+    void* occlusionTexture(uint32_t materialIndex) const;
+    void* emissiveTexture(uint32_t materialIndex) const;
 
 private:
     struct Impl;

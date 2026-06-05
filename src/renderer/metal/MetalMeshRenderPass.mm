@@ -118,13 +118,18 @@ void MetalMeshRenderPass::encode(
             id<MTLTexture> metallicRoughnessTexture =
                 (__bridge id<MTLTexture>)mesh->metallicRoughnessTexture(materialIndex);
             id<MTLTexture> normalTexture = (__bridge id<MTLTexture>)mesh->normalTexture(materialIndex);
-            if (baseColorTexture == nil || metallicRoughnessTexture == nil || normalTexture == nil) {
+            id<MTLTexture> occlusionTexture = (__bridge id<MTLTexture>)mesh->occlusionTexture(materialIndex);
+            id<MTLTexture> emissiveTexture = (__bridge id<MTLTexture>)mesh->emissiveTexture(materialIndex);
+            if (baseColorTexture == nil || metallicRoughnessTexture == nil || normalTexture == nil ||
+                occlusionTexture == nil || emissiveTexture == nil) {
                 continue;
             }
 
             [encoder setFragmentTexture:baseColorTexture atIndex:0];
             [encoder setFragmentTexture:metallicRoughnessTexture atIndex:1];
             [encoder setFragmentTexture:normalTexture atIndex:2];
+            [encoder setFragmentTexture:occlusionTexture atIndex:3];
+            [encoder setFragmentTexture:emissiveTexture atIndex:4];
             [encoder setFragmentBytes:&materialIndex length:sizeof(materialIndex) atIndex:1];
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                          vertexStart:range->vertexOffset

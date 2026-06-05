@@ -28,6 +28,8 @@ struct MeshMaterial {
     int32_t baseColorTextureIndex = -1;
     int32_t metallicRoughnessTextureIndex = -1;
     int32_t normalTextureIndex = -1;
+    int32_t occlusionTextureIndex = -1;
+    int32_t emissiveTextureIndex = -1;
 };
 
 struct MeshDrawRange {

@@ -66,6 +66,30 @@ bool createDefaultNormalTexture(MetalTexture& texture)
         texture.upload2D(defaultPixel, sizeof(defaultPixel), 1, 1);
 }
 
+bool createDefaultOcclusionTexture(MetalTexture& texture)
+{
+    const uint8_t whitePixel[4] = {255, 255, 255, 255};
+    return texture.create2D(
+        1,
+        1,
+        MetalTextureFormat::RGBA8Unorm,
+        MetalTextureUsage::ShaderRead,
+        "Default Occlusion Texture") &&
+        texture.upload2D(whitePixel, sizeof(whitePixel), 1, 1);
+}
+
+bool createDefaultEmissiveTexture(MetalTexture& texture)
+{
+    const uint8_t whitePixel[4] = {255, 255, 255, 255};
+    return texture.create2D(
+        1,
+        1,
+        MetalTextureFormat::RGBA8UnormSrgb,
+        MetalTextureUsage::ShaderRead,
+        "Default Emissive Texture") &&
+        texture.upload2D(whitePixel, sizeof(whitePixel), 1, 1);
+}
+
 bool createMaterialTexture(
     MetalDeviceContext& deviceContext,
     const core::MeshImageData& image,
@@ -97,9 +121,13 @@ struct MetalMesh::Impl {
     std::vector<std::unique_ptr<MetalTexture>> baseColorTextures;
     std::vector<std::unique_ptr<MetalTexture>> metallicRoughnessTextures;
     std::vector<std::unique_ptr<MetalTexture>> normalTextures;
+    std::vector<std::unique_ptr<MetalTexture>> occlusionTextures;
+    std::vector<std::unique_ptr<MetalTexture>> emissiveTextures;
     std::vector<uint32_t> materialBaseColorTextureIndices;
     std::vector<uint32_t> materialMetallicRoughnessTextureIndices;
     std::vector<uint32_t> materialNormalTextureIndices;
+    std::vector<uint32_t> materialOcclusionTextureIndices;
+    std::vector<uint32_t> materialEmissiveTextureIndices;
     std::vector<MetalMeshDrawRange> drawRanges;
     std::size_t vertexCount = 0;
     uint32_t drawRangeCount = 0;
@@ -181,18 +209,28 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     std::vector<std::unique_ptr<MetalTexture>> baseColorTextures;
     std::vector<std::unique_ptr<MetalTexture>> metallicRoughnessTextures;
     std::vector<std::unique_ptr<MetalTexture>> normalTextures;
+    std::vector<std::unique_ptr<MetalTexture>> occlusionTextures;
+    std::vector<std::unique_ptr<MetalTexture>> emissiveTextures;
     std::vector<uint32_t> materialBaseColorTextureIndices;
     std::vector<uint32_t> materialMetallicRoughnessTextureIndices;
     std::vector<uint32_t> materialNormalTextureIndices;
+    std::vector<uint32_t> materialOcclusionTextureIndices;
+    std::vector<uint32_t> materialEmissiveTextureIndices;
     std::unordered_map<int32_t, uint32_t> baseColorTextureMap;
     std::unordered_map<int32_t, uint32_t> metallicRoughnessTextureMap;
     std::unordered_map<int32_t, uint32_t> normalTextureMap;
+    std::unordered_map<int32_t, uint32_t> occlusionTextureMap;
+    std::unordered_map<int32_t, uint32_t> emissiveTextureMap;
     baseColorTextures.reserve(meshData.images.size() + 1);
     metallicRoughnessTextures.reserve(meshData.images.size() + 1);
     normalTextures.reserve(meshData.images.size() + 1);
+    occlusionTextures.reserve(meshData.images.size() + 1);
+    emissiveTextures.reserve(meshData.images.size() + 1);
     materialBaseColorTextureIndices.reserve(materials.size());
     materialMetallicRoughnessTextureIndices.reserve(materials.size());
     materialNormalTextureIndices.reserve(materials.size());
+    materialOcclusionTextureIndices.reserve(materials.size());
+    materialEmissiveTextureIndices.reserve(materials.size());
 
     const std::string vertexLabel = baseLabel + " Vertices";
     const std::string drawRangeLabel = baseLabel + " Draw Ranges";
@@ -215,6 +253,18 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
         return false;
     }
     normalTextures.push_back(std::move(defaultNormalTexture));
+
+    auto defaultOcclusionTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
+    if (!createDefaultOcclusionTexture(*defaultOcclusionTexture)) {
+        return false;
+    }
+    occlusionTextures.push_back(std::move(defaultOcclusionTexture));
+
+    auto defaultEmissiveTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
+    if (!createDefaultEmissiveTexture(*defaultEmissiveTexture)) {
+        return false;
+    }
+    emissiveTextures.push_back(std::move(defaultEmissiveTexture));
 
     auto resolveMaterialTexture = [this, &meshData, &baseLabel](
                                       int32_t imageIndex,
@@ -263,6 +313,18 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
             "Normal",
             normalTextures,
             normalTextureMap));
+        materialOcclusionTextureIndices.push_back(resolveMaterialTexture(
+            material.occlusionTextureIndex,
+            MetalTextureFormat::RGBA8Unorm,
+            "Occlusion",
+            occlusionTextures,
+            occlusionTextureMap));
+        materialEmissiveTextureIndices.push_back(resolveMaterialTexture(
+            material.emissiveTextureIndex,
+            MetalTextureFormat::RGBA8UnormSrgb,
+            "Emissive",
+            emissiveTextures,
+            emissiveTextureMap));
     }
     if (materialBaseColorTextureIndices.empty()) {
         materialBaseColorTextureIndices.push_back(0);
@@ -272,6 +334,12 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     }
     if (materialNormalTextureIndices.empty()) {
         materialNormalTextureIndices.push_back(0);
+    }
+    if (materialOcclusionTextureIndices.empty()) {
+        materialOcclusionTextureIndices.push_back(0);
+    }
+    if (materialEmissiveTextureIndices.empty()) {
+        materialEmissiveTextureIndices.push_back(0);
     }
 
     if (!vertexBuffer->createShared(
@@ -295,9 +363,13 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     m_impl->baseColorTextures = std::move(baseColorTextures);
     m_impl->metallicRoughnessTextures = std::move(metallicRoughnessTextures);
     m_impl->normalTextures = std::move(normalTextures);
+    m_impl->occlusionTextures = std::move(occlusionTextures);
+    m_impl->emissiveTextures = std::move(emissiveTextures);
     m_impl->materialBaseColorTextureIndices = std::move(materialBaseColorTextureIndices);
     m_impl->materialMetallicRoughnessTextureIndices = std::move(materialMetallicRoughnessTextureIndices);
     m_impl->materialNormalTextureIndices = std::move(materialNormalTextureIndices);
+    m_impl->materialOcclusionTextureIndices = std::move(materialOcclusionTextureIndices);
+    m_impl->materialEmissiveTextureIndices = std::move(materialEmissiveTextureIndices);
     m_impl->drawRanges = std::move(drawRanges);
     m_impl->vertexCount = meshData.vertices.size();
     m_impl->drawRangeCount = static_cast<uint32_t>(m_impl->drawRanges.size());
@@ -313,9 +385,13 @@ void MetalMesh::reset()
     m_impl->baseColorTextures.clear();
     m_impl->metallicRoughnessTextures.clear();
     m_impl->normalTextures.clear();
+    m_impl->occlusionTextures.clear();
+    m_impl->emissiveTextures.clear();
     m_impl->materialBaseColorTextureIndices.clear();
     m_impl->materialMetallicRoughnessTextureIndices.clear();
     m_impl->materialNormalTextureIndices.clear();
+    m_impl->materialOcclusionTextureIndices.clear();
+    m_impl->materialEmissiveTextureIndices.clear();
     m_impl->drawRanges.clear();
     m_impl->vertexCount = 0;
     m_impl->drawRangeCount = 0;
@@ -407,6 +483,36 @@ void* MetalMesh::normalTexture(uint32_t materialIndex) const
     }
 
     const std::unique_ptr<MetalTexture>& texture = m_impl->normalTextures[textureIndex];
+    return texture == nullptr ? nullptr : texture->nativeTexture();
+}
+
+void* MetalMesh::occlusionTexture(uint32_t materialIndex) const
+{
+    if (materialIndex >= m_impl->materialOcclusionTextureIndices.size()) {
+        return nullptr;
+    }
+
+    const uint32_t textureIndex = m_impl->materialOcclusionTextureIndices[materialIndex];
+    if (textureIndex >= m_impl->occlusionTextures.size()) {
+        return nullptr;
+    }
+
+    const std::unique_ptr<MetalTexture>& texture = m_impl->occlusionTextures[textureIndex];
+    return texture == nullptr ? nullptr : texture->nativeTexture();
+}
+
+void* MetalMesh::emissiveTexture(uint32_t materialIndex) const
+{
+    if (materialIndex >= m_impl->materialEmissiveTextureIndices.size()) {
+        return nullptr;
+    }
+
+    const uint32_t textureIndex = m_impl->materialEmissiveTextureIndices[materialIndex];
+    if (textureIndex >= m_impl->emissiveTextures.size()) {
+        return nullptr;
+    }
+
+    const std::unique_ptr<MetalTexture>& texture = m_impl->emissiveTextures[textureIndex];
     return texture == nullptr ? nullptr : texture->nativeTexture();
 }
 

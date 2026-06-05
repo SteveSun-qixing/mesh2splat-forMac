@@ -73,11 +73,15 @@ fragment float4 meshFragment(
     texture2d<float> baseColorTexture [[texture(0)]],
     texture2d<float> metallicRoughnessTexture [[texture(1)]],
     texture2d<float> normalTexture [[texture(2)]],
+    texture2d<float> occlusionTexture [[texture(3)]],
+    texture2d<float> emissiveTexture [[texture(4)]],
     sampler baseColorSampler [[sampler(0)]])
 {
     const MeshMaterial material = materials[materialIndex];
     const float4 textureColor = baseColorTexture.sample(baseColorSampler, in.uv);
     const float4 metallicRoughness = metallicRoughnessTexture.sample(baseColorSampler, in.uv);
+    const float occlusion = mix(1.0, occlusionTexture.sample(baseColorSampler, in.uv).r, material.occlusionStrength);
+    const float3 emissive = material.emissiveFactor.rgb * emissiveTexture.sample(baseColorSampler, in.uv).rgb;
     const float roughness = clamp(material.roughnessFactor * metallicRoughness.g, 0.04, 1.0);
     const float metallic = clamp(material.metallicFactor * metallicRoughness.b, 0.0, 1.0);
     const float3 vertexNormal = normalize(in.normal);
@@ -87,10 +91,10 @@ fragment float4 meshFragment(
     normalSample.xy *= material.normalScale;
     const float3 normal = normalize(tangent * normalSample.x + bitangent * normalSample.y + vertexNormal * normalSample.z);
     const float3 lightDirection = normalize(float3(0.35, 0.8, 0.45));
-    const float diffuse = saturate(dot(normal, lightDirection)) * 0.75 + 0.25;
+    const float diffuse = saturate(dot(normal, lightDirection)) * 0.75 + 0.25 * occlusion;
     const float4 baseColor = material.baseColorFactor * textureColor;
     const float specular = pow(saturate(dot(normal, lightDirection)), mix(32.0, 2.0, roughness)) *
         mix(0.04, 0.35, metallic) * (1.0 - roughness);
     const float diffuseWeight = mix(1.0, 0.65, metallic);
-    return float4(baseColor.rgb * diffuse * diffuseWeight + specular + material.emissiveFactor.rgb, baseColor.a);
+    return float4(baseColor.rgb * diffuse * diffuseWeight + specular + emissive, baseColor.a);
 }
