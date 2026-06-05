@@ -6,6 +6,7 @@ namespace mesh2splat::metal {
 
 class MetalGaussianBuffer;
 class MetalPipelineCache;
+class MetalRenderStateCache;
 class MetalSceneResources;
 class MetalShaderLibrary;
 
@@ -20,7 +21,10 @@ public:
     MetalConversionPass(MetalConversionPass&&) noexcept;
     MetalConversionPass& operator=(MetalConversionPass&&) noexcept;
 
-    bool initialize(MetalShaderLibrary& shaderLibrary, MetalPipelineCache& pipelineCache);
+    bool initialize(
+        MetalShaderLibrary& shaderLibrary,
+        MetalPipelineCache& pipelineCache,
+        MetalRenderStateCache& renderStateCache);
     bool isReady() const;
     bool encode(void* commandBuffer, const MetalSceneResources& sceneResources, MetalGaussianBuffer& gaussianBuffer) const;
 

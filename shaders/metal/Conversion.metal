@@ -43,7 +43,10 @@ kernel void meshVertexConversionKernel(
     constant MeshMaterial* materials [[buffer(1)]],
     device GaussianRecord* gaussians [[buffer(2)]],
     constant MeshConversionParams& params [[buffer(3)]],
-    device atomic_uint* gaussianCounter [[buffer(4)]])
+    device atomic_uint* gaussianCounter [[buffer(4)]],
+    texture2d<float> baseColorTexture [[texture(0)]],
+    texture2d<float> metallicRoughnessTexture [[texture(1)]],
+    sampler textureSampler [[sampler(0)]])
 {
     const uint samplesPerTriangle = max(params.samplesPerTriangle, 1u);
     const uint triangleID = threadID / samplesPerTriangle;
@@ -85,13 +88,23 @@ kernel void meshVertexConversionKernel(
     const float3 n2 = safeNormalize(float3(vertices[base2 + 3], vertices[base2 + 4], vertices[base2 + 5]), faceNormal);
     const float3 vertexNormal = safeNormalize(n0 * barycentric.x + n1 * barycentric.y + n2 * barycentric.z, faceNormal);
     const float3 normal = safeNormalize(vertexNormal + faceNormal * params.normalScale, faceNormal);
+    const float2 uv0 = float2(vertices[base0 + 10], vertices[base0 + 11]);
+    const float2 uv1 = float2(vertices[base1 + 10], vertices[base1 + 11]);
+    const float2 uv2 = float2(vertices[base2 + 10], vertices[base2 + 11]);
+    const float2 uv = uv0 * barycentric.x + uv1 * barycentric.y + uv2 * barycentric.z;
+    const float4 baseColor = material.baseColorFactor * baseColorTexture.sample(textureSampler, uv);
+    const float4 metallicRoughness = metallicRoughnessTexture.sample(textureSampler, uv);
 
     GaussianRecord gaussian;
     gaussian.position = float4(position, 1.0);
-    gaussian.color = material.baseColorFactor;
+    gaussian.color = baseColor;
     gaussian.scale = float4(scaleX, scaleY, 1.0e-7, 0.0);
     gaussian.normal = float4(normal, 0.0);
     gaussian.rotation = float4(1.0, 0.0, 0.0, 0.0);
-    gaussian.pbr = float4(material.metallicFactor, material.roughnessFactor, material.occlusionStrength, 1.0);
+    gaussian.pbr = float4(
+        material.metallicFactor * metallicRoughness.b,
+        material.roughnessFactor * metallicRoughness.g,
+        material.occlusionStrength,
+        1.0);
     gaussians[outputIndex] = gaussian;
 }

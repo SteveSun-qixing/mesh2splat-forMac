@@ -216,7 +216,10 @@ bool MetalRenderer::initialize()
 
     if (loadRendererShaderLibrary(*m_impl->shaderLibrary)) {
         m_impl->conversionPass = std::make_unique<MetalConversionPass>();
-        if (!m_impl->conversionPass->initialize(*m_impl->shaderLibrary, *m_impl->pipelineCache)) {
+        if (!m_impl->conversionPass->initialize(
+                *m_impl->shaderLibrary,
+                *m_impl->pipelineCache,
+                *m_impl->renderStateCache)) {
             m_impl->conversionPass.reset();
         } else if (!m_impl->convertSceneToGaussians(*m_impl->sceneResources)) {
             NSLog(@"Initial Metal mesh conversion did not produce gaussians.");

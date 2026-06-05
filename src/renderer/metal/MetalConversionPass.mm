@@ -3,6 +3,7 @@
 #include "MetalGaussianBuffer.hpp"
 #include "MetalMesh.hpp"
 #include "MetalPipelineCache.hpp"
+#include "MetalRenderStateCache.hpp"
 #include "MetalSceneResources.hpp"
 #include "MetalShaderLibrary.hpp"
 
@@ -33,6 +34,7 @@ constexpr uint32_t kSamplesPerTriangle = 4;
 
 struct MetalConversionPass::Impl {
     void* computePipelineState = nullptr;
+    void* samplerState = nullptr;
 };
 
 MetalConversionPass::MetalConversionPass()
@@ -46,18 +48,34 @@ MetalConversionPass::MetalConversionPass(MetalConversionPass&&) noexcept = defau
 
 MetalConversionPass& MetalConversionPass::operator=(MetalConversionPass&&) noexcept = default;
 
-bool MetalConversionPass::initialize(MetalShaderLibrary& shaderLibrary, MetalPipelineCache& pipelineCache)
+bool MetalConversionPass::initialize(
+    MetalShaderLibrary& shaderLibrary,
+    MetalPipelineCache& pipelineCache,
+    MetalRenderStateCache& renderStateCache)
 {
     MetalComputePipelineDesc pipelineDesc;
     pipelineDesc.label = "Mesh Vertex Conversion Pipeline";
     pipelineDesc.function = "meshVertexConversionKernel";
     m_impl->computePipelineState = pipelineCache.computePipeline(shaderLibrary, pipelineDesc);
-    return m_impl->computePipelineState != nullptr;
+    if (m_impl->computePipelineState == nullptr) {
+        return false;
+    }
+
+    MetalSamplerDesc samplerDesc;
+    samplerDesc.label = "Mesh Conversion Texture Sampler";
+    samplerDesc.minFilter = MetalSamplerFilter::Linear;
+    samplerDesc.magFilter = MetalSamplerFilter::Linear;
+    samplerDesc.mipFilter = MetalSamplerFilter::Linear;
+    samplerDesc.addressU = MetalSamplerAddressMode::Repeat;
+    samplerDesc.addressV = MetalSamplerAddressMode::Repeat;
+    samplerDesc.addressW = MetalSamplerAddressMode::Repeat;
+    m_impl->samplerState = renderStateCache.samplerState(samplerDesc);
+    return m_impl->samplerState != nullptr;
 }
 
 bool MetalConversionPass::isReady() const
 {
-    return m_impl->computePipelineState != nullptr;
+    return m_impl->computePipelineState != nullptr && m_impl->samplerState != nullptr;
 }
 
 bool MetalConversionPass::encode(
@@ -72,9 +90,11 @@ bool MetalConversionPass::encode(
     id<MTLCommandBuffer> nativeCommandBuffer = (__bridge id<MTLCommandBuffer>)commandBuffer;
     id<MTLComputePipelineState> pipelineState =
         (__bridge id<MTLComputePipelineState>)m_impl->computePipelineState;
+    id<MTLSamplerState> samplerState = (__bridge id<MTLSamplerState>)m_impl->samplerState;
     id<MTLBuffer> outputBuffer = (__bridge id<MTLBuffer>)gaussianBuffer.nativeBuffer();
     id<MTLBuffer> counterBuffer = (__bridge id<MTLBuffer>)gaussianBuffer.nativeCounterBuffer();
-    if (nativeCommandBuffer == nil || pipelineState == nil || outputBuffer == nil || counterBuffer == nil ||
+    if (nativeCommandBuffer == nil || pipelineState == nil || samplerState == nil ||
+        outputBuffer == nil || counterBuffer == nil ||
         gaussianBuffer.capacity() > static_cast<std::size_t>(UINT32_MAX) || !gaussianBuffer.resetGpuCounter()) {
         return false;
     }
@@ -86,6 +106,7 @@ bool MetalConversionPass::encode(
 
     encoder.label = @"Mesh2Splat Mesh Vertex Conversion";
     [encoder setComputePipelineState:pipelineState];
+    [encoder setSamplerState:samplerState atIndex:0];
     [encoder setBuffer:outputBuffer offset:0 atIndex:2];
     [encoder setBuffer:counterBuffer offset:0 atIndex:4];
 
@@ -114,6 +135,16 @@ bool MetalConversionPass::encode(
                 range->materialIndex >= mesh->materialCount()) {
                 continue;
             }
+
+            id<MTLTexture> baseColorTexture = (__bridge id<MTLTexture>)mesh->baseColorTexture(range->materialIndex);
+            id<MTLTexture> metallicRoughnessTexture =
+                (__bridge id<MTLTexture>)mesh->metallicRoughnessTexture(range->materialIndex);
+            if (baseColorTexture == nil || metallicRoughnessTexture == nil) {
+                continue;
+            }
+
+            [encoder setTexture:baseColorTexture atIndex:0];
+            [encoder setTexture:metallicRoughnessTexture atIndex:1];
 
             const uint32_t triangleCount = range->vertexCount / 3;
             MeshConversionParams params;
