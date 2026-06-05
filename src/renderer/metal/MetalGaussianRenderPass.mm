@@ -48,9 +48,9 @@ bool MetalGaussianRenderPass::initialize(
 
     MetalDepthStencilDesc depthDesc;
     depthDesc.label = "Gaussian Preview Depth";
-    depthDesc.depthTestEnabled = false;
+    depthDesc.depthTestEnabled = true;
     depthDesc.depthWriteEnabled = false;
-    depthDesc.depthCompareFunction = MetalCompareFunction::Always;
+    depthDesc.depthCompareFunction = MetalCompareFunction::LessEqual;
     m_impl->depthStencilState = renderStateCache.depthStencilState(depthDesc);
     return m_impl->depthStencilState != nullptr;
 }
