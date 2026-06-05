@@ -47,6 +47,8 @@ kernel void meshVertexConversionKernel(
     texture2d<float> baseColorTexture [[texture(0)]],
     texture2d<float> metallicRoughnessTexture [[texture(1)]],
     texture2d<float> normalTexture [[texture(2)]],
+    texture2d<float> occlusionTexture [[texture(3)]],
+    texture2d<float> emissiveTexture [[texture(4)]],
     sampler textureSampler [[sampler(0)]])
 {
     const uint samplesPerTriangle = max(params.samplesPerTriangle, 1u);
@@ -94,6 +96,9 @@ kernel void meshVertexConversionKernel(
     const float2 uv = uv0 * barycentric.x + uv1 * barycentric.y + uv2 * barycentric.z;
     const float4 baseColor = material.baseColorFactor * baseColorTexture.sample(textureSampler, uv);
     const float4 metallicRoughness = metallicRoughnessTexture.sample(textureSampler, uv);
+    const float occlusion = mix(1.0, occlusionTexture.sample(textureSampler, uv).r, material.occlusionStrength);
+    const float3 emissive = material.emissiveFactor.rgb * emissiveTexture.sample(textureSampler, uv).rgb;
+    const float emissiveStrength = max(max(emissive.r, emissive.g), emissive.b);
     const float3 t0 = float3(vertices[base0 + 6], vertices[base0 + 7], vertices[base0 + 8]);
     const float3 t1 = float3(vertices[base1 + 6], vertices[base1 + 7], vertices[base1 + 8]);
     const float3 t2 = float3(vertices[base2 + 6], vertices[base2 + 7], vertices[base2 + 8]);
@@ -114,14 +119,14 @@ kernel void meshVertexConversionKernel(
 
     GaussianRecord gaussian;
     gaussian.position = float4(position, 1.0);
-    gaussian.color = baseColor;
+    gaussian.color = float4(baseColor.rgb + emissive, baseColor.a);
     gaussian.scale = float4(scaleX, scaleY, 1.0e-7, 0.0);
     gaussian.normal = float4(normal, 0.0);
     gaussian.rotation = float4(1.0, 0.0, 0.0, 0.0);
     gaussian.pbr = float4(
         material.metallicFactor * metallicRoughness.b,
         material.roughnessFactor * metallicRoughness.g,
-        material.occlusionStrength,
-        1.0);
+        occlusion,
+        emissiveStrength);
     gaussians[outputIndex] = gaussian;
 }
