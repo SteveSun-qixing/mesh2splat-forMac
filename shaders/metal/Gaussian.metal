@@ -45,6 +45,12 @@ static float4 transformPoint(Matrix4 matrix, float3 position)
         matrix.columns[3];
 }
 
+static float2 clipToNdc(float4 clipPosition)
+{
+    const float safeW = abs(clipPosition.w) > 1.0e-5 ? clipPosition.w : copysign(1.0e-5, clipPosition.w);
+    return clipPosition.xy / safeW;
+}
+
 vertex GaussianVertexOut gaussianPreviewVertex(
     uint vertexID [[vertex_id]],
     uint instanceID [[instance_id]],
@@ -64,8 +70,15 @@ vertex GaussianVertexOut gaussianPreviewVertex(
     const float2 corner = corners[vertexID % 6];
     const float4 clipPosition = transformPoint(frame.modelViewProjectionMatrix, gaussian.position.xyz);
     const float2 inverseViewport = max(frame.viewport.zw, float2(1.0 / 8192.0));
-    const float sourceScale = max(abs(gaussian.scale.x), abs(gaussian.scale.y));
-    const float radiusPixels = clamp(sourceScale * max(frame.gaussianParams.x, 1.0), 2.0, 8.0);
+    const float3 scaleXPosition = gaussian.position.xyz + float3(max(abs(gaussian.scale.x), 1.0e-7), 0.0, 0.0);
+    const float3 scaleYPosition = gaussian.position.xyz + float3(0.0, max(abs(gaussian.scale.y), 1.0e-7), 0.0);
+    const float2 centerNdc = clipToNdc(clipPosition);
+    const float2 scaleXNdc = clipToNdc(transformPoint(frame.modelViewProjectionMatrix, scaleXPosition));
+    const float2 scaleYNdc = clipToNdc(transformPoint(frame.modelViewProjectionMatrix, scaleYPosition));
+    const float2 viewportPixels = max(frame.viewport.xy, float2(1.0));
+    const float radiusX = length((scaleXNdc - centerNdc) * viewportPixels * 0.5);
+    const float radiusY = length((scaleYNdc - centerNdc) * viewportPixels * 0.5);
+    const float radiusPixels = clamp(max(radiusX, radiusY) * max(frame.gaussianParams.x, 1.0), 1.5, 24.0);
     const float2 ndcOffset = corner * radiusPixels * 2.0 * inverseViewport;
 
     GaussianVertexOut out;
