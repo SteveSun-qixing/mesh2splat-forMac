@@ -123,6 +123,17 @@ core::MeshBounds aggregateMeshBounds(const std::vector<core::MeshData>& meshes)
     return bounds;
 }
 
+bool matrixEquals(const core::Matrix4& lhs, const core::Matrix4& rhs)
+{
+    for (std::size_t i = 0; i < 16; ++i) {
+        if (lhs.values[i] != rhs.values[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 } // namespace
 
 struct MetalRenderer::Impl {
@@ -142,9 +153,11 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalGaussianSortPass> gaussianSortPass;
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     core::FrameUniforms frameUniforms;
+    core::Matrix4 lastSortedViewMatrix;
     core::NativeCamera camera;
     std::string loadedMeshPath;
     RenderViewMode viewMode = RenderViewMode::Combined;
+    bool hasSortedGaussianDepths = false;
     uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -205,6 +218,7 @@ bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nex
         return false;
     }
 
+    hasSortedGaussianDepths = false;
     return convertedGaussianCount > 0;
 }
 
@@ -380,11 +394,19 @@ void MetalRenderer::draw(
         m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
     if (showGaussians && m_impl->gaussianSortPass != nullptr && m_impl->gaussianBuffer != nullptr &&
         m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr) {
-        m_impl->gaussianSortPass->encodeDepthKeys(
-            (__bridge void*)commandBuffer,
-            *m_impl->gaussianBuffer,
-            *m_impl->gaussianSortBuffer,
-            m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
+        const bool needsGaussianSort = !m_impl->hasSortedGaussianDepths ||
+            m_impl->gaussianSortBuffer->count() != m_impl->gaussianBuffer->count() ||
+            !matrixEquals(m_impl->lastSortedViewMatrix, m_impl->frameUniforms.viewMatrix);
+        if (needsGaussianSort) {
+            m_impl->hasSortedGaussianDepths = m_impl->gaussianSortPass->encodeDepthKeys(
+                (__bridge void*)commandBuffer,
+                *m_impl->gaussianBuffer,
+                *m_impl->gaussianSortBuffer,
+                m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
+            if (m_impl->hasSortedGaussianDepths) {
+                m_impl->lastSortedViewMatrix = m_impl->frameUniforms.viewMatrix;
+            }
+        }
     }
 
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
@@ -397,7 +419,8 @@ void MetalRenderer::draw(
             *m_impl->sceneResources,
             m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
     }
-    if (showGaussians && m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
+    if (showGaussians && m_impl->hasSortedGaussianDepths &&
+        m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
         m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr) {
         m_impl->gaussianRenderPass->encode(
             (__bridge void*)encoder,
