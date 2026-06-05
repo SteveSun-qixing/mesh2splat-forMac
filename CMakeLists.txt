@@ -137,8 +137,12 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.cpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPipelineCache.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPipelineCache.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalShaderLibrary.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalShaderLibrary.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalTexture.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalTexture.hpp
     )
