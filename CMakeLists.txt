@@ -132,6 +132,7 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.mm
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.hpp
         ${CMAKE_SOURCE_DIR}/src/core/FrameData.hpp
+        ${CMAKE_SOURCE_DIR}/src/core/GaussianData.hpp
         ${CMAKE_SOURCE_DIR}/src/core/GltfMeshLoader.cpp
         ${CMAKE_SOURCE_DIR}/src/core/GltfMeshLoader.hpp
         ${CMAKE_SOURCE_DIR}/src/core/MeshData.hpp
@@ -150,6 +151,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameUniformBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.cpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.cpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMeshRenderPass.mm
