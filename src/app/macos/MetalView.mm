@@ -4,26 +4,42 @@
 #include "renderer/metal/MetalRenderer.hpp"
 
 #import <Foundation/Foundation.h>
+#import <QuartzCore/QuartzCore.h>
 
 #include <memory>
 
+@class Mesh2SplatMetalViewDelegate;
+
+@interface Mesh2SplatMetalView ()
+
+@property (nonatomic, strong) Mesh2SplatMetalViewDelegate* meshDelegate;
+
+- (const mesh2splat::core::InputState&)inputState;
+- (void)beginInputFrame;
+
+@end
+
 @interface Mesh2SplatMetalViewDelegate : NSObject <MTKViewDelegate>
 
-- (instancetype)initWithView:(MTKView*)view;
+- (instancetype)initWithView:(Mesh2SplatMetalView*)view;
 
 @end
 
 @implementation Mesh2SplatMetalViewDelegate {
     std::unique_ptr<mesh2splat::metal::MetalRenderer> _renderer;
+    __weak Mesh2SplatMetalView* _view;
+    CFTimeInterval _lastFrameTime;
 }
 
-- (instancetype)initWithView:(MTKView*)view
+- (instancetype)initWithView:(Mesh2SplatMetalView*)view
 {
     self = [super init];
     if (self == nil) {
         return nil;
     }
 
+    _view = view;
+    _lastFrameTime = CACurrentMediaTime();
     _renderer = std::make_unique<mesh2splat::metal::MetalRenderer>((__bridge void*)view.device);
     if (!_renderer->initialize()) {
         NSLog(@"Failed to initialize Metal renderer.");
@@ -50,14 +66,17 @@
         return;
     }
 
-    _renderer->draw((__bridge void*)descriptor, (__bridge void*)drawable);
+    Mesh2SplatMetalView* owner = _view;
+    if (owner == nil) {
+        return;
+    }
+
+    const CFTimeInterval now = CACurrentMediaTime();
+    const double deltaTime = static_cast<double>(now - _lastFrameTime);
+    _lastFrameTime = now;
+    _renderer->draw((__bridge void*)descriptor, (__bridge void*)drawable, [owner inputState], deltaTime);
+    [owner beginInputFrame];
 }
-
-@end
-
-@interface Mesh2SplatMetalView ()
-
-@property (nonatomic, strong) Mesh2SplatMetalViewDelegate* meshDelegate;
 
 @end
 
@@ -105,6 +124,11 @@
 - (void)beginInputFrame
 {
     _inputState.beginFrame();
+}
+
+- (const mesh2splat::core::InputState&)inputState
+{
+    return _inputState;
 }
 
 - (void)updateMousePosition:(NSEvent*)event

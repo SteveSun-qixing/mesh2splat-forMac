@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/InputState.hpp"
+
 #include <cstdint>
 #include <memory>
 
@@ -15,7 +17,11 @@ public:
 
     bool initialize();
     void resize(uint32_t width, uint32_t height);
-    void draw(void* renderPassDescriptor, void* drawable);
+    void draw(
+        void* renderPassDescriptor,
+        void* drawable,
+        const core::InputState& inputState,
+        double deltaTimeSeconds);
 
 private:
     struct Impl;

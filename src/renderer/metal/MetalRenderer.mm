@@ -1,6 +1,7 @@
 #include "MetalRenderer.hpp"
 
 #include "core/FrameData.hpp"
+#include "core/NativeCamera.hpp"
 #include "core/PrimitiveMeshFactory.hpp"
 #include "MetalDeviceContext.hpp"
 #include "MetalFrameUniformBuffer.hpp"
@@ -49,6 +50,7 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalSceneResources> sceneResources;
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     core::FrameUniforms frameUniforms;
+    core::NativeCamera camera;
     uint32_t width = 0;
     uint32_t height = 0;
 };
@@ -105,13 +107,18 @@ void MetalRenderer::resize(uint32_t width, uint32_t height)
 {
     m_impl->width = width;
     m_impl->height = height;
+    m_impl->camera.resize(width, height);
     m_impl->frameUniforms.viewport[0] = static_cast<float>(width);
     m_impl->frameUniforms.viewport[1] = static_cast<float>(height);
     m_impl->frameUniforms.viewport[2] = width == 0 ? 1.0f : 1.0f / static_cast<float>(width);
     m_impl->frameUniforms.viewport[3] = height == 0 ? 1.0f : 1.0f / static_cast<float>(height);
 }
 
-void MetalRenderer::draw(void* renderPassDescriptor, void* drawable)
+void MetalRenderer::draw(
+    void* renderPassDescriptor,
+    void* drawable,
+    const core::InputState& inputState,
+    double deltaTimeSeconds)
 {
     if (m_impl->deviceContext == nullptr || !m_impl->deviceContext->isValid() ||
         renderPassDescriptor == nullptr || drawable == nullptr) {
@@ -119,6 +126,8 @@ void MetalRenderer::draw(void* renderPassDescriptor, void* drawable)
     }
 
     m_impl->frameResources.beginFrame();
+    m_impl->camera.update(inputState, deltaTimeSeconds);
+    m_impl->camera.writeFrameUniforms(m_impl->frameUniforms);
     m_impl->frameUniforms.frameIndex = m_impl->frameResources.currentFrameIndex();
     if (m_impl->frameUniformBuffer != nullptr) {
         m_impl->frameUniformBuffer->update(

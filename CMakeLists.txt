@@ -133,6 +133,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.hpp
         ${CMAKE_SOURCE_DIR}/src/core/FrameData.hpp
         ${CMAKE_SOURCE_DIR}/src/core/MeshData.hpp
+        ${CMAKE_SOURCE_DIR}/src/core/NativeCamera.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/NativeCamera.hpp
         ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.cpp
         ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.mm
