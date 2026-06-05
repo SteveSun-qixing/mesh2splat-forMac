@@ -65,12 +65,15 @@ vertex MeshVertexOut meshVertex(
 fragment float4 meshFragment(
     MeshVertexOut in [[stage_in]],
     constant MeshMaterial* materials [[buffer(0)]],
-    constant uint& materialIndex [[buffer(1)]])
+    constant uint& materialIndex [[buffer(1)]],
+    texture2d<float> baseColorTexture [[texture(0)]],
+    sampler baseColorSampler [[sampler(0)]])
 {
     const MeshMaterial material = materials[materialIndex];
+    const float4 textureColor = baseColorTexture.sample(baseColorSampler, in.uv);
     const float3 normal = normalize(in.normal);
     const float3 lightDirection = normalize(float3(0.35, 0.8, 0.45));
     const float diffuse = saturate(dot(normal, lightDirection)) * 0.75 + 0.25;
-    const float3 baseColor = material.baseColorFactor.rgb * diffuse + material.emissiveFactor.rgb;
-    return float4(baseColor, material.baseColorFactor.a);
+    const float4 baseColor = material.baseColorFactor * textureColor;
+    return float4(baseColor.rgb * diffuse + material.emissiveFactor.rgb, baseColor.a);
 }

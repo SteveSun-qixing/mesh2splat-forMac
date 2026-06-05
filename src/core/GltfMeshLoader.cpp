@@ -355,6 +355,48 @@ MeshMaterial parseMaterial(const tinygltf::Model& model, int materialIndex)
     return material;
 }
 
+int32_t appendTextureImage(const tinygltf::Model& model, int textureIndex, MeshData& mesh)
+{
+    if (textureIndex < 0 || textureIndex >= static_cast<int>(model.textures.size())) {
+        return -1;
+    }
+
+    const tinygltf::Texture& texture = model.textures[textureIndex];
+    if (texture.source < 0 || texture.source >= static_cast<int>(model.images.size())) {
+        return -1;
+    }
+
+    const tinygltf::Image& image = model.images[texture.source];
+    if (image.width <= 0 || image.height <= 0 || image.component <= 0 || image.image.empty()) {
+        return -1;
+    }
+
+    const std::size_t pixelCount = static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height);
+    const std::size_t sourceStride = static_cast<std::size_t>(image.component);
+    if (image.image.size() < pixelCount * sourceStride) {
+        return -1;
+    }
+
+    MeshImageData meshImage;
+    meshImage.name = image.name.empty() ? ("texture_" + std::to_string(textureIndex)) : image.name;
+    meshImage.width = static_cast<uint32_t>(image.width);
+    meshImage.height = static_cast<uint32_t>(image.height);
+    meshImage.channels = 4;
+    meshImage.rgba8.resize(pixelCount * 4);
+
+    for (std::size_t pixel = 0; pixel < pixelCount; ++pixel) {
+        const unsigned char* source = image.image.data() + pixel * sourceStride;
+        uint8_t* destination = meshImage.rgba8.data() + pixel * 4;
+        destination[0] = source[0];
+        destination[1] = sourceStride > 1 ? source[1] : source[0];
+        destination[2] = sourceStride > 2 ? source[2] : source[0];
+        destination[3] = sourceStride > 3 ? source[3] : 255;
+    }
+
+    mesh.images.push_back(std::move(meshImage));
+    return static_cast<int32_t>(mesh.images.size() - 1);
+}
+
 float triangleArea(Vec3 a, Vec3 b, Vec3 c)
 {
     return 0.5f * std::sqrt(dot(cross(subtract(b, a), subtract(c, a)), cross(subtract(b, a), subtract(c, a))));
@@ -473,8 +515,15 @@ bool appendPrimitive(
         return false;
     }
 
+    MeshMaterial material = parseMaterial(model, primitive.material);
+    if (primitive.material >= 0 && primitive.material < static_cast<int>(model.materials.size())) {
+        const tinygltf::Material& gltfMaterial = model.materials[primitive.material];
+        material.baseColorTextureIndex =
+            appendTextureImage(model, gltfMaterial.pbrMetallicRoughness.baseColorTexture.index, mesh);
+    }
+
     const uint32_t materialIndex = static_cast<uint32_t>(mesh.materials.size());
-    mesh.materials.push_back(parseMaterial(model, primitive.material));
+    mesh.materials.push_back(material);
     const uint32_t vertexOffset = static_cast<uint32_t>(mesh.vertices.size());
     bool hasBounds = !mesh.vertices.empty();
     if (hasBounds) {

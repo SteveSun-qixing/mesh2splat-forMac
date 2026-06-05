@@ -29,6 +29,38 @@ bool canFitUInt32(std::size_t value)
     return value <= static_cast<std::size_t>(std::numeric_limits<uint32_t>::max());
 }
 
+bool createDefaultBaseColorTexture(MetalTexture& texture)
+{
+    const uint8_t whitePixel[4] = {255, 255, 255, 255};
+    return texture.create2D(
+        1,
+        1,
+        MetalTextureFormat::RGBA8UnormSrgb,
+        MetalTextureUsage::ShaderRead,
+        "Default Base Color Texture") &&
+        texture.upload2D(whitePixel, sizeof(whitePixel), 1, 1);
+}
+
+bool createBaseColorTexture(
+    MetalDeviceContext& deviceContext,
+    const core::MeshImageData& image,
+    const std::string& label,
+    std::unique_ptr<MetalTexture>& texture)
+{
+    if (image.width == 0 || image.height == 0 || image.rgba8.empty()) {
+        return false;
+    }
+
+    texture = std::make_unique<MetalTexture>(deviceContext);
+    return texture->create2D(
+        image.width,
+        image.height,
+        MetalTextureFormat::RGBA8UnormSrgb,
+        MetalTextureUsage::ShaderRead,
+        label.c_str()) &&
+        texture->upload2D(image.rgba8.data(), static_cast<std::size_t>(image.width) * 4, image.width, image.height);
+}
+
 } // namespace
 
 struct MetalMesh::Impl {
@@ -36,6 +68,8 @@ struct MetalMesh::Impl {
     std::unique_ptr<MetalBuffer> vertexBuffer;
     std::unique_ptr<MetalBuffer> drawRangeBuffer;
     std::unique_ptr<MetalBuffer> materialBuffer;
+    std::vector<std::unique_ptr<MetalTexture>> baseColorTextures;
+    std::vector<uint32_t> materialBaseColorTextureIndices;
     std::vector<MetalMeshDrawRange> drawRanges;
     std::size_t vertexCount = 0;
     uint32_t drawRangeCount = 0;
@@ -114,10 +148,42 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     auto vertexBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto drawRangeBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto materialBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
+    std::vector<std::unique_ptr<MetalTexture>> baseColorTextures;
+    std::vector<uint32_t> materialBaseColorTextureIndices;
+    baseColorTextures.reserve(meshData.images.size() + 1);
+    materialBaseColorTextureIndices.reserve(materials.size());
 
     const std::string vertexLabel = baseLabel + " Vertices";
     const std::string drawRangeLabel = baseLabel + " Draw Ranges";
     const std::string materialLabel = baseLabel + " Materials";
+
+    auto defaultTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
+    if (!createDefaultBaseColorTexture(*defaultTexture)) {
+        return false;
+    }
+    baseColorTextures.push_back(std::move(defaultTexture));
+
+    for (std::size_t imageIndex = 0; imageIndex < meshData.images.size(); ++imageIndex) {
+        const core::MeshImageData& image = meshData.images[imageIndex];
+        const std::string textureLabel = baseLabel + " Base Color " + std::to_string(imageIndex);
+        std::unique_ptr<MetalTexture> texture;
+        if (!createBaseColorTexture(*m_impl->deviceContext, image, textureLabel, texture)) {
+            return false;
+        }
+        baseColorTextures.push_back(std::move(texture));
+    }
+
+    for (const core::MeshMaterial& material : meshData.materials) {
+        uint32_t textureIndex = 0;
+        if (material.baseColorTextureIndex >= 0 &&
+            static_cast<std::size_t>(material.baseColorTextureIndex) < meshData.images.size()) {
+            textureIndex = static_cast<uint32_t>(material.baseColorTextureIndex + 1);
+        }
+        materialBaseColorTextureIndices.push_back(textureIndex);
+    }
+    if (materialBaseColorTextureIndices.empty()) {
+        materialBaseColorTextureIndices.push_back(0);
+    }
 
     if (!vertexBuffer->createShared(
             meshData.vertices.size() * sizeof(core::MeshVertex),
@@ -137,6 +203,8 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     m_impl->vertexBuffer = std::move(vertexBuffer);
     m_impl->drawRangeBuffer = std::move(drawRangeBuffer);
     m_impl->materialBuffer = std::move(materialBuffer);
+    m_impl->baseColorTextures = std::move(baseColorTextures);
+    m_impl->materialBaseColorTextureIndices = std::move(materialBaseColorTextureIndices);
     m_impl->drawRanges = std::move(drawRanges);
     m_impl->vertexCount = meshData.vertices.size();
     m_impl->drawRangeCount = static_cast<uint32_t>(m_impl->drawRanges.size());
@@ -149,6 +217,8 @@ void MetalMesh::reset()
     m_impl->vertexBuffer.reset();
     m_impl->drawRangeBuffer.reset();
     m_impl->materialBuffer.reset();
+    m_impl->baseColorTextures.clear();
+    m_impl->materialBaseColorTextureIndices.clear();
     m_impl->drawRanges.clear();
     m_impl->vertexCount = 0;
     m_impl->drawRangeCount = 0;
@@ -196,6 +266,21 @@ void* MetalMesh::drawRangeBuffer() const
 void* MetalMesh::materialBuffer() const
 {
     return m_impl->materialBuffer == nullptr ? nullptr : m_impl->materialBuffer->nativeBuffer();
+}
+
+void* MetalMesh::baseColorTexture(uint32_t materialIndex) const
+{
+    if (materialIndex >= m_impl->materialBaseColorTextureIndices.size()) {
+        return nullptr;
+    }
+
+    const uint32_t textureIndex = m_impl->materialBaseColorTextureIndices[materialIndex];
+    if (textureIndex >= m_impl->baseColorTextures.size()) {
+        return nullptr;
+    }
+
+    const std::unique_ptr<MetalTexture>& texture = m_impl->baseColorTextures[textureIndex];
+    return texture == nullptr ? nullptr : texture->nativeTexture();
 }
 
 } // namespace mesh2splat::metal

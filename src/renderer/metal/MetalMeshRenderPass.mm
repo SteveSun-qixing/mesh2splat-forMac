@@ -13,6 +13,7 @@ namespace mesh2splat::metal {
 struct MetalMeshRenderPass::Impl {
     void* renderPipelineState = nullptr;
     void* depthStencilState = nullptr;
+    void* samplerState = nullptr;
 };
 
 MetalMeshRenderPass::MetalMeshRenderPass(MetalDeviceContext&)
@@ -53,12 +54,26 @@ bool MetalMeshRenderPass::initialize(
     depthDesc.depthWriteEnabled = true;
     depthDesc.depthCompareFunction = MetalCompareFunction::LessEqual;
     m_impl->depthStencilState = renderStateCache.depthStencilState(depthDesc);
-    return m_impl->depthStencilState != nullptr;
+    if (m_impl->depthStencilState == nullptr) {
+        return false;
+    }
+
+    MetalSamplerDesc samplerDesc;
+    samplerDesc.label = "Mesh Base Color Sampler";
+    samplerDesc.minFilter = MetalSamplerFilter::Linear;
+    samplerDesc.magFilter = MetalSamplerFilter::Linear;
+    samplerDesc.mipFilter = MetalSamplerFilter::Linear;
+    samplerDesc.addressU = MetalSamplerAddressMode::Repeat;
+    samplerDesc.addressV = MetalSamplerAddressMode::Repeat;
+    samplerDesc.addressW = MetalSamplerAddressMode::Repeat;
+    m_impl->samplerState = renderStateCache.samplerState(samplerDesc);
+    return m_impl->samplerState != nullptr;
 }
 
 bool MetalMeshRenderPass::isReady() const
 {
-    return m_impl->renderPipelineState != nullptr && m_impl->depthStencilState != nullptr;
+    return m_impl->renderPipelineState != nullptr && m_impl->depthStencilState != nullptr &&
+        m_impl->samplerState != nullptr;
 }
 
 void MetalMeshRenderPass::encode(
@@ -73,11 +88,13 @@ void MetalMeshRenderPass::encode(
     id<MTLRenderCommandEncoder> encoder = (__bridge id<MTLRenderCommandEncoder>)renderCommandEncoder;
     id<MTLRenderPipelineState> pipelineState = (__bridge id<MTLRenderPipelineState>)m_impl->renderPipelineState;
     id<MTLDepthStencilState> depthStencilState = (__bridge id<MTLDepthStencilState>)m_impl->depthStencilState;
+    id<MTLSamplerState> samplerState = (__bridge id<MTLSamplerState>)m_impl->samplerState;
     id<MTLBuffer> frameBuffer = (__bridge id<MTLBuffer>)frameUniformBuffer;
 
     [encoder setRenderPipelineState:pipelineState];
     [encoder setDepthStencilState:depthStencilState];
     [encoder setVertexBuffer:frameBuffer offset:0 atIndex:1];
+    [encoder setFragmentSamplerState:samplerState atIndex:0];
 
     for (std::size_t meshIndex = 0; meshIndex < sceneResources.meshCount(); ++meshIndex) {
         const MetalMesh* mesh = sceneResources.meshAt(meshIndex);
@@ -97,6 +114,12 @@ void MetalMeshRenderPass::encode(
             }
 
             uint32_t materialIndex = range->materialIndex;
+            id<MTLTexture> baseColorTexture = (__bridge id<MTLTexture>)mesh->baseColorTexture(materialIndex);
+            if (baseColorTexture == nil) {
+                continue;
+            }
+
+            [encoder setFragmentTexture:baseColorTexture atIndex:0];
             [encoder setFragmentBytes:&materialIndex length:sizeof(materialIndex) atIndex:1];
             [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                          vertexStart:range->vertexOffset

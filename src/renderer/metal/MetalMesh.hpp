@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/MeshData.hpp"
+#include "MetalTexture.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -49,6 +50,7 @@ public:
     void* vertexBuffer() const;
     void* drawRangeBuffer() const;
     void* materialBuffer() const;
+    void* baseColorTexture(uint32_t materialIndex) const;
 
 private:
     struct Impl;

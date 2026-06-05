@@ -25,6 +25,7 @@ struct MeshMaterial {
     float roughnessFactor = 1.0f;
     float occlusionStrength = 1.0f;
     float normalScale = 1.0f;
+    int32_t baseColorTextureIndex = -1;
 };
 
 struct MeshDrawRange {
@@ -38,11 +39,20 @@ struct MeshBounds {
     float max[3] = {0.0f, 0.0f, 0.0f};
 };
 
+struct MeshImageData {
+    std::string name;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t channels = 4;
+    std::vector<uint8_t> rgba8;
+};
+
 struct MeshData {
     std::string name;
     std::vector<MeshVertex> vertices;
     std::vector<MeshDrawRange> drawRanges;
     std::vector<MeshMaterial> materials;
+    std::vector<MeshImageData> images;
     MeshBounds bounds;
     float surfaceArea = 0.0f;
 
@@ -62,6 +72,7 @@ struct MeshData {
         vertices.clear();
         drawRanges.clear();
         materials.clear();
+        images.clear();
         bounds = {};
         surfaceArea = 0.0f;
     }
