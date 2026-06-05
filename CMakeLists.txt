@@ -131,12 +131,15 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/app/macos/MacApp.mm
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.mm
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.hpp
+        ${CMAKE_SOURCE_DIR}/src/core/MeshData.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.cpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPipelineCache.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPipelineCache.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderTarget.mm
