@@ -98,6 +98,17 @@ std::size_t nextPowerOfTwo(std::size_t value)
     return value + 1;
 }
 
+uint32_t normalizedConversionSamples(uint32_t samplesPerTriangle)
+{
+    if (samplesPerTriangle <= 1) {
+        return 1;
+    }
+    if (samplesPerTriangle <= 4) {
+        return 4;
+    }
+    return 9;
+}
+
 core::MeshBounds aggregateMeshBounds(const std::vector<core::MeshData>& meshes)
 {
     core::MeshBounds bounds;
@@ -363,6 +374,28 @@ void MetalRenderer::setGaussianScale(float scale)
 float MetalRenderer::gaussianScale() const
 {
     return m_impl->gaussianScale;
+}
+
+bool MetalRenderer::setConversionSamplesPerTriangle(uint32_t samplesPerTriangle)
+{
+    const uint32_t normalizedSamples = normalizedConversionSamples(samplesPerTriangle);
+    if (m_impl->conversionSamplesPerTriangle == normalizedSamples) {
+        return true;
+    }
+
+    m_impl->conversionSamplesPerTriangle = normalizedSamples;
+    if (m_impl->sceneResources != nullptr && m_impl->sceneResources->isValid() &&
+        !m_impl->convertSceneToGaussians(*m_impl->sceneResources)) {
+        NSLog(@"Metal mesh reconversion did not produce gaussians.");
+        return false;
+    }
+
+    return true;
+}
+
+uint32_t MetalRenderer::conversionSamplesPerTriangle() const
+{
+    return m_impl->conversionSamplesPerTriangle;
 }
 
 uint32_t MetalRenderer::convertedGaussianCount() const

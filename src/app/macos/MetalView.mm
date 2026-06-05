@@ -30,6 +30,7 @@
 - (void)setViewMode:(mesh2splat::metal::RenderViewMode)mode;
 - (void)setGaussianScale:(float)scale;
 - (float)gaussianScale;
+- (BOOL)setConversionSamplesPerTriangle:(uint32_t)samplesPerTriangle;
 - (NSString*)rendererStatusTitle;
 
 @end
@@ -115,6 +116,11 @@
     return _renderer == nullptr ? 1.0f : _renderer->gaussianScale();
 }
 
+- (BOOL)setConversionSamplesPerTriangle:(uint32_t)samplesPerTriangle
+{
+    return _renderer != nullptr && _renderer->setConversionSamplesPerTriangle(samplesPerTriangle) ? YES : NO;
+}
+
 - (NSString*)rendererStatusTitle
 {
     if (_renderer == nullptr) {
@@ -140,11 +146,12 @@
         assetName = [[NSString stringWithUTF8String:loadedPath.c_str()] lastPathComponent];
     }
 
-    return [NSString stringWithFormat:@"Mesh2Splat Metal - %@ - %@ - %u gaussians - scale x%.2f",
+    return [NSString stringWithFormat:@"Mesh2Splat Metal - %@ - %@ - %u gaussians - scale x%.2f - quality %ux",
                                       assetName,
                                       mode,
                                       _renderer->convertedGaussianCount(),
-                                      _renderer->gaussianScale()];
+                                      _renderer->gaussianScale(),
+                                      _renderer->conversionSamplesPerTriangle()];
 }
 
 @end
@@ -290,6 +297,33 @@
     [self updateWindowTitle];
 }
 
+- (IBAction)setLowConversionQuality:(id)sender
+{
+    (void)sender;
+    if (![self.meshDelegate setConversionSamplesPerTriangle:1]) {
+        NSBeep();
+    }
+    [self updateWindowTitle];
+}
+
+- (IBAction)setMediumConversionQuality:(id)sender
+{
+    (void)sender;
+    if (![self.meshDelegate setConversionSamplesPerTriangle:4]) {
+        NSBeep();
+    }
+    [self updateWindowTitle];
+}
+
+- (IBAction)setHighConversionQuality:(id)sender
+{
+    (void)sender;
+    if (![self.meshDelegate setConversionSamplesPerTriangle:9]) {
+        NSBeep();
+    }
+    [self updateWindowTitle];
+}
+
 - (void)updateMousePosition:(NSEvent*)event
 {
     NSPoint location = [self convertPoint:event.locationInWindow fromView:nil];
@@ -389,6 +423,18 @@
     }
     if ([key isEqualToString:@"0"]) {
         [self resetGaussianScale:self];
+        return;
+    }
+    if ([key isEqualToString:@"4"]) {
+        [self setLowConversionQuality:self];
+        return;
+    }
+    if ([key isEqualToString:@"5"]) {
+        [self setMediumConversionQuality:self];
+        return;
+    }
+    if ([key isEqualToString:@"6"]) {
+        [self setHighConversionQuality:self];
         return;
     }
 

@@ -29,6 +29,8 @@ public:
     RenderViewMode viewMode() const;
     void setGaussianScale(float scale);
     float gaussianScale() const;
+    bool setConversionSamplesPerTriangle(uint32_t samplesPerTriangle);
+    uint32_t conversionSamplesPerTriangle() const;
     uint32_t convertedGaussianCount() const;
     const std::string& loadedMeshPath() const;
     void draw(

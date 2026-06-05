@@ -82,6 +82,25 @@
                                                      keyEquivalent:@"0"];
     resetScaleItem.target = nil;
     [viewMenu addItem:resetScaleItem];
+    [viewMenu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem* lowQualityItem = [[NSMenuItem alloc] initWithTitle:@"Conversion Quality 1x"
+                                                            action:@selector(setLowConversionQuality:)
+                                                     keyEquivalent:@"4"];
+    lowQualityItem.target = nil;
+    [viewMenu addItem:lowQualityItem];
+
+    NSMenuItem* mediumQualityItem = [[NSMenuItem alloc] initWithTitle:@"Conversion Quality 4x"
+                                                               action:@selector(setMediumConversionQuality:)
+                                                        keyEquivalent:@"5"];
+    mediumQualityItem.target = nil;
+    [viewMenu addItem:mediumQualityItem];
+
+    NSMenuItem* highQualityItem = [[NSMenuItem alloc] initWithTitle:@"Conversion Quality 9x"
+                                                             action:@selector(setHighConversionQuality:)
+                                                      keyEquivalent:@"6"];
+    highQualityItem.target = nil;
+    [viewMenu addItem:highQualityItem];
     viewMenuItem.submenu = viewMenu;
 
     NSApp.mainMenu = mainMenu;
