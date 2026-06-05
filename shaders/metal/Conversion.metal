@@ -75,6 +75,36 @@ static float4 quaternionFromBasis(float3 xAxis, float3 yAxis, float3 zAxis)
     return normalize(q);
 }
 
+static float3 barycentricSample(uint sampleID, uint samplesPerTriangle)
+{
+    if (samplesPerTriangle <= 1) {
+        return float3(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0);
+    }
+
+    if (samplesPerTriangle <= 4) {
+        const float3 samples[4] = {
+            float3(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+            float3(0.6, 0.2, 0.2),
+            float3(0.2, 0.6, 0.2),
+            float3(0.2, 0.2, 0.6),
+        };
+        return samples[sampleID % 4];
+    }
+
+    const float3 samples[9] = {
+        float3(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+        float3(0.75, 0.125, 0.125),
+        float3(0.125, 0.75, 0.125),
+        float3(0.125, 0.125, 0.75),
+        float3(0.5, 0.25, 0.25),
+        float3(0.25, 0.5, 0.25),
+        float3(0.25, 0.25, 0.5),
+        float3(0.45, 0.45, 0.1),
+        float3(0.45, 0.1, 0.45),
+    };
+    return samples[sampleID % 9];
+}
+
 kernel void meshVertexConversionKernel(
     uint threadID [[thread_position_in_grid]],
     const device float* vertices [[buffer(0)]],
@@ -119,13 +149,7 @@ kernel void meshVertexConversionKernel(
     const float scaleX = max(length(edge0) * params.gaussianScale, 1.0e-7);
     const float scaleY = max(length(edge1) * params.gaussianScale, 1.0e-7);
 
-    const float3 barycentricSamples[4] = {
-        float3(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
-        float3(0.6, 0.2, 0.2),
-        float3(0.2, 0.6, 0.2),
-        float3(0.2, 0.2, 0.6),
-    };
-    const float3 barycentric = barycentricSamples[sampleID % 4];
+    const float3 barycentric = barycentricSample(sampleID, samplesPerTriangle);
     const float3 position = p0 * barycentric.x + p1 * barycentric.y + p2 * barycentric.z;
     const float3 n0 = safeNormalize(float3(vertices[base0 + 3], vertices[base0 + 4], vertices[base0 + 5]), faceNormal);
     const float3 n1 = safeNormalize(float3(vertices[base1 + 3], vertices[base1 + 4], vertices[base1 + 5]), faceNormal);

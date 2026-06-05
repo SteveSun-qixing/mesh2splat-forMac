@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 
 namespace mesh2splat::metal {
@@ -26,7 +27,11 @@ public:
         MetalPipelineCache& pipelineCache,
         MetalRenderStateCache& renderStateCache);
     bool isReady() const;
-    bool encode(void* commandBuffer, const MetalSceneResources& sceneResources, MetalGaussianBuffer& gaussianBuffer) const;
+    bool encode(
+        void* commandBuffer,
+        const MetalSceneResources& sceneResources,
+        MetalGaussianBuffer& gaussianBuffer,
+        uint32_t samplesPerTriangle) const;
 
 private:
     struct Impl;

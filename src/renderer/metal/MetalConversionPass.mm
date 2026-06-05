@@ -28,7 +28,16 @@ struct MeshConversionParams {
 
 static_assert(sizeof(MeshConversionParams) == 32, "MeshConversionParams must match the Metal shader layout.");
 
-constexpr uint32_t kSamplesPerTriangle = 4;
+uint32_t normalizedSamplesPerTriangle(uint32_t samplesPerTriangle)
+{
+    if (samplesPerTriangle <= 1) {
+        return 1;
+    }
+    if (samplesPerTriangle <= 4) {
+        return 4;
+    }
+    return 9;
+}
 
 } // namespace
 
@@ -81,7 +90,8 @@ bool MetalConversionPass::isReady() const
 bool MetalConversionPass::encode(
     void* commandBuffer,
     const MetalSceneResources& sceneResources,
-    MetalGaussianBuffer& gaussianBuffer) const
+    MetalGaussianBuffer& gaussianBuffer,
+    uint32_t samplesPerTriangle) const
 {
     if (!isReady() || commandBuffer == nullptr || !sceneResources.isValid() || !gaussianBuffer.isValid()) {
         return false;
@@ -113,6 +123,7 @@ bool MetalConversionPass::encode(
     const NSUInteger threadExecutionWidth = std::max<NSUInteger>(1, pipelineState.threadExecutionWidth);
     const NSUInteger maxThreads = std::max<NSUInteger>(1, pipelineState.maxTotalThreadsPerThreadgroup);
     const NSUInteger threadsPerGroup = std::min<NSUInteger>(threadExecutionWidth, maxThreads);
+    const uint32_t sampleCount = normalizedSamplesPerTriangle(samplesPerTriangle);
 
     for (std::size_t meshIndex = 0; meshIndex < sceneResources.meshCount(); ++meshIndex) {
         const MetalMesh* mesh = sceneResources.meshAt(meshIndex);
@@ -161,10 +172,10 @@ bool MetalConversionPass::encode(
             params.maxGaussianCount = static_cast<uint32_t>(gaussianBuffer.capacity());
             params.gaussianScale = 0.22f;
             params.normalScale = 1.0f;
-            params.samplesPerTriangle = kSamplesPerTriangle;
+            params.samplesPerTriangle = sampleCount;
 
             [encoder setBytes:&params length:sizeof(params) atIndex:3];
-            const MTLSize gridSize = MTLSizeMake(triangleCount * kSamplesPerTriangle, 1, 1);
+            const MTLSize gridSize = MTLSizeMake(triangleCount * sampleCount, 1, 1);
             const MTLSize threadgroupSize = MTLSizeMake(threadsPerGroup, 1, 1);
             [encoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
         }

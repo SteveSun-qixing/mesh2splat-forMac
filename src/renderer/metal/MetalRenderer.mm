@@ -32,7 +32,7 @@
 namespace mesh2splat::metal {
 namespace {
 
-constexpr std::size_t kMetalConversionSamplesPerTriangle = 4;
+constexpr uint32_t kDefaultMetalConversionSamplesPerTriangle = 4;
 
 std::string bundledMetallibPath()
 {
@@ -159,6 +159,7 @@ struct MetalRenderer::Impl {
     RenderViewMode viewMode = RenderViewMode::Combined;
     bool hasSortedGaussianDepths = false;
     float gaussianScale = 1.0f;
+    uint32_t conversionSamplesPerTriangle = kDefaultMetalConversionSamplesPerTriangle;
     uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -173,11 +174,12 @@ bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nex
     }
 
     const std::size_t triangleCount = nextSceneResources.totalVertexCount() / 3;
-    if (triangleCount == 0 || triangleCount > std::numeric_limits<std::size_t>::max() / kMetalConversionSamplesPerTriangle) {
+    if (triangleCount == 0 ||
+        triangleCount > std::numeric_limits<std::size_t>::max() / conversionSamplesPerTriangle) {
         return false;
     }
 
-    const std::size_t gaussianCapacity = triangleCount * kMetalConversionSamplesPerTriangle;
+    const std::size_t gaussianCapacity = triangleCount * conversionSamplesPerTriangle;
     if (!core::gaussianCountFitsBuffer(gaussianCapacity)) {
         return false;
     }
@@ -195,7 +197,11 @@ bool MetalRenderer::Impl::convertSceneToGaussians(const MetalSceneResources& nex
     }
 
     commandBuffer.label = @"Mesh2Splat Mesh Conversion";
-    if (!conversionPass->encode((__bridge void*)commandBuffer, nextSceneResources, *nextGaussianBuffer)) {
+    if (!conversionPass->encode(
+            (__bridge void*)commandBuffer,
+            nextSceneResources,
+            *nextGaussianBuffer,
+            conversionSamplesPerTriangle)) {
         return false;
     }
 
