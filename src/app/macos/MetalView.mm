@@ -1,5 +1,6 @@
 #include "MetalView.hpp"
 
+#include "core/InputState.hpp"
 #include "renderer/metal/MetalRenderer.hpp"
 
 #import <Foundation/Foundation.h>
@@ -60,7 +61,9 @@
 
 @end
 
-@implementation Mesh2SplatMetalView
+@implementation Mesh2SplatMetalView {
+    mesh2splat::core::InputState _inputState;
+}
 
 - (instancetype)initWithFrame:(NSRect)frameRect
 {
@@ -86,6 +89,99 @@
     self.meshDelegate = [[Mesh2SplatMetalViewDelegate alloc] initWithView:self];
     self.delegate = self.meshDelegate;
     return self;
+}
+
+- (BOOL)acceptsFirstResponder
+{
+    return YES;
+}
+
+- (void)viewDidMoveToWindow
+{
+    [super viewDidMoveToWindow];
+    [self.window makeFirstResponder:self];
+}
+
+- (void)beginInputFrame
+{
+    _inputState.beginFrame();
+}
+
+- (void)updateMousePosition:(NSEvent*)event
+{
+    NSPoint location = [self convertPoint:event.locationInWindow fromView:nil];
+    _inputState.updateMousePosition(location.x, location.y);
+}
+
+- (void)mouseMoved:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+}
+
+- (void)mouseDragged:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+}
+
+- (void)rightMouseDragged:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+}
+
+- (void)otherMouseDragged:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+}
+
+- (void)mouseDown:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+    _inputState.setMouseButton(0, true);
+}
+
+- (void)mouseUp:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+    _inputState.setMouseButton(0, false);
+}
+
+- (void)rightMouseDown:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+    _inputState.setMouseButton(1, true);
+}
+
+- (void)rightMouseUp:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+    _inputState.setMouseButton(1, false);
+}
+
+- (void)otherMouseDown:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+    _inputState.setMouseButton(2, true);
+}
+
+- (void)otherMouseUp:(NSEvent*)event
+{
+    [self updateMousePosition:event];
+    _inputState.setMouseButton(2, false);
+}
+
+- (void)scrollWheel:(NSEvent*)event
+{
+    _inputState.addScrollDelta(event.scrollingDeltaX, event.scrollingDeltaY);
+}
+
+- (void)keyDown:(NSEvent*)event
+{
+    _inputState.setKey(event.keyCode, true);
+}
+
+- (void)keyUp:(NSEvent*)event
+{
+    _inputState.setKey(event.keyCode, false);
 }
 
 @end
