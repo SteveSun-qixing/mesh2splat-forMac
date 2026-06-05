@@ -1,21 +1,53 @@
 #include "MetalRenderer.hpp"
 
 #include "core/FrameData.hpp"
+#include "core/PrimitiveMeshFactory.hpp"
 #include "MetalDeviceContext.hpp"
 #include "MetalFrameUniformBuffer.hpp"
 #include "MetalFrameResources.hpp"
+#include "MetalMeshRenderPass.hpp"
+#include "MetalPipelineCache.hpp"
 #include "MetalRenderStateCache.hpp"
+#include "MetalSceneResources.hpp"
+#include "MetalShaderLibrary.hpp"
 
+#import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
+#include <string>
+#include <vector>
+
 namespace mesh2splat::metal {
+namespace {
+
+std::string bundledMetallibPath()
+{
+    NSString* path = [[NSBundle mainBundle] pathForResource:@"Mesh2SplatMetal" ofType:@"metallib"];
+    return path == nil ? std::string{} : std::string(path.UTF8String);
+}
+
+bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary)
+{
+    const std::string metallibPath = bundledMetallibPath();
+    if (!metallibPath.empty() && shaderLibrary.loadFromFile(metallibPath)) {
+        return true;
+    }
+
+    return shaderLibrary.loadDefault("Mesh2Splat Default Metal Library");
+}
+
+} // namespace
 
 struct MetalRenderer::Impl {
     std::unique_ptr<MetalDeviceContext> deviceContext;
     MetalFrameResources frameResources;
     std::unique_ptr<MetalFrameUniformBuffer> frameUniformBuffer;
+    std::unique_ptr<MetalShaderLibrary> shaderLibrary;
+    std::unique_ptr<MetalPipelineCache> pipelineCache;
     std::unique_ptr<MetalRenderStateCache> renderStateCache;
+    std::unique_ptr<MetalSceneResources> sceneResources;
+    std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     core::FrameUniforms frameUniforms;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -45,6 +77,26 @@ bool MetalRenderer::initialize()
     }
 
     m_impl->renderStateCache = std::make_unique<MetalRenderStateCache>(*m_impl->deviceContext);
+    m_impl->pipelineCache = std::make_unique<MetalPipelineCache>(*m_impl->deviceContext);
+    m_impl->shaderLibrary = std::make_unique<MetalShaderLibrary>(*m_impl->deviceContext);
+    m_impl->sceneResources = std::make_unique<MetalSceneResources>(*m_impl->deviceContext);
+
+    std::vector<core::MeshData> previewMeshes;
+    previewMeshes.push_back(core::createPreviewTriangleMesh());
+    m_impl->sceneResources->uploadMeshes(previewMeshes);
+
+    if (loadRendererShaderLibrary(*m_impl->shaderLibrary)) {
+        m_impl->meshRenderPass = std::make_unique<MetalMeshRenderPass>(*m_impl->deviceContext);
+        if (!m_impl->meshRenderPass->initialize(
+                *m_impl->shaderLibrary,
+                *m_impl->pipelineCache,
+                *m_impl->renderStateCache,
+                MetalTextureFormat::BGRA8Unorm,
+                MetalTextureFormat::Depth32Float)) {
+            m_impl->meshRenderPass.reset();
+        }
+    }
+
     m_impl->frameUniforms = core::makeDefaultFrameUniforms(m_impl->width, m_impl->height);
     return true;
 }
@@ -85,7 +137,14 @@ void MetalRenderer::draw(void* renderPassDescriptor, void* drawable)
     commandBuffer.label = @"Mesh2Splat Metal Frame";
 
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
-    encoder.label = @"Clear Drawable";
+    encoder.label = @"Mesh2Splat Drawable Render";
+    if (m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
+        m_impl->frameUniformBuffer != nullptr) {
+        m_impl->meshRenderPass->encode(
+            (__bridge void*)encoder,
+            *m_impl->sceneResources,
+            m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
+    }
     [encoder endEncoding];
 
     [commandBuffer presentDrawable:metalDrawable];

@@ -1,0 +1,94 @@
+#include "MetalMeshRenderPass.hpp"
+
+#include "MetalMesh.hpp"
+#include "MetalPipelineCache.hpp"
+#include "MetalRenderStateCache.hpp"
+#include "MetalSceneResources.hpp"
+#include "MetalShaderLibrary.hpp"
+
+#import <Metal/Metal.h>
+
+namespace mesh2splat::metal {
+
+struct MetalMeshRenderPass::Impl {
+    void* renderPipelineState = nullptr;
+    void* depthStencilState = nullptr;
+};
+
+MetalMeshRenderPass::MetalMeshRenderPass(MetalDeviceContext&)
+    : m_impl(std::make_unique<Impl>())
+{
+}
+
+MetalMeshRenderPass::~MetalMeshRenderPass() = default;
+
+MetalMeshRenderPass::MetalMeshRenderPass(MetalMeshRenderPass&&) noexcept = default;
+
+MetalMeshRenderPass& MetalMeshRenderPass::operator=(MetalMeshRenderPass&&) noexcept = default;
+
+bool MetalMeshRenderPass::initialize(
+    MetalShaderLibrary& shaderLibrary,
+    MetalPipelineCache& pipelineCache,
+    MetalRenderStateCache& renderStateCache,
+    MetalTextureFormat colorFormat,
+    MetalTextureFormat depthFormat)
+{
+    MetalRenderPipelineDesc pipelineDesc;
+    pipelineDesc.label = "Mesh Preview Pipeline";
+    pipelineDesc.vertexFunction = "meshVertex";
+    pipelineDesc.fragmentFunction = "meshFragment";
+    pipelineDesc.colorFormat = colorFormat;
+    pipelineDesc.depthFormat = depthFormat;
+    pipelineDesc.depthEnabled = true;
+    pipelineDesc.blendingEnabled = false;
+
+    m_impl->renderPipelineState = pipelineCache.renderPipeline(shaderLibrary, pipelineDesc);
+    if (m_impl->renderPipelineState == nullptr) {
+        return false;
+    }
+
+    MetalDepthStencilDesc depthDesc;
+    depthDesc.label = "Mesh Preview Depth";
+    depthDesc.depthTestEnabled = true;
+    depthDesc.depthWriteEnabled = true;
+    depthDesc.depthCompareFunction = MetalCompareFunction::LessEqual;
+    m_impl->depthStencilState = renderStateCache.depthStencilState(depthDesc);
+    return m_impl->depthStencilState != nullptr;
+}
+
+bool MetalMeshRenderPass::isReady() const
+{
+    return m_impl->renderPipelineState != nullptr && m_impl->depthStencilState != nullptr;
+}
+
+void MetalMeshRenderPass::encode(
+    void* renderCommandEncoder,
+    const MetalSceneResources& sceneResources,
+    void* frameUniformBuffer) const
+{
+    if (!isReady() || renderCommandEncoder == nullptr || frameUniformBuffer == nullptr || !sceneResources.isValid()) {
+        return;
+    }
+
+    id<MTLRenderCommandEncoder> encoder = (__bridge id<MTLRenderCommandEncoder>)renderCommandEncoder;
+    id<MTLRenderPipelineState> pipelineState = (__bridge id<MTLRenderPipelineState>)m_impl->renderPipelineState;
+    id<MTLDepthStencilState> depthStencilState = (__bridge id<MTLDepthStencilState>)m_impl->depthStencilState;
+    id<MTLBuffer> frameBuffer = (__bridge id<MTLBuffer>)frameUniformBuffer;
+
+    [encoder setRenderPipelineState:pipelineState];
+    [encoder setDepthStencilState:depthStencilState];
+    [encoder setVertexBuffer:frameBuffer offset:0 atIndex:1];
+
+    for (std::size_t meshIndex = 0; meshIndex < sceneResources.meshCount(); ++meshIndex) {
+        const MetalMesh* mesh = sceneResources.meshAt(meshIndex);
+        if (mesh == nullptr || !mesh->isValid() || mesh->vertexCount() == 0) {
+            continue;
+        }
+
+        id<MTLBuffer> vertexBuffer = (__bridge id<MTLBuffer>)mesh->vertexBuffer();
+        [encoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:mesh->vertexCount()];
+    }
+}
+
+} // namespace mesh2splat::metal
