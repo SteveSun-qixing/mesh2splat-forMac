@@ -132,11 +132,16 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.mm
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.hpp
         ${CMAKE_SOURCE_DIR}/src/core/FrameData.hpp
+        ${CMAKE_SOURCE_DIR}/src/core/GltfMeshLoader.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/GltfMeshLoader.hpp
         ${CMAKE_SOURCE_DIR}/src/core/MeshData.hpp
         ${CMAKE_SOURCE_DIR}/src/core/NativeCamera.cpp
         ${CMAKE_SOURCE_DIR}/src/core/NativeCamera.hpp
         ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.cpp
         ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.hpp
+        ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
+        ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_write_impl.cpp
+        ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.mm
