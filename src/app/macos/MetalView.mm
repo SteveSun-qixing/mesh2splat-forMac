@@ -52,7 +52,12 @@
     _lastFrameTime = CACurrentMediaTime();
     _renderer = std::make_unique<mesh2splat::metal::MetalRenderer>((__bridge void*)view.device);
     if (!_renderer->initialize()) {
-        NSLog(@"Failed to initialize Metal renderer.");
+        const std::string& diagnostic = _renderer->lastDiagnostic();
+        if (diagnostic.empty()) {
+            NSLog(@"Failed to initialize Metal renderer.");
+        } else {
+            NSLog(@"Failed to initialize Metal renderer: %s", diagnostic.c_str());
+        }
         return nil;
     }
 

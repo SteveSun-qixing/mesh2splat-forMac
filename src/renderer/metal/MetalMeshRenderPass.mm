@@ -32,7 +32,8 @@ bool MetalMeshRenderPass::initialize(
     MetalPipelineCache& pipelineCache,
     MetalRenderStateCache& renderStateCache,
     MetalTextureFormat colorFormat,
-    MetalTextureFormat depthFormat)
+    MetalTextureFormat depthFormat,
+    std::string* errorMessage)
 {
     MetalRenderPipelineDesc pipelineDesc;
     pipelineDesc.label = "Mesh Preview Pipeline";
@@ -43,8 +44,15 @@ bool MetalMeshRenderPass::initialize(
     pipelineDesc.depthEnabled = true;
     pipelineDesc.blendMode = MetalBlendMode::Disabled;
 
-    m_impl->renderPipelineState = pipelineCache.renderPipeline(shaderLibrary, pipelineDesc);
+    std::string pipelineError;
+    m_impl->renderPipelineState = pipelineCache.renderPipeline(shaderLibrary, pipelineDesc, &pipelineError);
     if (m_impl->renderPipelineState == nullptr) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Failed to initialize mesh render pipeline";
+            if (!pipelineError.empty()) {
+                *errorMessage += ": " + pipelineError;
+            }
+        }
         return false;
     }
 
@@ -55,6 +63,9 @@ bool MetalMeshRenderPass::initialize(
     depthDesc.depthCompareFunction = MetalCompareFunction::LessEqual;
     m_impl->depthStencilState = renderStateCache.depthStencilState(depthDesc);
     if (m_impl->depthStencilState == nullptr) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Failed to initialize mesh render depth state.";
+        }
         return false;
     }
 
@@ -67,7 +78,17 @@ bool MetalMeshRenderPass::initialize(
     samplerDesc.addressV = MetalSamplerAddressMode::Repeat;
     samplerDesc.addressW = MetalSamplerAddressMode::Repeat;
     m_impl->samplerState = renderStateCache.samplerState(samplerDesc);
-    return m_impl->samplerState != nullptr;
+    if (m_impl->samplerState == nullptr) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Failed to initialize mesh render sampler state.";
+        }
+        return false;
+    }
+
+    if (errorMessage != nullptr) {
+        errorMessage->clear();
+    }
+    return true;
 }
 
 bool MetalMeshRenderPass::isReady() const

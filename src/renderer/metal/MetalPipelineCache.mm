@@ -53,18 +53,23 @@ NSString* toNSString(const std::string& value)
     return [NSString stringWithUTF8String:value.c_str()];
 }
 
-void setErrorMessage(NSError* error, std::string* errorMessage)
+std::string nsStringValue(NSString* value)
+{
+    return value == nil ? std::string{} : std::string(value.UTF8String);
+}
+
+std::string errorDescription(NSError* error)
+{
+    return error == nil ? std::string{} : nsStringValue(error.localizedDescription);
+}
+
+void setErrorMessage(const std::string& error, std::string* errorMessage)
 {
     if (errorMessage == nullptr) {
         return;
     }
 
-    if (error == nil) {
-        errorMessage->clear();
-        return;
-    }
-
-    *errorMessage = error.localizedDescription.UTF8String;
+    *errorMessage = error;
 }
 
 } // namespace
@@ -89,12 +94,22 @@ void* MetalPipelineCache::renderPipeline(
     std::string* errorMessage)
 {
     if (m_impl->device == nil || !library.isValid() || desc.vertexFunction.empty()) {
+        if (errorMessage != nullptr) {
+            if (m_impl->device == nil) {
+                *errorMessage = "Metal device is unavailable.";
+            } else if (!library.isValid()) {
+                *errorMessage = "Metal shader library is invalid.";
+            } else {
+                *errorMessage = "Metal render pipeline vertex function is empty.";
+            }
+        }
         return nullptr;
     }
 
     const std::string key = renderKey(desc);
     auto cached = m_impl->renderPipelines.find(key);
     if (cached != m_impl->renderPipelines.end()) {
+        setErrorMessage(std::string{}, errorMessage);
         return (__bridge void*)cached->second;
     }
 
@@ -102,7 +117,8 @@ void* MetalPipelineCache::renderPipeline(
     id<MTLFunction> vertexFunction = [nativeLibrary newFunctionWithName:toNSString(desc.vertexFunction)];
     if (vertexFunction == nil) {
         if (errorMessage != nullptr) {
-            *errorMessage = "Missing Metal vertex function: " + desc.vertexFunction;
+            *errorMessage = "Missing Metal vertex function '" + desc.vertexFunction +
+                "' for render pipeline '" + desc.label + "'.";
         }
         return nullptr;
     }
@@ -112,7 +128,8 @@ void* MetalPipelineCache::renderPipeline(
         fragmentFunction = [nativeLibrary newFunctionWithName:toNSString(desc.fragmentFunction)];
         if (fragmentFunction == nil) {
             if (errorMessage != nullptr) {
-                *errorMessage = "Missing Metal fragment function: " + desc.fragmentFunction;
+                *errorMessage = "Missing Metal fragment function '" + desc.fragmentFunction +
+                    "' for render pipeline '" + desc.label + "'.";
             }
             return nullptr;
         }
@@ -145,11 +162,18 @@ void* MetalPipelineCache::renderPipeline(
     NSError* error = nil;
     id<MTLRenderPipelineState> pipelineState =
         [m_impl->device newRenderPipelineStateWithDescriptor:pipelineDescriptor error:&error];
-    setErrorMessage(error, errorMessage);
     if (pipelineState == nil) {
+        std::string message = "Failed to create Metal render pipeline '" + desc.label +
+            "' (vertex='" + desc.vertexFunction + "', fragment='" + desc.fragmentFunction + "')";
+        const std::string errorText = errorDescription(error);
+        if (!errorText.empty()) {
+            message += ": " + errorText;
+        }
+        setErrorMessage(message, errorMessage);
         return nullptr;
     }
 
+    setErrorMessage(std::string{}, errorMessage);
     m_impl->renderPipelines.emplace(key, pipelineState);
     return (__bridge void*)pipelineState;
 }
@@ -160,12 +184,22 @@ void* MetalPipelineCache::computePipeline(
     std::string* errorMessage)
 {
     if (m_impl->device == nil || !library.isValid() || desc.function.empty()) {
+        if (errorMessage != nullptr) {
+            if (m_impl->device == nil) {
+                *errorMessage = "Metal device is unavailable.";
+            } else if (!library.isValid()) {
+                *errorMessage = "Metal shader library is invalid.";
+            } else {
+                *errorMessage = "Metal compute pipeline function is empty.";
+            }
+        }
         return nullptr;
     }
 
     const std::string key = computeKey(desc);
     auto cached = m_impl->computePipelines.find(key);
     if (cached != m_impl->computePipelines.end()) {
+        setErrorMessage(std::string{}, errorMessage);
         return (__bridge void*)cached->second;
     }
 
@@ -173,7 +207,8 @@ void* MetalPipelineCache::computePipeline(
     id<MTLFunction> function = [nativeLibrary newFunctionWithName:toNSString(desc.function)];
     if (function == nil) {
         if (errorMessage != nullptr) {
-            *errorMessage = "Missing Metal compute function: " + desc.function;
+            *errorMessage = "Missing Metal compute function '" + desc.function +
+                "' for compute pipeline '" + desc.label + "'.";
         }
         return nullptr;
     }
@@ -181,11 +216,18 @@ void* MetalPipelineCache::computePipeline(
     NSError* error = nil;
     id<MTLComputePipelineState> pipelineState =
         [m_impl->device newComputePipelineStateWithFunction:function error:&error];
-    setErrorMessage(error, errorMessage);
     if (pipelineState == nil) {
+        std::string message = "Failed to create Metal compute pipeline '" + desc.label +
+            "' (function='" + desc.function + "')";
+        const std::string errorText = errorDescription(error);
+        if (!errorText.empty()) {
+            message += ": " + errorText;
+        }
+        setErrorMessage(message, errorMessage);
         return nullptr;
     }
 
+    setErrorMessage(std::string{}, errorMessage);
     m_impl->computePipelines.emplace(key, pipelineState);
     return (__bridge void*)pipelineState;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 namespace mesh2splat::metal {
 
@@ -20,7 +21,10 @@ public:
     MetalGaussianSortPass(MetalGaussianSortPass&&) noexcept;
     MetalGaussianSortPass& operator=(MetalGaussianSortPass&&) noexcept;
 
-    bool initialize(MetalShaderLibrary& shaderLibrary, MetalPipelineCache& pipelineCache);
+    bool initialize(
+        MetalShaderLibrary& shaderLibrary,
+        MetalPipelineCache& pipelineCache,
+        std::string* errorMessage = nullptr);
     bool isReady() const;
     bool encodeDepthKeys(
         void* commandBuffer,

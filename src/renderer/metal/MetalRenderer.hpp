@@ -67,6 +67,7 @@ public:
     bool isConvertingGaussians() const;
     uint32_t convertedGaussianCount() const;
     MetalRendererStats rendererStats() const;
+    const std::string& lastDiagnostic() const;
     const std::string& loadedMeshPath() const;
     void draw(
         void* renderPassDescriptor,

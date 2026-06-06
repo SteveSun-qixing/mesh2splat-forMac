@@ -31,7 +31,8 @@ bool MetalGaussianRenderPass::initialize(
     MetalPipelineCache& pipelineCache,
     MetalRenderStateCache& renderStateCache,
     MetalTextureFormat colorFormat,
-    MetalTextureFormat depthFormat)
+    MetalTextureFormat depthFormat,
+    std::string* errorMessage)
 {
     MetalRenderPipelineDesc pipelineDesc;
     pipelineDesc.label = "Gaussian Preview Pipeline";
@@ -42,8 +43,15 @@ bool MetalGaussianRenderPass::initialize(
     pipelineDesc.depthEnabled = true;
     pipelineDesc.blendMode = MetalBlendMode::PremultipliedAlpha;
 
-    m_impl->renderPipelineState = pipelineCache.renderPipeline(shaderLibrary, pipelineDesc);
+    std::string pipelineError;
+    m_impl->renderPipelineState = pipelineCache.renderPipeline(shaderLibrary, pipelineDesc, &pipelineError);
     if (m_impl->renderPipelineState == nullptr) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Failed to initialize gaussian render pipeline";
+            if (!pipelineError.empty()) {
+                *errorMessage += ": " + pipelineError;
+            }
+        }
         return false;
     }
 
@@ -53,7 +61,17 @@ bool MetalGaussianRenderPass::initialize(
     depthDesc.depthWriteEnabled = false;
     depthDesc.depthCompareFunction = MetalCompareFunction::LessEqual;
     m_impl->depthStencilState = renderStateCache.depthStencilState(depthDesc);
-    return m_impl->depthStencilState != nullptr;
+    if (m_impl->depthStencilState == nullptr) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Failed to initialize gaussian render depth state.";
+        }
+        return false;
+    }
+
+    if (errorMessage != nullptr) {
+        errorMessage->clear();
+    }
+    return true;
 }
 
 bool MetalGaussianRenderPass::isReady() const

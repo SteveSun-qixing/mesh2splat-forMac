@@ -78,13 +78,21 @@ MetalConversionPass& MetalConversionPass::operator=(MetalConversionPass&&) noexc
 bool MetalConversionPass::initialize(
     MetalShaderLibrary& shaderLibrary,
     MetalPipelineCache& pipelineCache,
-    MetalRenderStateCache& renderStateCache)
+    MetalRenderStateCache& renderStateCache,
+    std::string* errorMessage)
 {
     MetalComputePipelineDesc pipelineDesc;
     pipelineDesc.label = "Mesh Vertex Conversion Pipeline";
     pipelineDesc.function = "meshVertexConversionKernel";
-    m_impl->computePipelineState = pipelineCache.computePipeline(shaderLibrary, pipelineDesc);
+    std::string pipelineError;
+    m_impl->computePipelineState = pipelineCache.computePipeline(shaderLibrary, pipelineDesc, &pipelineError);
     if (m_impl->computePipelineState == nullptr) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Failed to initialize mesh conversion compute pipeline";
+            if (!pipelineError.empty()) {
+                *errorMessage += ": " + pipelineError;
+            }
+        }
         return false;
     }
 
@@ -97,7 +105,17 @@ bool MetalConversionPass::initialize(
     samplerDesc.addressV = MetalSamplerAddressMode::Repeat;
     samplerDesc.addressW = MetalSamplerAddressMode::Repeat;
     m_impl->samplerState = renderStateCache.samplerState(samplerDesc);
-    return m_impl->samplerState != nullptr;
+    if (m_impl->samplerState == nullptr) {
+        if (errorMessage != nullptr) {
+            *errorMessage = "Failed to initialize mesh conversion texture sampler.";
+        }
+        return false;
+    }
+
+    if (errorMessage != nullptr) {
+        errorMessage->clear();
+    }
+    return true;
 }
 
 bool MetalConversionPass::isReady() const

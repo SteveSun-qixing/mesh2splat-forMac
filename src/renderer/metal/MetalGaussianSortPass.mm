@@ -56,37 +56,61 @@ MetalGaussianSortPass::MetalGaussianSortPass(MetalGaussianSortPass&&) noexcept =
 
 MetalGaussianSortPass& MetalGaussianSortPass::operator=(MetalGaussianSortPass&&) noexcept = default;
 
-bool MetalGaussianSortPass::initialize(MetalShaderLibrary& shaderLibrary, MetalPipelineCache& pipelineCache)
+bool MetalGaussianSortPass::initialize(
+    MetalShaderLibrary& shaderLibrary,
+    MetalPipelineCache& pipelineCache,
+    std::string* errorMessage)
 {
+    auto createPipeline = [&shaderLibrary, &pipelineCache, errorMessage](
+                              const MetalComputePipelineDesc& pipelineDesc,
+                              void*& pipelineState) -> bool {
+        std::string pipelineError;
+        pipelineState = pipelineCache.computePipeline(shaderLibrary, pipelineDesc, &pipelineError);
+        if (pipelineState != nullptr) {
+            return true;
+        }
+
+        if (errorMessage != nullptr) {
+            *errorMessage = "Failed to initialize gaussian sort compute pipeline '" + pipelineDesc.label + "'";
+            if (!pipelineError.empty()) {
+                *errorMessage += ": " + pipelineError;
+            }
+        }
+        return false;
+    };
+
     MetalComputePipelineDesc desc;
     desc.label = "Gaussian Depth Key Pipeline";
     desc.function = "gaussianDepthKeyKernel";
-    m_impl->depthKeyPipelineState = pipelineCache.computePipeline(shaderLibrary, desc);
-    if (m_impl->depthKeyPipelineState == nullptr) {
+    if (!createPipeline(desc, m_impl->depthKeyPipelineState)) {
         return false;
     }
 
     MetalComputePipelineDesc countDesc;
     countDesc.label = "Gaussian Radix Count Pipeline";
     countDesc.function = "gaussianRadixCountKernel";
-    m_impl->radixCountPipelineState = pipelineCache.computePipeline(shaderLibrary, countDesc);
-    if (m_impl->radixCountPipelineState == nullptr) {
+    if (!createPipeline(countDesc, m_impl->radixCountPipelineState)) {
         return false;
     }
 
     MetalComputePipelineDesc prefixDesc;
     prefixDesc.label = "Gaussian Radix Prefix Pipeline";
     prefixDesc.function = "gaussianRadixPrefixKernel";
-    m_impl->radixPrefixPipelineState = pipelineCache.computePipeline(shaderLibrary, prefixDesc);
-    if (m_impl->radixPrefixPipelineState == nullptr) {
+    if (!createPipeline(prefixDesc, m_impl->radixPrefixPipelineState)) {
         return false;
     }
 
     MetalComputePipelineDesc reorderDesc;
     reorderDesc.label = "Gaussian Radix Reorder Pipeline";
     reorderDesc.function = "gaussianRadixReorderKernel";
-    m_impl->radixReorderPipelineState = pipelineCache.computePipeline(shaderLibrary, reorderDesc);
-    return m_impl->radixReorderPipelineState != nullptr;
+    if (!createPipeline(reorderDesc, m_impl->radixReorderPipelineState)) {
+        return false;
+    }
+
+    if (errorMessage != nullptr) {
+        errorMessage->clear();
+    }
+    return true;
 }
 
 bool MetalGaussianSortPass::isReady() const

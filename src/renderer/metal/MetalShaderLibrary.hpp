@@ -23,6 +23,8 @@ public:
     bool compileSource(const std::string& source, const char* label = nullptr, std::string* errorMessage = nullptr);
 
     bool isValid() const;
+    const std::string& lastErrorMessage() const;
+    const std::string& sourceDescription() const;
     void* nativeLibrary() const;
 
 private:

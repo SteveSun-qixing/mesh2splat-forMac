@@ -3,6 +3,7 @@
 #include "MetalTexture.hpp"
 
 #include <memory>
+#include <string>
 
 namespace mesh2splat::metal {
 
@@ -29,7 +30,8 @@ public:
         MetalPipelineCache& pipelineCache,
         MetalRenderStateCache& renderStateCache,
         MetalTextureFormat colorFormat,
-        MetalTextureFormat depthFormat);
+        MetalTextureFormat depthFormat,
+        std::string* errorMessage = nullptr);
 
     bool isReady() const;
     void encode(

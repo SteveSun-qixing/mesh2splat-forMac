@@ -77,19 +77,78 @@ std::string bundledShaderSource()
     return source;
 }
 
-bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary)
+void appendDiagnostic(std::vector<std::string>& diagnostics, std::string message)
 {
+    if (!message.empty()) {
+        diagnostics.push_back(std::move(message));
+    }
+}
+
+std::string joinDiagnostics(const std::vector<std::string>& diagnostics)
+{
+    std::string joined;
+    for (const std::string& diagnostic : diagnostics) {
+        if (diagnostic.empty()) {
+            continue;
+        }
+
+        if (!joined.empty()) {
+            joined += "\n";
+        }
+        joined += diagnostic;
+    }
+
+    return joined;
+}
+
+void setDiagnostic(std::string* output, const std::vector<std::string>& diagnostics)
+{
+    if (output != nullptr) {
+        *output = joinDiagnostics(diagnostics);
+    }
+}
+
+bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary, std::string* diagnostic)
+{
+    std::vector<std::string> diagnostics;
     const std::string metallibPath = bundledMetallibPath();
-    if (!metallibPath.empty() && shaderLibrary.loadFromFile(metallibPath)) {
-        return true;
+    if (!metallibPath.empty()) {
+        std::string errorMessage;
+        if (shaderLibrary.loadFromFile(metallibPath, &errorMessage)) {
+            appendDiagnostic(diagnostics, "Loaded Metal shaders from bundled metallib: " + metallibPath);
+            setDiagnostic(diagnostic, diagnostics);
+            return true;
+        }
+
+        appendDiagnostic(diagnostics, errorMessage);
+    } else {
+        appendDiagnostic(diagnostics, "Bundled Mesh2SplatMetal.metallib was not found.");
     }
 
     if (shaderLibrary.loadDefault("Mesh2Splat Default Metal Library")) {
+        appendDiagnostic(diagnostics, "Loaded Metal shaders from default library: " + shaderLibrary.sourceDescription());
+        setDiagnostic(diagnostic, diagnostics);
+        return true;
+    }
+    appendDiagnostic(diagnostics, shaderLibrary.lastErrorMessage());
+
+    const std::string source = bundledShaderSource();
+    if (source.empty()) {
+        appendDiagnostic(diagnostics, "No bundled .metal shader source files were found under Shaders.");
+        setDiagnostic(diagnostic, diagnostics);
+        return false;
+    }
+
+    std::string compileError;
+    if (shaderLibrary.compileSource(source, "Mesh2Splat Runtime Metal Library", &compileError)) {
+        appendDiagnostic(diagnostics, "Compiled Metal shaders from bundled runtime source: " + shaderLibrary.sourceDescription());
+        setDiagnostic(diagnostic, diagnostics);
         return true;
     }
 
-    const std::string source = bundledShaderSource();
-    return !source.empty() && shaderLibrary.compileSource(source, "Mesh2Splat Runtime Metal Library");
+    appendDiagnostic(diagnostics, compileError);
+    setDiagnostic(diagnostic, diagnostics);
+    return false;
 }
 
 uint32_t normalizedConversionSamples(uint32_t samplesPerTriangle)
@@ -284,6 +343,7 @@ struct MetalRenderer::Impl {
     core::Matrix4 lastSortedViewMatrix;
     core::NativeCamera camera;
     std::string loadedMeshPath;
+    std::string lastDiagnostic;
     RenderViewMode viewMode = RenderViewMode::Combined;
     GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
     bool hasSortedGaussianDepths = false;
@@ -434,20 +494,37 @@ MetalRenderer::~MetalRenderer() = default;
 bool MetalRenderer::initialize()
 {
     if (m_impl->deviceContext == nullptr) {
+        m_impl->lastDiagnostic = "Metal renderer has no device context.";
         return false;
     }
 
+    m_impl->lastDiagnostic.clear();
+    auto appendRendererDiagnostic = [this](const std::string& message) {
+        if (message.empty()) {
+            return;
+        }
+
+        if (!m_impl->lastDiagnostic.empty()) {
+            m_impl->lastDiagnostic += "\n";
+        }
+        m_impl->lastDiagnostic += message;
+        NSLog(@"%s", message.c_str());
+    };
+
     if (!m_impl->deviceContext->initialize()) {
+        appendRendererDiagnostic("Failed to initialize Metal device context.");
         return false;
     }
 
     m_impl->frameSemaphore = dispatch_semaphore_create(m_impl->frameResources.frameCount());
     if (m_impl->frameSemaphore == nil) {
+        appendRendererDiagnostic("Failed to create Metal frame semaphore.");
         return false;
     }
 
     m_impl->frameUniformBuffer = std::make_unique<MetalFrameUniformBuffer>(*m_impl->deviceContext);
     if (!m_impl->frameUniformBuffer->initialize("Mesh2Splat Frame Uniforms")) {
+        appendRendererDiagnostic("Failed to initialize Metal frame uniform buffers.");
         return false;
     }
 
@@ -458,43 +535,60 @@ bool MetalRenderer::initialize()
 
     std::vector<core::MeshData> previewMeshes;
     previewMeshes.push_back(core::createPreviewTriangleMesh());
-    m_impl->sceneResources->uploadMeshes(previewMeshes);
+    if (!m_impl->sceneResources->uploadMeshes(previewMeshes)) {
+        appendRendererDiagnostic("Failed to upload Metal preview mesh resources.");
+    }
 
-    if (loadRendererShaderLibrary(*m_impl->shaderLibrary)) {
+    std::string shaderDiagnostic;
+    if (loadRendererShaderLibrary(*m_impl->shaderLibrary, &shaderDiagnostic)) {
+        appendRendererDiagnostic(shaderDiagnostic);
         m_impl->conversionPass = std::make_unique<MetalConversionPass>();
+        std::string passError;
         if (!m_impl->conversionPass->initialize(
                 *m_impl->shaderLibrary,
                 *m_impl->pipelineCache,
-                *m_impl->renderStateCache)) {
+                *m_impl->renderStateCache,
+                &passError)) {
+            appendRendererDiagnostic(passError);
             m_impl->conversionPass.reset();
         } else if (!m_impl->submitCurrentSceneConversion()) {
-            NSLog(@"Initial Metal mesh conversion could not be submitted.");
+            appendRendererDiagnostic("Initial Metal mesh conversion could not be submitted.");
         }
 
         m_impl->gaussianRenderPass = std::make_unique<MetalGaussianRenderPass>(*m_impl->deviceContext);
+        passError.clear();
         if (!m_impl->gaussianRenderPass->initialize(
                 *m_impl->shaderLibrary,
                 *m_impl->pipelineCache,
                 *m_impl->renderStateCache,
                 MetalTextureFormat::BGRA8Unorm,
-                MetalTextureFormat::Depth32Float)) {
+                MetalTextureFormat::Depth32Float,
+                &passError)) {
+            appendRendererDiagnostic(passError);
             m_impl->gaussianRenderPass.reset();
         }
 
         m_impl->gaussianSortPass = std::make_unique<MetalGaussianSortPass>();
-        if (!m_impl->gaussianSortPass->initialize(*m_impl->shaderLibrary, *m_impl->pipelineCache)) {
+        passError.clear();
+        if (!m_impl->gaussianSortPass->initialize(*m_impl->shaderLibrary, *m_impl->pipelineCache, &passError)) {
+            appendRendererDiagnostic(passError);
             m_impl->gaussianSortPass.reset();
         }
 
         m_impl->meshRenderPass = std::make_unique<MetalMeshRenderPass>(*m_impl->deviceContext);
+        passError.clear();
         if (!m_impl->meshRenderPass->initialize(
                 *m_impl->shaderLibrary,
                 *m_impl->pipelineCache,
                 *m_impl->renderStateCache,
                 MetalTextureFormat::BGRA8Unorm,
-                MetalTextureFormat::Depth32Float)) {
+                MetalTextureFormat::Depth32Float,
+                &passError)) {
+            appendRendererDiagnostic(passError);
             m_impl->meshRenderPass.reset();
         }
+    } else {
+        appendRendererDiagnostic(shaderDiagnostic);
     }
 
     m_impl->frameUniforms = core::makeDefaultFrameUniforms(m_impl->width, m_impl->height);
@@ -620,6 +714,11 @@ uint32_t MetalRenderer::convertedGaussianCount() const
 MetalRendererStats MetalRenderer::rendererStats() const
 {
     return m_impl->timingState == nullptr ? MetalRendererStats{} : m_impl->timingState->snapshot();
+}
+
+const std::string& MetalRenderer::lastDiagnostic() const
+{
+    return m_impl->lastDiagnostic;
 }
 
 const std::string& MetalRenderer::loadedMeshPath() const

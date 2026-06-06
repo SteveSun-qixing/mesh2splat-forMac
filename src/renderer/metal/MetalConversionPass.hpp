@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace mesh2splat::metal {
 
@@ -25,7 +26,8 @@ public:
     bool initialize(
         MetalShaderLibrary& shaderLibrary,
         MetalPipelineCache& pipelineCache,
-        MetalRenderStateCache& renderStateCache);
+        MetalRenderStateCache& renderStateCache,
+        std::string* errorMessage = nullptr);
     bool isReady() const;
     bool encode(
         void* commandBuffer,
