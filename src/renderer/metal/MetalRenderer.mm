@@ -225,6 +225,35 @@ double commandBufferGpuMilliseconds(id<MTLCommandBuffer> commandBuffer)
     return static_cast<double>(endTime - startTime) * 1000.0;
 }
 
+std::string commandBufferStatusDescription(MTLCommandBufferStatus status)
+{
+    switch (status) {
+    case MTLCommandBufferStatusNotEnqueued:
+        return "not enqueued";
+    case MTLCommandBufferStatusEnqueued:
+        return "enqueued";
+    case MTLCommandBufferStatusCommitted:
+        return "committed";
+    case MTLCommandBufferStatusScheduled:
+        return "scheduled";
+    case MTLCommandBufferStatusCompleted:
+        return "completed";
+    case MTLCommandBufferStatusError:
+        return "error";
+    }
+
+    return "unknown";
+}
+
+std::string commandBufferErrorDescription(id<MTLCommandBuffer> commandBuffer)
+{
+    if (commandBuffer == nil || commandBuffer.error == nil) {
+        return std::string{};
+    }
+
+    return commandBuffer.error.localizedDescription.UTF8String;
+}
+
 double exponentialAverage(double currentAverage, double sample)
 {
     constexpr double kAlpha = 0.12;
@@ -325,6 +354,7 @@ struct PendingGaussianConversion {
     std::unique_ptr<MetalGaussianSortBuffer> sortBuffer;
     core::MeshBounds nextMeshBounds;
     std::string nextLoadedMeshPath;
+    std::string completionDiagnostic;
     std::atomic<bool> completed{false};
     std::atomic<bool> succeeded{false};
     std::atomic<uint32_t> convertedCount{0};
@@ -343,6 +373,7 @@ struct MetalRenderer::Impl {
         uint32_t previousSamplesPerTriangle = kDefaultMetalConversionSamplesPerTriangle);
     bool submitCurrentSceneConversion(bool revertsSamplesOnFailure = false, uint32_t previousSamplesPerTriangle = 0);
     void finalizePendingConversion();
+    void recordDiagnostic(const std::string& message);
 
     std::unique_ptr<MetalDeviceContext> deviceContext;
     MetalFrameResources frameResources;
@@ -375,6 +406,19 @@ struct MetalRenderer::Impl {
     std::shared_ptr<MetalRendererTimingState> timingState = std::make_shared<MetalRendererTimingState>();
 };
 
+void MetalRenderer::Impl::recordDiagnostic(const std::string& message)
+{
+    if (message.empty()) {
+        return;
+    }
+
+    if (!lastDiagnostic.empty()) {
+        lastDiagnostic += "\n";
+    }
+    lastDiagnostic += message;
+    NSLog(@"%s", message.c_str());
+}
+
 bool MetalRenderer::Impl::submitSceneConversion(
     const MetalSceneResources& conversionSceneResources,
     std::unique_ptr<MetalSceneResources>&& nextSceneResources,
@@ -383,10 +427,20 @@ bool MetalRenderer::Impl::submitSceneConversion(
     bool revertsSamplesOnFailure,
     uint32_t previousSamplesPerTriangle)
 {
-    if (deviceContext == nullptr || !deviceContext->isValid() ||
-        conversionPass == nullptr || !conversionPass->isReady() ||
-        !conversionSceneResources.isValid() ||
-        !core::gaussianCountFitsBuffer(conversionSceneResources.totalVertexCount())) {
+    if (deviceContext == nullptr || !deviceContext->isValid()) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: device context is invalid.");
+        return false;
+    }
+    if (conversionPass == nullptr || !conversionPass->isReady()) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: conversion pass is not ready.");
+        return false;
+    }
+    if (!conversionSceneResources.isValid()) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: scene resources are invalid.");
+        return false;
+    }
+    if (!core::gaussianCountFitsBuffer(conversionSceneResources.totalVertexCount())) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: scene vertex count exceeds gaussian buffer limits.");
         return false;
     }
 
@@ -394,10 +448,12 @@ bool MetalRenderer::Impl::submitSceneConversion(
     const std::size_t gaussianCapacity =
         conversionSceneResources.conversionCapacity(conversionSamplesPerTriangle);
     if (gaussianCapacity == 0) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: planned gaussian capacity is zero.");
         return false;
     }
 
     if (!core::gaussianCountFitsBuffer(gaussianCapacity)) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: planned gaussian capacity exceeds buffer limits.");
         return false;
     }
 
@@ -409,11 +465,13 @@ bool MetalRenderer::Impl::submitSceneConversion(
     nextConversion->previousSamplesPerTriangle = previousSamplesPerTriangle;
     nextConversion->gaussianBuffer = std::make_unique<MetalGaussianBuffer>(*deviceContext);
     if (!nextConversion->gaussianBuffer->create(gaussianCapacity, "Mesh2Splat Converted Gaussians")) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: failed to allocate gaussian output buffers.");
         return false;
     }
 
     nextConversion->sortBuffer = std::make_unique<MetalGaussianSortBuffer>(*deviceContext);
     if (!nextConversion->sortBuffer->create(gaussianCapacity, "Mesh2Splat Gaussian Sort")) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: failed to allocate gaussian sort buffers.");
         return false;
     }
 
@@ -421,6 +479,7 @@ bool MetalRenderer::Impl::submitSceneConversion(
     id<MTLCommandBuffer> commandBuffer =
         (__bridge id<MTLCommandBuffer>)commandScheduler.createCommandBuffer("Mesh2Splat Mesh Conversion");
     if (commandBuffer == nil) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: failed to create command buffer.");
         return false;
     }
 
@@ -429,19 +488,48 @@ bool MetalRenderer::Impl::submitSceneConversion(
             conversionSceneResources,
             *nextConversion->gaussianBuffer,
             conversionSamplesPerTriangle)) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: failed to encode conversion pass.");
         return false;
     }
 
     nextConversion->nextSceneResources = std::move(nextSceneResources);
     std::shared_ptr<MetalRendererTimingState> conversionTimingState = timingState;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
-        bool didSucceed = completedCommandBuffer.status == MTLCommandBufferStatusCompleted &&
-            nextConversion->gaussianBuffer != nullptr &&
-            nextConversion->gaussianBuffer->readGpuCounter();
-        const uint32_t nextConvertedCount = didSucceed ? nextConversion->gaussianBuffer->count() : 0;
-        didSucceed = didSucceed && nextConvertedCount > 0 &&
-            nextConversion->sortBuffer != nullptr &&
-            nextConvertedCount <= nextConversion->sortBuffer->capacity();
+        bool didSucceed = true;
+        if (completedCommandBuffer.status != MTLCommandBufferStatusCompleted) {
+            didSucceed = false;
+            nextConversion->completionDiagnostic =
+                "Metal mesh conversion command finished with status " +
+                commandBufferStatusDescription(completedCommandBuffer.status);
+            const std::string commandError = commandBufferErrorDescription(completedCommandBuffer);
+            if (!commandError.empty()) {
+                nextConversion->completionDiagnostic += ": " + commandError;
+            }
+        } else if (nextConversion->gaussianBuffer == nullptr) {
+            didSucceed = false;
+            nextConversion->completionDiagnostic =
+                "Metal mesh conversion completed without a gaussian output buffer.";
+        } else if (!nextConversion->gaussianBuffer->readGpuCounter()) {
+            didSucceed = false;
+            nextConversion->completionDiagnostic =
+                "Metal mesh conversion completed but the gaussian counter could not be read back.";
+        }
+
+        const uint32_t nextConvertedCount =
+            didSucceed && nextConversion->gaussianBuffer != nullptr ? nextConversion->gaussianBuffer->count() : 0;
+        if (didSucceed && nextConvertedCount == 0) {
+            didSucceed = false;
+            nextConversion->completionDiagnostic =
+                "Metal mesh conversion completed but produced zero gaussians.";
+        } else if (didSucceed && nextConversion->sortBuffer == nullptr) {
+            didSucceed = false;
+            nextConversion->completionDiagnostic =
+                "Metal mesh conversion completed without gaussian sort buffers.";
+        } else if (didSucceed && nextConvertedCount > nextConversion->sortBuffer->capacity()) {
+            didSucceed = false;
+            nextConversion->completionDiagnostic =
+                "Metal mesh conversion output exceeds gaussian sort buffer capacity.";
+        }
 
         nextConversion->convertedCount.store(nextConvertedCount, std::memory_order_relaxed);
         nextConversion->succeeded.store(didSucceed, std::memory_order_relaxed);
@@ -453,11 +541,16 @@ bool MetalRenderer::Impl::submitSceneConversion(
         nextConversion->completed.store(true, std::memory_order_release);
     }];
 
+    if (!commandScheduler.commit((__bridge void*)commandBuffer)) {
+        recordDiagnostic("Cannot submit Metal mesh conversion: failed to commit command buffer.");
+        return false;
+    }
+
     if (timingState != nullptr) {
         timingState->recordConversionSubmitted(elapsedMilliseconds(conversionCpuStart, Clock::now()));
     }
     pendingConversion = nextConversion;
-    return commandScheduler.commit((__bridge void*)commandBuffer);
+    return true;
 }
 
 bool MetalRenderer::Impl::submitCurrentSceneConversion(bool revertsSamplesOnFailure, uint32_t previousSamplesPerTriangle)
@@ -487,7 +580,10 @@ void MetalRenderer::Impl::finalizePendingConversion()
         if (conversion->revertsSamplesOnFailure) {
             conversionSamplesPerTriangle = conversion->previousSamplesPerTriangle;
         }
-        NSLog(@"Metal mesh conversion command did not produce gaussians.");
+        recordDiagnostic(
+            conversion->completionDiagnostic.empty()
+                ? "Metal mesh conversion command did not produce gaussians."
+                : conversion->completionDiagnostic);
         return;
     }
 
