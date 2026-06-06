@@ -30,6 +30,16 @@ bool canFitUInt32(std::size_t value)
     return value <= static_cast<std::size_t>(std::numeric_limits<uint32_t>::max());
 }
 
+float fallbackRangeSurfaceArea(const core::MeshData& meshData, const core::MeshDrawRange& range)
+{
+    if (meshData.surfaceArea <= 0.0f || meshData.vertices.empty()) {
+        return 0.0f;
+    }
+
+    return meshData.surfaceArea *
+        (static_cast<float>(range.vertexCount) / static_cast<float>(meshData.vertices.size()));
+}
+
 bool createDefaultBaseColorTexture(MetalTexture& texture)
 {
     const uint8_t whitePixel[4] = {255, 255, 255, 255};
@@ -158,7 +168,7 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
             0,
             static_cast<uint32_t>(meshData.vertices.size()),
             0,
-            0,
+            meshData.surfaceArea,
         });
     } else {
         drawRanges.reserve(meshData.drawRanges.size());
@@ -173,7 +183,7 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
                 range.vertexOffset,
                 range.vertexCount,
                 range.materialIndex,
-                0,
+                range.surfaceArea > 0.0f ? range.surfaceArea : fallbackRangeSurfaceArea(meshData, range),
             });
         }
     }

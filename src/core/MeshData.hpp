@@ -36,6 +36,7 @@ struct MeshDrawRange {
     uint32_t vertexOffset = 0;
     uint32_t vertexCount = 0;
     uint32_t materialIndex = 0;
+    float surfaceArea = 0.0f;
 };
 
 struct MeshBounds {

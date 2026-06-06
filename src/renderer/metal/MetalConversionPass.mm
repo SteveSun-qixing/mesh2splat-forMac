@@ -10,7 +10,9 @@
 #import <Metal/Metal.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace mesh2splat::metal {
 namespace {
@@ -22,8 +24,8 @@ struct MeshConversionParams {
     uint32_t maxGaussianCount = 0;
     float gaussianScale = 1.0f;
     float normalScale = 1.0f;
-    uint32_t samplesPerTriangle = 1;
-    uint32_t reserved = 0;
+    float areaSampleDensity = 0.0f;
+    uint32_t maxSamplesPerTriangle = 1;
 };
 
 static_assert(sizeof(MeshConversionParams) == 32, "MeshConversionParams must match the Metal shader layout.");
@@ -37,6 +39,21 @@ uint32_t normalizedSamplesPerTriangle(uint32_t samplesPerTriangle)
         return 4;
     }
     return 9;
+}
+
+float areaSampleDensity(const MetalMeshDrawRange& range, uint32_t triangleCount, uint32_t maxSamplesPerTriangle)
+{
+    if (range.surfaceArea <= 0.0f || triangleCount == 0 || maxSamplesPerTriangle <= 1) {
+        return 0.0f;
+    }
+
+    const double targetSampleCount = static_cast<double>(triangleCount) * static_cast<double>(maxSamplesPerTriangle);
+    const double density = targetSampleCount / static_cast<double>(range.surfaceArea);
+    if (!std::isfinite(density) || density <= 0.0) {
+        return 0.0f;
+    }
+
+    return static_cast<float>(std::min<double>(density, std::numeric_limits<float>::max()));
 }
 
 } // namespace
@@ -172,7 +189,8 @@ bool MetalConversionPass::encode(
             params.maxGaussianCount = static_cast<uint32_t>(gaussianBuffer.capacity());
             params.gaussianScale = 0.22f;
             params.normalScale = 1.0f;
-            params.samplesPerTriangle = sampleCount;
+            params.areaSampleDensity = areaSampleDensity(*range, triangleCount, sampleCount);
+            params.maxSamplesPerTriangle = sampleCount;
 
             [encoder setBytes:&params length:sizeof(params) atIndex:3];
             const MTLSize gridSize = MTLSizeMake(triangleCount * sampleCount, 1, 1);

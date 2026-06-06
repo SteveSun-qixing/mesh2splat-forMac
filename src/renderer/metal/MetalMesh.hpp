@@ -24,8 +24,10 @@ struct MetalMeshDrawRange {
     uint32_t vertexOffset = 0;
     uint32_t vertexCount = 0;
     uint32_t materialIndex = 0;
-    uint32_t reserved = 0;
+    float surfaceArea = 0.0f;
 };
+
+static_assert(sizeof(MetalMeshDrawRange) == 16, "MetalMeshDrawRange must stay a compact 16-byte metadata record.");
 
 class MetalMesh {
 public:

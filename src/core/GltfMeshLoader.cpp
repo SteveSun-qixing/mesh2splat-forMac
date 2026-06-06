@@ -530,6 +530,7 @@ bool appendPrimitive(
     const uint32_t materialIndex = static_cast<uint32_t>(mesh.materials.size());
     mesh.materials.push_back(material);
     const uint32_t vertexOffset = static_cast<uint32_t>(mesh.vertices.size());
+    float primitiveSurfaceArea = 0.0f;
     bool hasBounds = !mesh.vertices.empty();
     if (hasBounds) {
         hasBounds = true;
@@ -609,11 +610,12 @@ bool appendPrimitive(
             mesh.vertices.push_back(vertex);
         }
 
-        mesh.surfaceArea += triangleArea(worldPositions[0], worldPositions[1], worldPositions[2]);
+        primitiveSurfaceArea += triangleArea(worldPositions[0], worldPositions[1], worldPositions[2]);
     }
 
+    mesh.surfaceArea += primitiveSurfaceArea;
     const uint32_t vertexCount = static_cast<uint32_t>(mesh.vertices.size() - vertexOffset);
-    mesh.drawRanges.push_back(MeshDrawRange{vertexOffset, vertexCount, materialIndex});
+    mesh.drawRanges.push_back(MeshDrawRange{vertexOffset, vertexCount, materialIndex, primitiveSurfaceArea});
     if (mesh.name.empty()) {
         const std::string baseName = gltfMesh.name.empty() ? "mesh" : gltfMesh.name;
         mesh.name = baseName + "_" + std::to_string(meshIndex) + "_" + std::to_string(primitiveIndex);

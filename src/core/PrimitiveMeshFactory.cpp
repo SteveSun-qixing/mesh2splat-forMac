@@ -30,7 +30,7 @@ MeshData createPreviewTriangleMesh()
     mesh.vertices[2].normalizedUv[1] = 1.0f;
 
     mesh.materials.emplace_back();
-    mesh.drawRanges.push_back(MeshDrawRange{0, 3, 0});
+    mesh.drawRanges.push_back(MeshDrawRange{0, 3, 0, 0.78f});
     mesh.bounds.min[0] = -0.65f;
     mesh.bounds.min[1] = -0.55f;
     mesh.bounds.max[0] = 0.65f;

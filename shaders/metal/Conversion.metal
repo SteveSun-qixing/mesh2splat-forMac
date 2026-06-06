@@ -27,8 +27,8 @@ struct MeshConversionParams {
     uint maxGaussianCount;
     float gaussianScale;
     float normalScale;
-    uint samplesPerTriangle;
-    uint reserved;
+    float areaSampleDensity;
+    uint maxSamplesPerTriangle;
 };
 
 static float3 safeNormalize(float3 value, float3 fallback)
@@ -105,6 +105,17 @@ static float3 barycentricSample(uint sampleID, uint samplesPerTriangle)
     return samples[sampleID % 9];
 }
 
+static uint activeSamplesForTriangle(float triangleArea, constant MeshConversionParams& params)
+{
+    const uint maxSamplesPerTriangle = max(params.maxSamplesPerTriangle, 1u);
+    if (maxSamplesPerTriangle <= 1u || params.areaSampleDensity <= 0.0 || triangleArea <= 1.0e-12) {
+        return maxSamplesPerTriangle;
+    }
+
+    const uint areaSamples = max(uint(ceil(triangleArea * params.areaSampleDensity)), 1u);
+    return min(areaSamples, maxSamplesPerTriangle);
+}
+
 kernel void meshVertexConversionKernel(
     uint threadID [[thread_position_in_grid]],
     const device float* vertices [[buffer(0)]],
@@ -119,15 +130,10 @@ kernel void meshVertexConversionKernel(
     texture2d<float> emissiveTexture [[texture(4)]],
     sampler textureSampler [[sampler(0)]])
 {
-    const uint samplesPerTriangle = max(params.samplesPerTriangle, 1u);
-    const uint triangleID = threadID / samplesPerTriangle;
-    const uint sampleID = threadID - triangleID * samplesPerTriangle;
+    const uint maxSamplesPerTriangle = max(params.maxSamplesPerTriangle, 1u);
+    const uint triangleID = threadID / maxSamplesPerTriangle;
+    const uint sampleID = threadID - triangleID * maxSamplesPerTriangle;
     if (triangleID >= params.triangleCount) {
-        return;
-    }
-
-    const uint outputIndex = atomic_fetch_add_explicit(gaussianCounter, 1u, memory_order_relaxed);
-    if (outputIndex >= params.maxGaussianCount) {
         return;
     }
 
@@ -142,6 +148,12 @@ kernel void meshVertexConversionKernel(
     const float3 p2 = float3(vertices[base2 + 0], vertices[base2 + 1], vertices[base2 + 2]);
     const float3 edge0 = p1 - p0;
     const float3 edge1 = p2 - p0;
+    const float triangleArea = length(cross(edge0, edge1)) * 0.5;
+    const uint activeSamples = activeSamplesForTriangle(triangleArea, params);
+    if (sampleID >= activeSamples) {
+        return;
+    }
+
     const float3 faceNormal = safeNormalize(cross(edge0, edge1), float3(0.0, 1.0, 0.0));
     const float3 xAxis = safeNormalize(edge0, float3(1.0, 0.0, 0.0));
     const float3 yAxis = safeNormalize(cross(faceNormal, xAxis), float3(0.0, 1.0, 0.0));
@@ -149,7 +161,7 @@ kernel void meshVertexConversionKernel(
     const float scaleX = max(length(edge0) * params.gaussianScale, 1.0e-7);
     const float scaleY = max(length(edge1) * params.gaussianScale, 1.0e-7);
 
-    const float3 barycentric = barycentricSample(sampleID, samplesPerTriangle);
+    const float3 barycentric = barycentricSample(sampleID, activeSamples);
     const float3 position = p0 * barycentric.x + p1 * barycentric.y + p2 * barycentric.z;
     const float3 n0 = safeNormalize(float3(vertices[base0 + 3], vertices[base0 + 4], vertices[base0 + 5]), faceNormal);
     const float3 n1 = safeNormalize(float3(vertices[base1 + 3], vertices[base1 + 4], vertices[base1 + 5]), faceNormal);
@@ -181,6 +193,11 @@ kernel void meshVertexConversionKernel(
     const float3 normal = safeNormalize(
         tangentBasis * normalSample.x + bitangentBasis * normalSample.y + vertexNormal * normalSample.z,
         faceNormal);
+
+    const uint outputIndex = atomic_fetch_add_explicit(gaussianCounter, 1u, memory_order_relaxed);
+    if (outputIndex >= params.maxGaussianCount) {
+        return;
+    }
 
     GaussianRecord gaussian;
     gaussian.position = float4(position, 1.0);
