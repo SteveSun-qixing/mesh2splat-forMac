@@ -8,9 +8,9 @@
 
 namespace mesh2splat::core {
 
-class NativeCamera {
+class CameraController {
 public:
-    NativeCamera();
+    CameraController();
 
     void resize(uint32_t width, uint32_t height);
     void frameBounds(const MeshBounds& bounds);

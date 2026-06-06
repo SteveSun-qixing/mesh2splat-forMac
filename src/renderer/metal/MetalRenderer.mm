@@ -2,9 +2,9 @@
 
 #include "core/FrameData.hpp"
 #include "core/GaussianData.hpp"
-#include "core/GltfMeshLoader.hpp"
-#include "core/NativeCamera.hpp"
+#include "core/CameraController.hpp"
 #include "core/PrimitiveMeshFactory.hpp"
+#include "io/GltfLoader.hpp"
 #include "MetalCommandScheduler.hpp"
 #include "MetalConversionPass.hpp"
 #include "MetalDeviceContext.hpp"
@@ -367,7 +367,7 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     core::FrameUniforms frameUniforms;
     core::Matrix4 lastSortedViewMatrix;
-    core::NativeCamera camera;
+    core::CameraController camera;
     std::string loadedMeshPath;
     std::string lastDiagnostic;
     RenderViewMode viewMode = RenderViewMode::Combined;
@@ -692,8 +692,8 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
         return false;
     }
 
-    core::GltfMeshLoadResult loadResult;
-    if (!core::loadGltfMeshData(filePath, loadResult)) {
+    io::GltfSceneLoadResult loadResult;
+    if (!io::loadGltfScene(filePath, loadResult)) {
         NSLog(@"Failed to load mesh: %s", loadResult.error.c_str());
         return false;
     }

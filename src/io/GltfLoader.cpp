@@ -1,4 +1,4 @@
-#include "GltfMeshLoader.hpp"
+#include "io/GltfLoader.hpp"
 
 #include "tiny_gltf.h"
 
@@ -15,8 +15,16 @@
 #include <utility>
 #include <vector>
 
-namespace mesh2splat::core {
+namespace mesh2splat::io {
 namespace {
+
+using core::MeshBounds;
+using core::MeshData;
+using core::MeshDrawRange;
+using core::MeshImageData;
+using core::MeshMaterial;
+using core::MeshVertex;
+using core::aggregateSceneBounds;
 
 struct Vec2 {
     float x = 0.0f;
@@ -626,7 +634,7 @@ bool appendPrimitive(
 
 } // namespace
 
-bool loadGltfMeshData(const std::string& filePath, GltfMeshLoadResult& result)
+bool loadGltfScene(const std::string& filePath, GltfSceneLoadResult& result)
 {
     result = {};
     if (filePath.empty()) {
@@ -673,4 +681,4 @@ bool loadGltfMeshData(const std::string& filePath, GltfMeshLoadResult& result)
     return true;
 }
 
-} // namespace mesh2splat::core
+} // namespace mesh2splat::io

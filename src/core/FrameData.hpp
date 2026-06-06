@@ -29,7 +29,7 @@ struct alignas(16) FrameUniforms {
     uint32_t reserved = 0;
 };
 
-static_assert(sizeof(FrameUniforms) % 16 == 0, "FrameUniforms must stay 16-byte aligned for Metal.");
+static_assert(sizeof(FrameUniforms) % 16 == 0, "FrameUniforms must stay 16-byte aligned for GPU constant buffers.");
 
 inline FrameUniforms makeDefaultFrameUniforms(uint32_t width, uint32_t height)
 {

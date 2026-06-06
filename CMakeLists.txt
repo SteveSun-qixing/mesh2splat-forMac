@@ -133,14 +133,16 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.hpp
         ${CMAKE_SOURCE_DIR}/src/core/FrameData.hpp
         ${CMAKE_SOURCE_DIR}/src/core/GaussianData.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/GltfMeshLoader.cpp
-        ${CMAKE_SOURCE_DIR}/src/core/GltfMeshLoader.hpp
+        ${CMAKE_SOURCE_DIR}/src/core/CameraController.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/CameraController.hpp
         ${CMAKE_SOURCE_DIR}/src/core/MeshData.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/NativeCamera.cpp
-        ${CMAKE_SOURCE_DIR}/src/core/NativeCamera.hpp
         ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.cpp
         ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.hpp
         ${CMAKE_SOURCE_DIR}/src/core/SceneData.hpp
+        ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.cpp
+        ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.hpp
+        ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.cpp
+        ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.hpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_write_impl.cpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp

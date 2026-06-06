@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -7,6 +9,7 @@
 namespace mesh2splat::core {
 
 constexpr uint32_t kDefaultMaxGaussianCount = 7000000;
+constexpr float kSphericalHarmonicC0 = 0.28209479177387814f;
 
 struct GaussianRecord {
     float position[4] = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -33,6 +36,45 @@ inline bool gaussianCountFitsBuffer(std::size_t count)
 inline std::size_t gaussianBufferByteSize(std::size_t count)
 {
     return gaussianCountFitsBuffer(count) ? count * sizeof(GaussianRecord) : 0;
+}
+
+inline float gaussianColorToSh0(float linearColor)
+{
+    return (linearColor - 0.5f) / kSphericalHarmonicC0;
+}
+
+inline float gaussianAlphaToOpacityLogit(float alpha)
+{
+    const float clampedAlpha = std::clamp(alpha, 1.0e-6f, 1.0f - 1.0e-6f);
+    return std::log(clampedAlpha / (1.0f - clampedAlpha));
+}
+
+inline float gaussianPositiveScaleToLog(float scale, float multiplier)
+{
+    constexpr float kMinimumScale = 1.0e-20f;
+    return std::log(std::max(scale * multiplier, kMinimumScale));
+}
+
+inline bool isFiniteGaussianRecord(const GaussianRecord& gaussian)
+{
+    const float* values[] = {
+        gaussian.position,
+        gaussian.color,
+        gaussian.scale,
+        gaussian.normal,
+        gaussian.rotation,
+        gaussian.pbr,
+    };
+
+    for (const float* slot : values) {
+        for (int component = 0; component < 4; ++component) {
+            if (!std::isfinite(slot[component])) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 } // namespace mesh2splat::core

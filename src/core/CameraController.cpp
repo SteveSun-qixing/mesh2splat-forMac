@@ -1,4 +1,4 @@
-#include "NativeCamera.hpp"
+#include "CameraController.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -118,7 +118,7 @@ Matrix4 lookAt(Vec3 eye, Vec3 center, Vec3 worldUp)
     return result;
 }
 
-Matrix4 perspectiveMetal(float verticalFovDegrees, float aspectRatio, float nearPlane, float farPlane)
+Matrix4 perspectiveDepthZeroToOne(float verticalFovDegrees, float aspectRatio, float nearPlane, float farPlane)
 {
     Matrix4 result{};
     std::fill(std::begin(result.values), std::end(result.values), 0.0f);
@@ -140,15 +140,15 @@ bool isKeyDown(const InputState& inputState, std::size_t key)
 
 } // namespace
 
-NativeCamera::NativeCamera() = default;
+CameraController::CameraController() = default;
 
-void NativeCamera::resize(uint32_t width, uint32_t height)
+void CameraController::resize(uint32_t width, uint32_t height)
 {
     m_width = std::max<uint32_t>(width, 1);
     m_height = std::max<uint32_t>(height, 1);
 }
 
-void NativeCamera::frameBounds(const MeshBounds& bounds)
+void CameraController::frameBounds(const MeshBounds& bounds)
 {
     const Vec3 center{
         (bounds.min[0] + bounds.max[0]) * 0.5f,
@@ -173,7 +173,7 @@ void NativeCamera::frameBounds(const MeshBounds& bounds)
     m_movementScale = std::max(radius, 1.0f);
 }
 
-void NativeCamera::update(const InputState& inputState, double deltaTimeSeconds)
+void CameraController::update(const InputState& inputState, double deltaTimeSeconds)
 {
     if (inputState.mouseButtonsDown[1]) {
         m_yawDegrees += static_cast<float>(inputState.mouseDeltaX) * 0.12f;
@@ -219,14 +219,14 @@ void NativeCamera::update(const InputState& inputState, double deltaTimeSeconds)
     m_position[2] += movement.z * speed;
 }
 
-void NativeCamera::writeFrameUniforms(FrameUniforms& uniforms) const
+void CameraController::writeFrameUniforms(FrameUniforms& uniforms) const
 {
     const Vec3 eye{m_position[0], m_position[1], m_position[2]};
     const Vec3 forward = cameraForward(m_yawDegrees, m_pitchDegrees);
     const Matrix4 model = identityMatrix();
     const Matrix4 view = lookAt(eye, add(eye, forward), Vec3{0.0f, 1.0f, 0.0f});
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    const Matrix4 projection = perspectiveMetal(m_verticalFovDegrees, aspect, m_nearPlane, m_farPlane);
+    const Matrix4 projection = perspectiveDepthZeroToOne(m_verticalFovDegrees, aspect, m_nearPlane, m_farPlane);
     const Matrix4 modelViewProjection = multiply(projection, multiply(view, model));
 
     std::memcpy(uniforms.modelMatrix.values, model.values, sizeof(model.values));
