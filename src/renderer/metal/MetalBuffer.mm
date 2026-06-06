@@ -98,6 +98,35 @@ bool MetalBuffer::createPrivateWithData(std::size_t size, const void* initialDat
         return false;
     }
 
+    MetalResourceUploadBatch uploadBatch(
+        (__bridge void*)m_impl->device,
+        (__bridge void*)m_impl->commandQueue,
+        "Mesh2Splat Private Buffer Upload",
+        "Mesh2Splat Private Buffer Upload Blit");
+    if (!createPrivateWithData(size, initialData, uploadBatch, label)) {
+        return false;
+    }
+
+    if (!uploadBatch.commitAndWait()) {
+        m_impl->buffer = nil;
+        m_impl->bufferSize = 0;
+        m_impl->cpuAccessible = false;
+        return false;
+    }
+
+    return true;
+}
+
+bool MetalBuffer::createPrivateWithData(
+    std::size_t size,
+    const void* initialData,
+    MetalResourceUploadBatch& uploadBatch,
+    const char* label)
+{
+    if (m_impl->device == nil || size == 0 || initialData == nullptr || !uploadBatch.isValid()) {
+        return false;
+    }
+
     id<MTLBuffer> privateBuffer = [m_impl->device newBufferWithLength:size options:MTLResourceStorageModePrivate];
     if (privateBuffer == nil) {
         return false;
@@ -107,8 +136,7 @@ bool MetalBuffer::createPrivateWithData(std::size_t size, const void* initialDat
         privateBuffer.label = [NSString stringWithUTF8String:label];
     }
 
-    MetalResourceUploader uploader((__bridge void*)m_impl->device, (__bridge void*)m_impl->commandQueue);
-    if (!uploader.uploadBufferToPrivate(initialData, size, (__bridge void*)privateBuffer, label)) {
+    if (!uploadBatch.uploadBufferToPrivate(initialData, size, (__bridge void*)privateBuffer, label)) {
         return false;
     }
 

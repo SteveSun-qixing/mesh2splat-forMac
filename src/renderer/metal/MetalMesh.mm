@@ -2,6 +2,7 @@
 
 #include "MetalBuffer.hpp"
 #include "MetalDeviceContext.hpp"
+#include "MetalResourceUploader.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -475,18 +476,27 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
         materialEmissiveTextureIndices.push_back(0);
     }
 
+    MetalResourceUploadBatch staticBufferUpload(
+        m_impl->deviceContext->nativeDevice(),
+        m_impl->deviceContext->nativeCommandQueue(),
+        "Mesh2Splat Mesh Static Buffer Upload",
+        "Mesh2Splat Mesh Static Buffer Upload Blit");
     if (!vertexBuffer->createPrivateWithData(
             meshData.vertices.size() * sizeof(core::MeshVertex),
             meshData.vertices.data(),
+            staticBufferUpload,
             vertexLabel.c_str()) ||
         !drawRangeBuffer->createPrivateWithData(
             drawRanges.size() * sizeof(MetalMeshDrawRange),
             drawRanges.data(),
+            staticBufferUpload,
             drawRangeLabel.c_str()) ||
         !materialBuffer->createPrivateWithData(
             materials.size() * sizeof(MetalMeshMaterial),
             materials.data(),
-            materialLabel.c_str())) {
+            staticBufferUpload,
+            materialLabel.c_str()) ||
+        !staticBufferUpload.commitAndWait()) {
         return false;
     }
 
