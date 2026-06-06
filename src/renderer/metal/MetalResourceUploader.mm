@@ -1,5 +1,7 @@
 #include "MetalResourceUploader.hpp"
 
+#include "MetalCommandScheduler.hpp"
+
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 
@@ -37,7 +39,9 @@ bool MetalResourceUploader::uploadBufferToPrivate(
     }
     std::memcpy(stagingBuffer.contents, data, size);
 
-    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+    MetalCommandScheduler scheduler((__bridge void*)commandQueue);
+    id<MTLCommandBuffer> commandBuffer =
+        (__bridge id<MTLCommandBuffer>)scheduler.createCommandBuffer("Mesh2Splat Private Buffer Upload");
     if (commandBuffer == nil) {
         return false;
     }
@@ -47,7 +51,6 @@ bool MetalResourceUploader::uploadBufferToPrivate(
         return false;
     }
 
-    commandBuffer.label = @"Mesh2Splat Private Buffer Upload";
     blitEncoder.label = @"Mesh2Splat Private Buffer Upload Blit";
     [blitEncoder copyFromBuffer:stagingBuffer
                    sourceOffset:0
@@ -55,9 +58,7 @@ bool MetalResourceUploader::uploadBufferToPrivate(
               destinationOffset:0
                            size:size];
     [blitEncoder endEncoding];
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
-    return commandBuffer.status == MTLCommandBufferStatusCompleted;
+    return scheduler.commitAndWait((__bridge void*)commandBuffer);
 }
 
 bool MetalResourceUploader::uploadTexture2DToPrivate(
@@ -103,7 +104,9 @@ bool MetalResourceUploader::uploadTexture2DToPrivate(
             copyBytesPerRow);
     }
 
-    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+    MetalCommandScheduler scheduler((__bridge void*)commandQueue);
+    id<MTLCommandBuffer> commandBuffer =
+        (__bridge id<MTLCommandBuffer>)scheduler.createCommandBuffer("Mesh2Splat Private Texture Upload");
     if (commandBuffer == nil) {
         return false;
     }
@@ -113,7 +116,6 @@ bool MetalResourceUploader::uploadTexture2DToPrivate(
         return false;
     }
 
-    commandBuffer.label = @"Mesh2Splat Private Texture Upload";
     blitEncoder.label = @"Mesh2Splat Private Texture Upload Blit";
     [blitEncoder copyFromBuffer:stagingBuffer
                    sourceOffset:0
@@ -125,9 +127,7 @@ bool MetalResourceUploader::uploadTexture2DToPrivate(
                destinationLevel:mipLevel
               destinationOrigin:MTLOriginMake(0, 0, 0)];
     [blitEncoder endEncoding];
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
-    return commandBuffer.status == MTLCommandBufferStatusCompleted;
+    return scheduler.commitAndWait((__bridge void*)commandBuffer);
 }
 
 } // namespace mesh2splat::metal

@@ -5,6 +5,7 @@
 #include "core/GltfMeshLoader.hpp"
 #include "core/NativeCamera.hpp"
 #include "core/PrimitiveMeshFactory.hpp"
+#include "MetalCommandScheduler.hpp"
 #include "MetalConversionPass.hpp"
 #include "MetalDeviceContext.hpp"
 #include "MetalFrameUniformBuffer.hpp"
@@ -336,14 +337,13 @@ bool MetalRenderer::Impl::submitSceneConversion(
         return false;
     }
 
-    id<MTLCommandQueue> commandQueue =
-        (__bridge id<MTLCommandQueue>)deviceContext->nativeCommandQueue();
-    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+    MetalCommandScheduler commandScheduler(deviceContext->nativeCommandQueue());
+    id<MTLCommandBuffer> commandBuffer =
+        (__bridge id<MTLCommandBuffer>)commandScheduler.createCommandBuffer("Mesh2Splat Mesh Conversion");
     if (commandBuffer == nil) {
         return false;
     }
 
-    commandBuffer.label = @"Mesh2Splat Mesh Conversion";
     if (!conversionPass->encode(
             (__bridge void*)commandBuffer,
             conversionSceneResources,
@@ -377,8 +377,7 @@ bool MetalRenderer::Impl::submitSceneConversion(
         timingState->recordConversionSubmitted(elapsedMilliseconds(conversionCpuStart, Clock::now()));
     }
     pendingConversion = nextConversion;
-    [commandBuffer commit];
-    return true;
+    return commandScheduler.commit((__bridge void*)commandBuffer);
 }
 
 bool MetalRenderer::Impl::submitCurrentSceneConversion(bool revertsSamplesOnFailure, uint32_t previousSamplesPerTriangle)
@@ -660,14 +659,13 @@ void MetalRenderer::draw(
 
     auto* descriptor = (__bridge MTLRenderPassDescriptor*)renderPassDescriptor;
     id<CAMetalDrawable> metalDrawable = (__bridge id<CAMetalDrawable>)drawable;
-    id<MTLCommandQueue> commandQueue =
-        (__bridge id<MTLCommandQueue>)m_impl->deviceContext->nativeCommandQueue();
-    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+    MetalCommandScheduler commandScheduler(m_impl->deviceContext->nativeCommandQueue());
+    id<MTLCommandBuffer> commandBuffer =
+        (__bridge id<MTLCommandBuffer>)commandScheduler.createCommandBuffer("Mesh2Splat Metal Frame");
     if (commandBuffer == nil) {
         dispatch_semaphore_signal(m_impl->frameSemaphore);
         return;
     }
-    commandBuffer.label = @"Mesh2Splat Metal Frame";
     dispatch_semaphore_t frameSemaphore = m_impl->frameSemaphore;
     std::shared_ptr<MetalRendererTimingState> frameTimingState = m_impl->timingState;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
@@ -712,7 +710,7 @@ void MetalRenderer::draw(
                 false,
                 false);
         }
-        [commandBuffer commit];
+        commandScheduler.commit((__bridge void*)commandBuffer);
         return;
     }
     encoder.label = @"Mesh2Splat Drawable Render";
@@ -750,7 +748,7 @@ void MetalRenderer::draw(
             renderGaussiansThisFrame);
     }
     [commandBuffer presentDrawable:metalDrawable];
-    [commandBuffer commit];
+    commandScheduler.commit((__bridge void*)commandBuffer);
 }
 
 } // namespace mesh2splat::metal
