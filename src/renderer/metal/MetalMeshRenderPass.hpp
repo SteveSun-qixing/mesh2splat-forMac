@@ -2,6 +2,7 @@
 
 #include "MetalTexture.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -12,6 +13,30 @@ class MetalPipelineCache;
 class MetalRenderStateCache;
 class MetalSceneResources;
 class MetalShaderLibrary;
+
+struct MetalMeshRenderPassDiagnostics {
+    bool ready = false;
+    bool sceneValid = false;
+    bool emptyScene = false;
+    std::size_t meshCount = 0;
+    std::size_t totalVertexCount = 0;
+    std::size_t totalDrawRangeCount = 0;
+    std::size_t totalMaterialCount = 0;
+    std::size_t totalTextureCount = 0;
+    std::size_t encodedMeshCount = 0;
+    std::size_t encodedDrawRangeCount = 0;
+    std::size_t skippedMeshCount = 0;
+    std::size_t skippedDrawRangeCount = 0;
+    std::size_t drawnVertexCount = 0;
+    std::size_t boundMaterialTextureCount = 0;
+    std::size_t missingMaterialTextureCount = 0;
+    bool depthEnabled = true;
+    bool depthWriteEnabled = true;
+    std::string colorFormat;
+    std::string depthFormat;
+    std::string debugLabel;
+    std::string lastMessage;
+};
 
 class MetalMeshRenderPass {
 public:
@@ -33,6 +58,8 @@ public:
         std::string* errorMessage = nullptr);
 
     bool isReady() const;
+    const std::string& lastDiagnostic() const;
+    MetalMeshRenderPassDiagnostics lastEncodeDiagnostics() const;
     void encode(void* renderCommandEncoder, const MetalSceneResources& sceneResources, void* frameUniformBuffer) const;
 
 private:
