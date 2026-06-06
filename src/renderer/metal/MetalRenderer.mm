@@ -5,6 +5,7 @@
 #include "core/CameraController.hpp"
 #include "core/PrimitiveMeshFactory.hpp"
 #include "io/GltfLoader.hpp"
+#include "io/PlyWriter.hpp"
 #include "MetalCommandScheduler.hpp"
 #include "MetalConversionPass.hpp"
 #include "MetalDeviceContext.hpp"
@@ -1353,8 +1354,6 @@ mesh2splat::renderer::RendererExportPlyResult MetalRenderer::exportPly(
     }
     if (isConvertingGaussians()) {
         result.diagnostic = "PLY export is waiting for Metal mesh conversion to finish.";
-        m_impl->pendingExportPath = request.filePath;
-        m_impl->exportPending = true;
         m_impl->recordDiagnostic(result.diagnostic);
         return result;
     }
@@ -1364,12 +1363,39 @@ mesh2splat::renderer::RendererExportPlyResult MetalRenderer::exportPly(
         return result;
     }
 
-    m_impl->pendingExportPath = request.filePath;
-    m_impl->exportPending = true;
     m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Exporting);
-    result.diagnostic = "PLY export hook is connected, but Metal gaussian readback/writeback is not implemented yet.";
+    std::vector<core::GaussianRecord> gaussians;
+    if (!m_impl->gaussianBuffer->readback(gaussians)) {
+        result.diagnostic = m_impl->gaussianBuffer->lastErrorMessage().empty()
+            ? "PLY export failed: Metal gaussian readback did not complete."
+            : "PLY export failed: " + m_impl->gaussianBuffer->lastErrorMessage();
+        m_impl->recordDiagnostic(result.diagnostic);
+        m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
+        return result;
+    }
+
+    io::GaussianPlyWriteOptions writeOptions;
+    writeOptions.format = static_cast<io::GaussianPlyFormat>(request.format);
+    writeOptions.scaleMultiplier = request.scaleMultiplier;
+    writeOptions.skipInvalidRecords = request.skipInvalidRecords;
+
+    io::GaussianPlyWriteResult writeResult;
+    result.requestedCount = gaussians.size();
+    result.exported = io::writeGaussianPly(request.filePath, gaussians, writeOptions, &writeResult);
+    result.writtenCount = writeResult.writtenCount;
+    if (result.exported) {
+        result.diagnostic =
+            "Exported " + std::to_string(writeResult.writtenCount) +
+            " Metal gaussians to PLY: " + request.filePath;
+        if (!writeResult.warning.empty()) {
+            result.diagnostic += "\n" + writeResult.warning;
+        }
+    } else {
+        result.diagnostic = writeResult.error.empty()
+            ? "PLY export failed while writing output."
+            : "PLY export failed: " + writeResult.error;
+    }
     m_impl->recordDiagnostic(result.diagnostic);
-    m_impl->exportPending = false;
     m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
     return result;
 }

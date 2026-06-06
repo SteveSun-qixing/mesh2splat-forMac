@@ -1,6 +1,7 @@
 #include "MetalGaussianBuffer.hpp"
 
 #include "MetalBuffer.hpp"
+#include "MetalCommandScheduler.hpp"
 #include "MetalDeviceContext.hpp"
 #include "MetalResourceUploader.hpp"
 
@@ -453,6 +454,68 @@ bool MetalGaussianBuffer::readGpuCounter()
     }
 
     m_impl->count = count;
+    m_impl->clearError();
+    return true;
+}
+
+bool MetalGaussianBuffer::readback(std::vector<core::GaussianRecord>& gaussians)
+{
+    gaussians.clear();
+    if (m_impl->deviceContext == nullptr || !m_impl->deviceContext->isValid()) {
+        return m_impl->fail("Metal gaussian readback failed: device context is unavailable.");
+    }
+    if (!isValid()) {
+        return m_impl->fail("Metal gaussian readback failed: gaussian buffer is not valid.");
+    }
+    if (m_impl->count == 0) {
+        m_impl->updateMetadata(nullptr, 0);
+        m_impl->clearError();
+        return true;
+    }
+    if (!core::gaussianCountFitsBuffer(m_impl->count)) {
+        return m_impl->fail("Metal gaussian readback failed: gaussian count exceeds buffer limits.");
+    }
+
+    const std::size_t readbackBytes = core::gaussianBufferByteSize(m_impl->count);
+    if (readbackBytes == 0 || readbackBytes > m_impl->buffer->size()) {
+        return m_impl->fail("Metal gaussian readback failed: requested byte range is outside the gaussian buffer.");
+    }
+
+    MetalBuffer readbackBuffer(*m_impl->deviceContext);
+    if (!readbackBuffer.createShared(readbackBytes, nullptr, "Mesh2Splat Gaussian Readback")) {
+        return m_impl->fail("Metal gaussian readback failed: CPU readback buffer allocation failed.");
+    }
+
+    MetalCommandScheduler commandScheduler(m_impl->deviceContext->nativeCommandQueue());
+    void* commandBuffer = commandScheduler.createCommandBuffer("Mesh2Splat Gaussian Readback");
+    if (commandBuffer == nullptr) {
+        return m_impl->fail("Metal gaussian readback failed: command buffer creation failed.");
+    }
+    if (!m_impl->buffer->encodeCopyTo(commandBuffer, readbackBuffer, readbackBytes)) {
+        return m_impl->fail("Metal gaussian readback failed: buffer copy could not be encoded.");
+    }
+    if (!commandScheduler.commitAndWait(commandBuffer)) {
+        const MetalCommandBufferDiagnostics diagnostics =
+            MetalCommandScheduler::commandBufferDiagnostics(commandBuffer);
+        std::string message =
+            "Metal gaussian readback failed: command buffer did not complete";
+        if (!diagnostics.statusDescription.empty()) {
+            message += " (" + diagnostics.statusDescription + ")";
+        }
+        if (!diagnostics.errorDescription.empty()) {
+            message += ": " + diagnostics.errorDescription;
+        }
+        message += ".";
+        return m_impl->fail(std::move(message));
+    }
+
+    gaussians.resize(m_impl->count);
+    if (!readbackBuffer.read(gaussians.data(), readbackBytes)) {
+        gaussians.clear();
+        return m_impl->fail("Metal gaussian readback failed: CPU buffer copy failed.");
+    }
+
+    m_impl->updateMetadata(gaussians.data(), gaussians.size());
     m_impl->clearError();
     return true;
 }

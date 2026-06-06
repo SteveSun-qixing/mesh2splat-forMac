@@ -75,6 +75,7 @@ public:
     bool encodeResetGpuCounter(void* commandBuffer);
     bool encodeReadbackGpuCounter(void* commandBuffer);
     bool readGpuCounter();
+    bool readback(std::vector<core::GaussianRecord>& gaussians);
     void reset();
 
     bool isValid() const;
