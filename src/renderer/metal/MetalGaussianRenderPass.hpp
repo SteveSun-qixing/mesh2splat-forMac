@@ -2,6 +2,8 @@
 
 #include "MetalTexture.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -13,6 +15,34 @@ class MetalDeviceContext;
 class MetalPipelineCache;
 class MetalRenderStateCache;
 class MetalShaderLibrary;
+
+struct MetalGaussianRenderPassDiagnostics {
+    bool ready = false;
+    bool gaussianBufferValid = false;
+    bool sortBufferValid = false;
+    bool usedSortedIndices = false;
+    bool usedIdentityIndices = false;
+    bool depthTestEnabled = true;
+    bool depthWriteEnabled = false;
+    std::size_t gaussianCapacity = 0;
+    uint32_t gaussianCount = 0;
+    std::size_t sortCapacity = 0;
+    uint32_t sortCount = 0;
+    uint32_t instanceCount = 0;
+    std::size_t gaussianResourceBytes = 0;
+    std::size_t sortResourceBytes = 0;
+    std::size_t identityIndexCapacity = 0;
+    std::size_t identityIndexBytes = 0;
+    std::string colorFormat;
+    std::string depthFormat;
+    std::string blendMode;
+    std::string alphaBlendDescription;
+    std::string additiveBlendDescription;
+    std::string indexSource;
+    std::string indexFallbackReason;
+    std::string debugLabel;
+    std::string lastMessage;
+};
 
 class MetalGaussianRenderPass {
 public:
@@ -34,6 +64,8 @@ public:
         std::string* errorMessage = nullptr);
 
     bool isReady() const;
+    const std::string& lastDiagnostic() const;
+    MetalGaussianRenderPassDiagnostics lastEncodeDiagnostics() const;
     void encode(
         void* renderCommandEncoder,
         const MetalGaussianBuffer& gaussianBuffer,
