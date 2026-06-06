@@ -2,6 +2,7 @@
 
 #include "MetalBuffer.hpp"
 #include "MetalDeviceContext.hpp"
+#include "MetalResourceUploader.hpp"
 
 #include <string>
 
@@ -39,15 +40,22 @@ bool MetalGaussianBuffer::create(std::size_t capacity, const char* label)
     auto counterBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto counterReadbackBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     const uint32_t initialCount = 0;
+    MetalResourceUploadBatch uploadBatch(
+        m_impl->deviceContext->nativeDevice(),
+        m_impl->deviceContext->nativeCommandQueue(),
+        "Mesh2Splat Gaussian Counter Upload",
+        "Mesh2Splat Gaussian Counter Upload Blit");
     if (!buffer->createPrivate(core::gaussianBufferByteSize(capacity), baseLabel.c_str()) ||
         !counterBuffer->createPrivateWithData(
             sizeof(initialCount),
             &initialCount,
+            uploadBatch,
             (baseLabel + " Count").c_str()) ||
         !counterReadbackBuffer->createShared(
             sizeof(initialCount),
             &initialCount,
-            (baseLabel + " Count Readback").c_str())) {
+            (baseLabel + " Count Readback").c_str()) ||
+        !uploadBatch.commitAndWait()) {
         return false;
     }
 
@@ -71,18 +79,26 @@ bool MetalGaussianBuffer::upload(const std::vector<core::GaussianRecord>& gaussi
     auto counterBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto counterReadbackBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     const uint32_t initialCount = static_cast<uint32_t>(gaussians.size());
+    MetalResourceUploadBatch uploadBatch(
+        m_impl->deviceContext->nativeDevice(),
+        m_impl->deviceContext->nativeCommandQueue(),
+        "Mesh2Splat Gaussian Buffer Upload",
+        "Mesh2Splat Gaussian Buffer Upload Blit");
     if (!buffer->createPrivateWithData(
             core::gaussianBufferByteSize(gaussians.size()),
             gaussians.data(),
+            uploadBatch,
             baseLabel.c_str()) ||
         !counterBuffer->createPrivateWithData(
             sizeof(initialCount),
             &initialCount,
+            uploadBatch,
             (baseLabel + " Count").c_str()) ||
         !counterReadbackBuffer->createShared(
             sizeof(initialCount),
             &initialCount,
-            (baseLabel + " Count Readback").c_str())) {
+            (baseLabel + " Count Readback").c_str()) ||
+        !uploadBatch.commitAndWait()) {
         reset();
         return false;
     }
