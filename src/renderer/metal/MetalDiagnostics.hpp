@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -57,6 +58,87 @@ struct MetalDiagnosticSummary {
     bool hasErrors() const { return errorCount > 0; }
 };
 
+enum class MetalBackendRuntimeState : uint8_t {
+    Unknown,
+    Unavailable,
+    Ready,
+    Loading,
+    Converting,
+    Rendering,
+    Exporting,
+    Failed,
+};
+
+struct MetalBackendStatus {
+    MetalBackendRuntimeState state = MetalBackendRuntimeState::Unknown;
+    std::string backendName = "metal";
+    std::string deviceName;
+    bool supported = false;
+    bool initialized = false;
+    bool shaderLibraryReady = false;
+    bool pipelineCacheReady = false;
+    bool sceneLoaded = false;
+    bool hasGaussians = false;
+};
+
+struct MetalFrameTimingDiagnostics {
+    uint64_t submittedFrameCount = 0;
+    uint64_t completedFrameCount = 0;
+    uint64_t failedFrameCount = 0;
+    double lastCpuEncodeMs = 0.0;
+    double averageCpuEncodeMs = 0.0;
+    double lastGpuMs = 0.0;
+    double averageGpuMs = 0.0;
+    bool lastRenderedMesh = false;
+    bool lastRenderedGaussians = false;
+    bool lastSortedGaussians = false;
+};
+
+struct MetalResourceDiagnostics {
+    uint64_t frameUniformBytes = 0;
+    uint64_t sceneBytes = 0;
+    uint64_t gaussianBytes = 0;
+    uint64_t gaussianSortBytes = 0;
+    uint64_t pendingConversionBytes = 0;
+    uint64_t trackedBytes = 0;
+    uint32_t meshCount = 0;
+    uint32_t materialCount = 0;
+    uint32_t textureCount = 0;
+    uint32_t gaussianCount = 0;
+
+    bool empty() const { return trackedBytes == 0 && gaussianCount == 0; }
+};
+
+struct MetalConversionDiagnostics {
+    bool active = false;
+    float progress = 0.0f;
+    uint32_t samplesPerTriangle = 0;
+    uint32_t convertedGaussianCount = 0;
+    uint64_t submittedConversionCount = 0;
+    uint64_t completedConversionCount = 0;
+    uint64_t failedConversionCount = 0;
+    double lastCpuSubmitMs = 0.0;
+    double averageCpuSubmitMs = 0.0;
+    double lastGpuMs = 0.0;
+    double averageGpuMs = 0.0;
+};
+
+struct MetalRendererDiagnosticsSnapshot {
+    MetalBackendStatus backend;
+    MetalDiagnosticSummary diagnostics;
+    MetalFrameTimingDiagnostics frameTiming;
+    MetalResourceDiagnostics resources;
+    MetalConversionDiagnostics conversion;
+    std::string statusText;
+    std::string loadedScenePath;
+    std::string lastError;
+
+    bool hasError() const
+    {
+        return !lastError.empty() || diagnostics.hasErrors() || backend.state == MetalBackendRuntimeState::Failed;
+    }
+};
+
 inline const char* metalDiagnosticSeverityName(MetalDiagnosticSeverity severity)
 {
     switch (severity) {
@@ -99,6 +181,48 @@ inline const char* metalDiagnosticCategoryName(MetalDiagnosticCategory category)
     }
 
     return "unknown";
+}
+
+inline const char* metalBackendRuntimeStateName(MetalBackendRuntimeState state)
+{
+    switch (state) {
+    case MetalBackendRuntimeState::Unknown:
+        return "unknown";
+    case MetalBackendRuntimeState::Unavailable:
+        return "unavailable";
+    case MetalBackendRuntimeState::Ready:
+        return "ready";
+    case MetalBackendRuntimeState::Loading:
+        return "loading";
+    case MetalBackendRuntimeState::Converting:
+        return "converting";
+    case MetalBackendRuntimeState::Rendering:
+        return "rendering";
+    case MetalBackendRuntimeState::Exporting:
+        return "exporting";
+    case MetalBackendRuntimeState::Failed:
+        return "failed";
+    }
+
+    return "unknown";
+}
+
+inline float metalDiagnosticClampProgress(float progress)
+{
+    if (progress < 0.0f) {
+        return 0.0f;
+    }
+    if (progress > 1.0f) {
+        return 1.0f;
+    }
+    return progress;
+}
+
+inline uint32_t metalDiagnosticSaturatingCount(uint64_t value)
+{
+    return value > std::numeric_limits<uint32_t>::max()
+        ? std::numeric_limits<uint32_t>::max()
+        : static_cast<uint32_t>(value);
 }
 
 inline bool metalDiagnosticIsAtLeast(
