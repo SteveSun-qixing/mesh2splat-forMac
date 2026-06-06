@@ -65,6 +65,25 @@ struct InspectorPanel: View {
                     .pickerStyle(.segmented)
 
                     Toggle("Mesh to splats", isOn: $appState.conversionEnabled)
+
+                    ProgressView(value: appState.conversionProgress) {
+                        Text("Progress")
+                    } currentValueLabel: {
+                        Text(appState.conversionProgressText)
+                            .monospacedDigit()
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            GroupBox("Telemetry") {
+                VStack(alignment: .leading, spacing: 8) {
+                    LabeledContent("Runtime", value: appState.rendererRuntimeStatus)
+                    LabeledContent("Diagnostic", value: appState.diagnosticStatus)
+                    LabeledContent("Drawable", value: appState.drawableStatus)
+                    LabeledContent("Frames", value: appState.frameCounterText)
+                    LabeledContent("Timing", value: appState.frameTimingText)
+                    LabeledContent("Gaussians", value: appState.gaussianCountText)
                 }
                 .padding(.vertical, 4)
             }

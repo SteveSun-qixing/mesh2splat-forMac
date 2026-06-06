@@ -61,6 +61,9 @@ private struct SidebarView: View {
                 LabeledContent("Viewport", value: "Metal")
                 LabeledContent("Mode", value: appState.renderMode.title)
                 LabeledContent("Quality", value: "\(appState.conversionQuality.rawValue)x")
+                LabeledContent("Runtime", value: appState.rendererRuntimeStatus)
+                LabeledContent("Drawable", value: appState.drawableStatus)
+                LabeledContent("Gaussians", value: appState.gaussianCountText)
             }
 
             InspectorPanel(appState: appState)
@@ -112,6 +115,9 @@ private struct StatusBar: View {
                 .foregroundStyle(.secondary)
             Divider()
             Text(appState.exportStatus)
+                .foregroundStyle(.secondary)
+            Divider()
+            Text(appState.frameTimingText)
                 .foregroundStyle(.secondary)
         }
         .font(.caption)
