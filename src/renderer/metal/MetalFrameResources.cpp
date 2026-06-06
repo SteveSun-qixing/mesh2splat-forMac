@@ -38,6 +38,11 @@ uint32_t MetalFrameResources::currentFrameIndex() const
     return m_currentFrameIndex;
 }
 
+uint32_t MetalFrameResources::frameCount() const
+{
+    return static_cast<uint32_t>(m_frames.size());
+}
+
 uint64_t MetalFrameResources::frameNumber() const
 {
     return m_frameNumber;

@@ -22,6 +22,7 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <dispatch/dispatch.h>
 
 #include <algorithm>
 #include <atomic>
@@ -175,6 +176,7 @@ struct MetalRenderer::Impl {
 
     std::unique_ptr<MetalDeviceContext> deviceContext;
     MetalFrameResources frameResources;
+    dispatch_semaphore_t frameSemaphore = nil;
     std::unique_ptr<MetalFrameUniformBuffer> frameUniformBuffer;
     std::unique_ptr<MetalShaderLibrary> shaderLibrary;
     std::unique_ptr<MetalPipelineCache> pipelineCache;
@@ -342,6 +344,11 @@ bool MetalRenderer::initialize()
     }
 
     if (!m_impl->deviceContext->initialize()) {
+        return false;
+    }
+
+    m_impl->frameSemaphore = dispatch_semaphore_create(m_impl->frameResources.frameCount());
+    if (m_impl->frameSemaphore == nil) {
         return false;
     }
 
@@ -532,6 +539,11 @@ void MetalRenderer::draw(
         return;
     }
 
+    if (m_impl->frameSemaphore == nil ||
+        dispatch_semaphore_wait(m_impl->frameSemaphore, DISPATCH_TIME_FOREVER) != 0) {
+        return;
+    }
+
     m_impl->frameResources.beginFrame();
     m_impl->finalizePendingConversion();
     m_impl->camera.update(inputState, deltaTimeSeconds);
@@ -551,9 +563,15 @@ void MetalRenderer::draw(
         (__bridge id<MTLCommandQueue>)m_impl->deviceContext->nativeCommandQueue();
     id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
     if (commandBuffer == nil) {
+        dispatch_semaphore_signal(m_impl->frameSemaphore);
         return;
     }
     commandBuffer.label = @"Mesh2Splat Metal Frame";
+    dispatch_semaphore_t frameSemaphore = m_impl->frameSemaphore;
+    [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
+        (void)completedCommandBuffer;
+        dispatch_semaphore_signal(frameSemaphore);
+    }];
 
     const bool showGaussians =
         m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
@@ -575,6 +593,10 @@ void MetalRenderer::draw(
     }
 
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
+    if (encoder == nil) {
+        [commandBuffer commit];
+        return;
+    }
     encoder.label = @"Mesh2Splat Drawable Render";
     const bool showMesh = m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::MeshOnly;
     if (showMesh && m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&

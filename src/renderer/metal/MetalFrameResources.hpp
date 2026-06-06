@@ -22,6 +22,7 @@ public:
     Allocation allocateDynamic(std::size_t size, std::size_t alignment);
 
     uint32_t currentFrameIndex() const;
+    uint32_t frameCount() const;
     uint64_t frameNumber() const;
     std::size_t dynamicCapacity() const;
     std::size_t dynamicUsedBytes() const;
