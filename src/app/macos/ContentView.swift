@@ -49,8 +49,11 @@ private struct SidebarView: View {
 
             GroupBox("Render") {
                 LabeledContent("Viewport", value: "Metal")
-                LabeledContent("Mode", value: "Combined")
+                LabeledContent("Mode", value: appState.renderMode.title)
+                LabeledContent("Quality", value: "\(appState.conversionQuality.rawValue)x")
             }
+
+            InspectorPanel(appState: appState)
 
             Spacer(minLength: 0)
         }

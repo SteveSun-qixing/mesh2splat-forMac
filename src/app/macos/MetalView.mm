@@ -154,6 +154,47 @@ mesh2splat::renderer::RenderViewMode rendererViewModeFromMac(mesh2splat::macos::
     return mesh2splat::renderer::RenderViewMode::Combined;
 }
 
+mesh2splat::renderer::RenderViewMode rendererViewModeFromRenderMode(NSInteger renderMode,
+                                                                     BOOL meshRenderingEnabled,
+                                                                     BOOL gaussianRenderingEnabled)
+{
+    if (meshRenderingEnabled && !gaussianRenderingEnabled) {
+        return mesh2splat::renderer::RenderViewMode::MeshOnly;
+    }
+    if (!meshRenderingEnabled && gaussianRenderingEnabled) {
+        return mesh2splat::renderer::RenderViewMode::GaussianOnly;
+    }
+
+    switch (renderMode) {
+    case 1:
+        return mesh2splat::renderer::RenderViewMode::MeshOnly;
+    case 2:
+        return mesh2splat::renderer::RenderViewMode::GaussianOnly;
+    default:
+        return mesh2splat::renderer::RenderViewMode::Combined;
+    }
+}
+
+mesh2splat::renderer::GaussianVisualizationMode gaussianVisualizationModeFromRenderMode(NSInteger renderMode)
+{
+    switch (renderMode) {
+    case 3:
+        return mesh2splat::renderer::GaussianVisualizationMode::Albedo;
+    case 4:
+        return mesh2splat::renderer::GaussianVisualizationMode::Depth;
+    case 5:
+        return mesh2splat::renderer::GaussianVisualizationMode::Normal;
+    case 6:
+        return mesh2splat::renderer::GaussianVisualizationMode::Geometry;
+    case 7:
+        return mesh2splat::renderer::GaussianVisualizationMode::Overdraw;
+    case 8:
+        return mesh2splat::renderer::GaussianVisualizationMode::Pbr;
+    default:
+        return mesh2splat::renderer::GaussianVisualizationMode::Final;
+    }
+}
+
 mesh2splat::macos::MacBridgeRendererRuntimeState macRuntimeStateFromRenderer(mesh2splat::renderer::RendererRuntimeState state)
 {
     switch (state) {
@@ -218,6 +259,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 - (BOOL)loadMeshAtPath:(NSString*)path;
 - (mesh2splat::renderer::RendererExportPlyResult)exportPlyAtPath:(NSString*)path;
 - (void)setViewMode:(mesh2splat::renderer::RenderViewMode)mode;
+- (void)setGaussianVisualizationMode:(mesh2splat::renderer::GaussianVisualizationMode)mode;
 - (void)setGaussianScale:(float)scale;
 - (float)gaussianScale;
 - (BOOL)setConversionSamplesPerTriangle:(uint32_t)samplesPerTriangle;
@@ -358,6 +400,13 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 {
     if (_renderer != nullptr) {
         _renderer->setViewMode(mode);
+    }
+}
+
+- (void)setGaussianVisualizationMode:(mesh2splat::renderer::GaussianVisualizationMode)mode
+{
+    if (_renderer != nullptr) {
+        _renderer->setGaussianVisualizationMode(mode);
     }
 }
 
@@ -559,6 +608,14 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 
 @implementation Mesh2SplatMetalView {
     mesh2splat::core::InputState _inputState;
+    NSInteger _bridgeRenderMode;
+    double _bridgeExposure;
+    double _bridgeGamma;
+    double _bridgeBackgroundBrightness;
+    BOOL _bridgeSortingEnabled;
+    BOOL _bridgeMeshRenderingEnabled;
+    BOOL _bridgeGaussianRenderingEnabled;
+    BOOL _bridgeConversionEnabled;
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect
@@ -577,6 +634,14 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     self.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
     self.depthStencilPixelFormat = MTLPixelFormatDepth32Float;
     self.clearColor = MTLClearColorMake(0.03, 0.04, 0.05, 1.0);
+    _bridgeRenderMode = 0;
+    _bridgeExposure = 1.0;
+    _bridgeGamma = 2.2;
+    _bridgeBackgroundBrightness = 0.04;
+    _bridgeSortingEnabled = YES;
+    _bridgeMeshRenderingEnabled = YES;
+    _bridgeGaussianRenderingEnabled = YES;
+    _bridgeConversionEnabled = YES;
     self.preferredFramesPerSecond = 60;
     self.enableSetNeedsDisplay = NO;
     self.paused = NO;
@@ -880,6 +945,42 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     }
 
     self.window.title = title;
+}
+
+- (void)applyRenderMode:(NSInteger)renderMode
+              splatSize:(double)splatSize
+               exposure:(double)exposure
+                  gamma:(double)gamma
+   backgroundBrightness:(double)backgroundBrightness
+conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
+         sortingEnabled:(BOOL)sortingEnabled
+   meshRenderingEnabled:(BOOL)meshRenderingEnabled
+gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
+      conversionEnabled:(BOOL)conversionEnabled
+{
+    _bridgeRenderMode = renderMode;
+    _bridgeExposure = std::clamp(exposure, 0.0, 16.0);
+    _bridgeGamma = std::clamp(gamma, 0.1, 4.0);
+    _bridgeBackgroundBrightness = std::clamp(backgroundBrightness, 0.0, 1.0);
+    _bridgeSortingEnabled = sortingEnabled;
+    _bridgeMeshRenderingEnabled = meshRenderingEnabled;
+    _bridgeGaussianRenderingEnabled = gaussianRenderingEnabled;
+    _bridgeConversionEnabled = conversionEnabled;
+
+    const double clear = _bridgeBackgroundBrightness;
+    self.clearColor = MTLClearColorMake(clear * 0.75, clear, clear * 1.25, 1.0);
+
+    [self.meshDelegate setViewMode:rendererViewModeFromRenderMode(renderMode,
+                                                                  meshRenderingEnabled,
+                                                                  gaussianRenderingEnabled)];
+    [self.meshDelegate setGaussianVisualizationMode:gaussianVisualizationModeFromRenderMode(renderMode)];
+    [self.meshDelegate setGaussianScale:static_cast<float>(std::clamp(splatSize, 0.1, 8.0))];
+
+    if (conversionEnabled && conversionSamplesPerTriangle > 0) {
+        [self.meshDelegate setConversionSamplesPerTriangle:static_cast<uint32_t>(conversionSamplesPerTriangle)];
+    }
+
+    [self refreshRendererStatus];
 }
 
 - (IBAction)openDocument:(id)sender

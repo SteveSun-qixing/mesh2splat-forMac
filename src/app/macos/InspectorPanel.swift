@@ -1,0 +1,103 @@
+import SwiftUI
+
+struct InspectorPanel: View {
+    @ObservedObject var appState: Mesh2SplatAppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Inspector")
+                .font(.headline)
+
+            GroupBox("Render") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Mode", selection: $appState.renderMode) {
+                        ForEach(RenderMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Toggle("Mesh", isOn: $appState.meshRenderingEnabled)
+                    Toggle("Gaussians", isOn: $appState.gaussianRenderingEnabled)
+                    Toggle("Sort gaussians", isOn: $appState.sortingEnabled)
+
+                    LabeledSlider(
+                        title: "Splat size",
+                        value: $appState.splatSize,
+                        range: 0.1...8.0,
+                        format: "%.2fx"
+                    )
+                }
+                .padding(.vertical, 4)
+            }
+
+            GroupBox("Image") {
+                VStack(alignment: .leading, spacing: 12) {
+                    LabeledSlider(
+                        title: "Exposure",
+                        value: $appState.exposure,
+                        range: 0.0...16.0,
+                        format: "%.2f"
+                    )
+                    LabeledSlider(
+                        title: "Gamma",
+                        value: $appState.gamma,
+                        range: 0.1...4.0,
+                        format: "%.2f"
+                    )
+                    LabeledSlider(
+                        title: "Background",
+                        value: $appState.backgroundBrightness,
+                        range: 0.0...1.0,
+                        format: "%.2f"
+                    )
+                }
+                .padding(.vertical, 4)
+            }
+
+            GroupBox("Conversion") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Quality", selection: $appState.conversionQuality) {
+                        ForEach(ConversionQuality.allCases) { quality in
+                            Text("\(quality.title) (\(quality.rawValue)x)").tag(quality)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Toggle("Mesh to splats", isOn: $appState.conversionEnabled)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Spacer(minLength: 0)
+
+            Button("Reset") {
+                appState.resetRenderSettings()
+            }
+            .buttonStyle(.bordered)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(16)
+        .frame(minWidth: 260, idealWidth: 300, maxWidth: 340, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct LabeledSlider: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let format: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(String(format: format, value))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Slider(value: $value, in: range)
+        }
+    }
+}

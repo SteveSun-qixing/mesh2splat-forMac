@@ -12,6 +12,17 @@ NSView* Mesh2SplatCreateMetalView(NSRect frame);
 BOOL Mesh2SplatOpenMeshInView(NSView* view, NSURL* url);
 void Mesh2SplatRefreshMetalViewStatus(NSView* view);
 void Mesh2SplatFocusMetalView(NSView* view);
+void Mesh2SplatApplyRenderSettingsToView(NSView* view,
+                                          NSInteger renderMode,
+                                          double splatSize,
+                                          double exposure,
+                                          double gamma,
+                                          double backgroundBrightness,
+                                          NSInteger conversionSamplesPerTriangle,
+                                          BOOL sortingEnabled,
+                                          BOOL meshRenderingEnabled,
+                                          BOOL gaussianRenderingEnabled,
+                                          BOOL conversionEnabled);
 
 #ifdef __cplusplus
 }
