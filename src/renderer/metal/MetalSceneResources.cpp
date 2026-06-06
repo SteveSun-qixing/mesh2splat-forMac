@@ -2,6 +2,7 @@
 
 #include "MetalDeviceContext.hpp"
 
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -112,6 +113,19 @@ std::size_t MetalSceneResources::totalDrawRangeCount() const
 std::size_t MetalSceneResources::totalMaterialCount() const
 {
     return m_impl->totalMaterialCount;
+}
+
+std::size_t MetalSceneResources::conversionCapacity(uint32_t maxSamplesPerTriangle) const
+{
+    std::size_t capacity = 0;
+    for (const MetalMesh& mesh : m_impl->meshes) {
+        const std::size_t meshCapacity = mesh.conversionCapacity(maxSamplesPerTriangle);
+        if (meshCapacity > std::numeric_limits<std::size_t>::max() - capacity) {
+            return std::numeric_limits<std::size_t>::max();
+        }
+        capacity += meshCapacity;
+    }
+    return capacity;
 }
 
 const MetalMesh* MetalSceneResources::meshAt(std::size_t index) const

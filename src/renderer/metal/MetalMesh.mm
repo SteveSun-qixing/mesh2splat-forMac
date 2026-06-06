@@ -4,6 +4,7 @@
 #include "MetalDeviceContext.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 #include <unordered_map>
@@ -28,6 +29,121 @@ MetalMeshMaterial toMetalMaterial(const core::MeshMaterial& material)
 bool canFitUInt32(std::size_t value)
 {
     return value <= static_cast<std::size_t>(std::numeric_limits<uint32_t>::max());
+}
+
+uint32_t normalizedSamplesPerTriangle(uint32_t samplesPerTriangle)
+{
+    if (samplesPerTriangle <= 1) {
+        return 1;
+    }
+    if (samplesPerTriangle <= 4) {
+        return 4;
+    }
+    return 9;
+}
+
+float triangleArea(
+    const core::MeshVertex& vertex0,
+    const core::MeshVertex& vertex1,
+    const core::MeshVertex& vertex2)
+{
+    const float edge0[3] = {
+        vertex1.position[0] - vertex0.position[0],
+        vertex1.position[1] - vertex0.position[1],
+        vertex1.position[2] - vertex0.position[2],
+    };
+    const float edge1[3] = {
+        vertex2.position[0] - vertex0.position[0],
+        vertex2.position[1] - vertex0.position[1],
+        vertex2.position[2] - vertex0.position[2],
+    };
+    const float crossProduct[3] = {
+        edge0[1] * edge1[2] - edge0[2] * edge1[1],
+        edge0[2] * edge1[0] - edge0[0] * edge1[2],
+        edge0[0] * edge1[1] - edge0[1] * edge1[0],
+    };
+    const float lengthSquared =
+        crossProduct[0] * crossProduct[0] +
+        crossProduct[1] * crossProduct[1] +
+        crossProduct[2] * crossProduct[2];
+    return 0.5f * std::sqrt(lengthSquared);
+}
+
+float areaSampleDensity(const MetalMeshDrawRange& range, uint32_t triangleCount, uint32_t maxSamplesPerTriangle)
+{
+    if (range.surfaceArea <= 0.0f || triangleCount == 0 || maxSamplesPerTriangle <= 1) {
+        return 0.0f;
+    }
+
+    const double targetSampleCount = static_cast<double>(triangleCount) * static_cast<double>(maxSamplesPerTriangle);
+    const double density = targetSampleCount / static_cast<double>(range.surfaceArea);
+    if (!std::isfinite(density) || density <= 0.0) {
+        return 0.0f;
+    }
+
+    return static_cast<float>(std::min<double>(density, std::numeric_limits<float>::max()));
+}
+
+uint32_t activeSamplesForTriangle(float area, float density, uint32_t maxSamplesPerTriangle)
+{
+    if (maxSamplesPerTriangle <= 1 || density <= 0.0f || area <= 1.0e-12f) {
+        return maxSamplesPerTriangle;
+    }
+
+    constexpr double kCapacityCeilBias = 1.0e-5;
+    const double scaledArea = static_cast<double>(area) * static_cast<double>(density);
+    const double biasedSamples = std::ceil(scaledArea + kCapacityCeilBias);
+    if (!std::isfinite(biasedSamples) || biasedSamples >= maxSamplesPerTriangle) {
+        return maxSamplesPerTriangle;
+    }
+
+    const uint32_t areaSamples = std::max<uint32_t>(
+        static_cast<uint32_t>(biasedSamples),
+        1);
+    return std::min(areaSamples, maxSamplesPerTriangle);
+}
+
+std::size_t conversionCapacityForRange(
+    const std::vector<core::MeshVertex>& vertices,
+    const MetalMeshDrawRange& range,
+    uint32_t maxSamplesPerTriangle)
+{
+    const uint32_t sampleCount = normalizedSamplesPerTriangle(maxSamplesPerTriangle);
+    if (range.vertexCount == 0 || range.vertexCount % 3 != 0 ||
+        range.vertexOffset > vertices.size() ||
+        range.vertexCount > vertices.size() - range.vertexOffset) {
+        return 0;
+    }
+
+    const uint32_t triangleCount = range.vertexCount / 3;
+    const float density = areaSampleDensity(range, triangleCount, sampleCount);
+    std::size_t capacity = 0;
+    for (uint32_t vertexIndex = range.vertexOffset;
+         vertexIndex < range.vertexOffset + range.vertexCount;
+         vertexIndex += 3) {
+        const float area = triangleArea(
+            vertices[vertexIndex],
+            vertices[vertexIndex + 1],
+            vertices[vertexIndex + 2]);
+        capacity += activeSamplesForTriangle(area, density, sampleCount);
+    }
+    return capacity;
+}
+
+std::size_t conversionCapacityForRanges(
+    const std::vector<core::MeshVertex>& vertices,
+    const std::vector<MetalMeshDrawRange>& ranges,
+    uint32_t maxSamplesPerTriangle)
+{
+    std::size_t capacity = 0;
+    for (const MetalMeshDrawRange& range : ranges) {
+        const std::size_t rangeCapacity = conversionCapacityForRange(vertices, range, maxSamplesPerTriangle);
+        if (rangeCapacity > std::numeric_limits<std::size_t>::max() - capacity) {
+            return std::numeric_limits<std::size_t>::max();
+        }
+        capacity += rangeCapacity;
+    }
+    return capacity;
 }
 
 float fallbackRangeSurfaceArea(const core::MeshData& meshData, const core::MeshDrawRange& range)
@@ -139,6 +255,9 @@ struct MetalMesh::Impl {
     std::vector<uint32_t> materialOcclusionTextureIndices;
     std::vector<uint32_t> materialEmissiveTextureIndices;
     std::vector<MetalMeshDrawRange> drawRanges;
+    std::size_t conversionCapacity1 = 0;
+    std::size_t conversionCapacity4 = 0;
+    std::size_t conversionCapacity9 = 0;
     std::size_t vertexCount = 0;
     uint32_t drawRangeCount = 0;
     uint32_t materialCount = 0;
@@ -191,6 +310,10 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     if (!canFitUInt32(drawRanges.size())) {
         return false;
     }
+
+    const std::size_t conversionCapacity1 = conversionCapacityForRanges(meshData.vertices, drawRanges, 1);
+    const std::size_t conversionCapacity4 = conversionCapacityForRanges(meshData.vertices, drawRanges, 4);
+    const std::size_t conversionCapacity9 = conversionCapacityForRanges(meshData.vertices, drawRanges, 9);
 
     std::vector<MetalMeshMaterial> materials;
     if (meshData.materials.empty()) {
@@ -381,6 +504,9 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     m_impl->materialOcclusionTextureIndices = std::move(materialOcclusionTextureIndices);
     m_impl->materialEmissiveTextureIndices = std::move(materialEmissiveTextureIndices);
     m_impl->drawRanges = std::move(drawRanges);
+    m_impl->conversionCapacity1 = conversionCapacity1;
+    m_impl->conversionCapacity4 = conversionCapacity4;
+    m_impl->conversionCapacity9 = conversionCapacity9;
     m_impl->vertexCount = meshData.vertices.size();
     m_impl->drawRangeCount = static_cast<uint32_t>(m_impl->drawRanges.size());
     m_impl->materialCount = static_cast<uint32_t>(materials.size());
@@ -403,6 +529,9 @@ void MetalMesh::reset()
     m_impl->materialOcclusionTextureIndices.clear();
     m_impl->materialEmissiveTextureIndices.clear();
     m_impl->drawRanges.clear();
+    m_impl->conversionCapacity1 = 0;
+    m_impl->conversionCapacity4 = 0;
+    m_impl->conversionCapacity9 = 0;
     m_impl->vertexCount = 0;
     m_impl->drawRangeCount = 0;
     m_impl->materialCount = 0;
@@ -419,6 +548,18 @@ bool MetalMesh::isValid() const
 std::size_t MetalMesh::vertexCount() const
 {
     return m_impl->vertexCount;
+}
+
+std::size_t MetalMesh::conversionCapacity(uint32_t maxSamplesPerTriangle) const
+{
+    const uint32_t sampleCount = normalizedSamplesPerTriangle(maxSamplesPerTriangle);
+    if (sampleCount <= 1) {
+        return m_impl->conversionCapacity1;
+    }
+    if (sampleCount <= 4) {
+        return m_impl->conversionCapacity4;
+    }
+    return m_impl->conversionCapacity9;
 }
 
 uint32_t MetalMesh::drawRangeCount() const

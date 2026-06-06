@@ -26,7 +26,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -205,13 +204,12 @@ bool MetalRenderer::Impl::submitSceneConversion(
         return false;
     }
 
-    const std::size_t triangleCount = conversionSceneResources.totalVertexCount() / 3;
-    if (triangleCount == 0 ||
-        triangleCount > std::numeric_limits<std::size_t>::max() / conversionSamplesPerTriangle) {
+    const std::size_t gaussianCapacity =
+        conversionSceneResources.conversionCapacity(conversionSamplesPerTriangle);
+    if (gaussianCapacity == 0) {
         return false;
     }
 
-    const std::size_t gaussianCapacity = triangleCount * conversionSamplesPerTriangle;
     if (!core::gaussianCountFitsBuffer(gaussianCapacity)) {
         return false;
     }
