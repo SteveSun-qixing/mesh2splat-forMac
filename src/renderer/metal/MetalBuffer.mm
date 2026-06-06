@@ -1,6 +1,7 @@
 #include "MetalBuffer.hpp"
 
 #include "MetalDeviceContext.hpp"
+#include "MetalResourceUploader.hpp"
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -97,36 +98,17 @@ bool MetalBuffer::createPrivateWithData(std::size_t size, const void* initialDat
         return false;
     }
 
-    id<MTLBuffer> stagingBuffer = [m_impl->device newBufferWithLength:size options:MTLResourceStorageModeShared];
     id<MTLBuffer> privateBuffer = [m_impl->device newBufferWithLength:size options:MTLResourceStorageModePrivate];
-    if (stagingBuffer == nil || privateBuffer == nil || stagingBuffer.contents == nullptr) {
+    if (privateBuffer == nil) {
         return false;
     }
 
     if (label != nullptr) {
         privateBuffer.label = [NSString stringWithUTF8String:label];
-        stagingBuffer.label = [NSString stringWithFormat:@"%s Upload Staging", label];
     }
 
-    std::memcpy(stagingBuffer.contents, initialData, size);
-
-    id<MTLCommandBuffer> commandBuffer = [m_impl->commandQueue commandBuffer];
-    id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
-    if (commandBuffer == nil || blitEncoder == nil) {
-        return false;
-    }
-
-    commandBuffer.label = @"Mesh2Splat Private Buffer Upload";
-    blitEncoder.label = @"Mesh2Splat Private Buffer Upload Blit";
-    [blitEncoder copyFromBuffer:stagingBuffer
-                   sourceOffset:0
-                       toBuffer:privateBuffer
-              destinationOffset:0
-                           size:size];
-    [blitEncoder endEncoding];
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
-    if (commandBuffer.status != MTLCommandBufferStatusCompleted) {
+    MetalResourceUploader uploader((__bridge void*)m_impl->device, (__bridge void*)m_impl->commandQueue);
+    if (!uploader.uploadBufferToPrivate(initialData, size, (__bridge void*)privateBuffer, label)) {
         return false;
     }
 

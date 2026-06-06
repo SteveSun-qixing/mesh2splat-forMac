@@ -1,12 +1,11 @@
 #include "MetalTexture.hpp"
 
 #include "MetalDeviceContext.hpp"
+#include "MetalResourceUploader.hpp"
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 
-#include <algorithm>
-#include <cstring>
 #include <limits>
 
 namespace mesh2splat::metal {
@@ -178,47 +177,19 @@ bool MetalTexture::upload2D(
     }
 
     const std::size_t uploadSize = alignedBytesPerRow * static_cast<std::size_t>(height);
-    id<MTLBuffer> stagingBuffer = [m_impl->device newBufferWithLength:uploadSize options:MTLResourceStorageModeShared];
-    if (stagingBuffer == nil || stagingBuffer.contents == nullptr) {
-        return false;
-    }
-
+    MetalResourceUploader uploader((__bridge void*)m_impl->device, (__bridge void*)m_impl->commandQueue);
     NSString* textureLabel = m_impl->texture.label == nil ? @"MetalTexture" : m_impl->texture.label;
-    stagingBuffer.label = [NSString stringWithFormat:@"%@ Upload Staging", textureLabel];
-    auto* destination = static_cast<std::byte*>(stagingBuffer.contents);
-    const auto* source = static_cast<const std::byte*>(data);
-    for (uint32_t row = 0; row < height; ++row) {
-        std::memcpy(
-            destination + static_cast<std::size_t>(row) * alignedBytesPerRow,
-            source + static_cast<std::size_t>(row) * bytesPerRow,
-            rowBytes);
-    }
-
-    id<MTLCommandBuffer> commandBuffer = [m_impl->commandQueue commandBuffer];
-    id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
-    if (commandBuffer == nil || blitEncoder == nil) {
-        return false;
-    }
-
-    commandBuffer.label = @"Mesh2Splat Private Texture Upload";
-    blitEncoder.label = @"Mesh2Splat Private Texture Upload Blit";
-    [blitEncoder copyFromBuffer:stagingBuffer
-                   sourceOffset:0
-              sourceBytesPerRow:alignedBytesPerRow
-            sourceBytesPerImage:uploadSize
-                         sourceSize:MTLSizeMake(width, height, 1)
-                          toTexture:m_impl->texture
-                   destinationSlice:0
-                   destinationLevel:mipLevel
-                  destinationOrigin:MTLOriginMake(0, 0, 0)];
-    [blitEncoder endEncoding];
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
-    if (commandBuffer.status != MTLCommandBufferStatusCompleted) {
-        return false;
-    }
-
-    return true;
+    return uploader.uploadTexture2DToPrivate(
+        data,
+        bytesPerRow,
+        rowBytes,
+        alignedBytesPerRow,
+        uploadSize,
+        width,
+        height,
+        mipLevel,
+        (__bridge void*)m_impl->texture,
+        textureLabel.UTF8String);
 }
 
 bool MetalTexture::isValid() const

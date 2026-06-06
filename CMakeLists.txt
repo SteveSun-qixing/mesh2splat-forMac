@@ -173,6 +173,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderStateCache.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderStateCache.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalResourceUploader.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalResourceUploader.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalSceneResources.cpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalSceneResources.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalShaderLibrary.mm
