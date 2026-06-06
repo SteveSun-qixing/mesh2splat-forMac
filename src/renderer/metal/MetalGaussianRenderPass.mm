@@ -89,6 +89,7 @@ void MetalGaussianRenderPass::encode(
     [encoder setVertexBuffer:gaussianBufferHandle offset:0 atIndex:0];
     [encoder setVertexBuffer:frameBuffer offset:0 atIndex:1];
     [encoder setVertexBuffer:indexBuffer offset:0 atIndex:2];
+    [encoder setFragmentBuffer:frameBuffer offset:0 atIndex:0];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                 vertexStart:0
                 vertexCount:6

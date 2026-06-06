@@ -168,6 +168,7 @@ struct MetalRenderer::Impl {
     core::NativeCamera camera;
     std::string loadedMeshPath;
     RenderViewMode viewMode = RenderViewMode::Combined;
+    GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
     bool hasSortedGaussianDepths = false;
     float gaussianScale = 1.0f;
     uint32_t conversionSamplesPerTriangle = kDefaultMetalConversionSamplesPerTriangle;
@@ -367,6 +368,16 @@ RenderViewMode MetalRenderer::viewMode() const
     return m_impl->viewMode;
 }
 
+void MetalRenderer::setGaussianVisualizationMode(GaussianVisualizationMode mode)
+{
+    m_impl->gaussianVisualizationMode = mode;
+}
+
+GaussianVisualizationMode MetalRenderer::gaussianVisualizationMode() const
+{
+    return m_impl->gaussianVisualizationMode;
+}
+
 void MetalRenderer::setGaussianScale(float scale)
 {
     m_impl->gaussianScale = std::clamp(scale, 0.1f, 8.0f);
@@ -426,7 +437,7 @@ void MetalRenderer::draw(
     m_impl->camera.update(inputState, deltaTimeSeconds);
     m_impl->camera.writeFrameUniforms(m_impl->frameUniforms);
     m_impl->frameUniforms.frameIndex = m_impl->frameResources.currentFrameIndex();
-    m_impl->frameUniforms.renderMode = static_cast<uint32_t>(m_impl->viewMode);
+    m_impl->frameUniforms.renderMode = static_cast<uint32_t>(m_impl->gaussianVisualizationMode);
     m_impl->frameUniforms.gaussianParams[0] = m_impl->gaussianScale;
     if (m_impl->frameUniformBuffer != nullptr) {
         m_impl->frameUniformBuffer->update(

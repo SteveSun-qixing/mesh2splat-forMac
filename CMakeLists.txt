@@ -218,22 +218,28 @@ if(APPLE)
                 "$<TARGET_BUNDLE_CONTENT_DIR:Mesh2SplatMetal>/Resources/Shaders"
         )
 
-        execute_process(
-            COMMAND xcrun -sdk macosx --find metal
-            RESULT_VARIABLE METAL_COMPILER_RESULT
-            OUTPUT_VARIABLE METAL_COMPILER
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-        execute_process(
-            COMMAND xcrun -sdk macosx --find metallib
-            RESULT_VARIABLE METALLIB_RESULT
-            OUTPUT_VARIABLE METALLIB
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
+        find_program(XCRUN_EXECUTABLE xcrun)
+        if(XCRUN_EXECUTABLE)
+            execute_process(
+                COMMAND ${XCRUN_EXECUTABLE} -sdk macosx --find metal
+                RESULT_VARIABLE METAL_COMPILER_RESULT
+                OUTPUT_VARIABLE METAL_COMPILER
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${XCRUN_EXECUTABLE} -sdk macosx --find metallib
+                RESULT_VARIABLE METALLIB_RESULT
+                OUTPUT_VARIABLE METALLIB
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+            )
+        else()
+            set(METAL_COMPILER_RESULT 1)
+            set(METALLIB_RESULT 1)
+        endif()
 
-        if(METAL_COMPILER_RESULT EQUAL 0 AND METALLIB_RESULT EQUAL 0)
+        if(XCRUN_EXECUTABLE AND METAL_COMPILER_RESULT EQUAL 0 AND METALLIB_RESULT EQUAL 0)
             set(METAL_LIBRARY_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/Mesh2SplatMetal.metallib)
             set(METAL_AIR_OUTPUTS)
 
@@ -242,7 +248,7 @@ if(APPLE)
                 set(METAL_AIR_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${METAL_SHADER_NAME}.air)
                 add_custom_command(
                     OUTPUT ${METAL_AIR_OUTPUT}
-                    COMMAND ${METAL_COMPILER} -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR_OUTPUT}
+                    COMMAND ${XCRUN_EXECUTABLE} -sdk macosx metal -c ${METAL_SHADER_SOURCE} -o ${METAL_AIR_OUTPUT}
                     DEPENDS ${METAL_SHADER_SOURCE}
                     COMMENT "Compiling ${METAL_SHADER_NAME}.metal"
                     VERBATIM
@@ -252,7 +258,7 @@ if(APPLE)
 
             add_custom_command(
                 OUTPUT ${METAL_LIBRARY_OUTPUT}
-                COMMAND ${METALLIB} ${METAL_AIR_OUTPUTS} -o ${METAL_LIBRARY_OUTPUT}
+                COMMAND ${XCRUN_EXECUTABLE} -sdk macosx metallib ${METAL_AIR_OUTPUTS} -o ${METAL_LIBRARY_OUTPUT}
                 DEPENDS ${METAL_AIR_OUTPUTS}
                 COMMENT "Linking Mesh2Splat Metal shader library"
                 VERBATIM
@@ -266,7 +272,7 @@ if(APPLE)
                     "$<TARGET_BUNDLE_CONTENT_DIR:Mesh2SplatMetal>/Resources/Mesh2SplatMetal.metallib"
             )
         else()
-            message(WARNING "Metal shader tools are unavailable; skipping .metallib generation for now.")
+            message(WARNING "Metal shader tools are unavailable; skipping .metallib generation for now. Install them with: xcodebuild -downloadComponent MetalToolchain")
         endif()
     endif()
 endif()

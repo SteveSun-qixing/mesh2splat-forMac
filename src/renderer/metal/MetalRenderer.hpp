@@ -14,6 +14,16 @@ enum class RenderViewMode : uint32_t {
     GaussianOnly = 2,
 };
 
+enum class GaussianVisualizationMode : uint32_t {
+    Albedo = 0,
+    Depth = 1,
+    Normal = 2,
+    Geometry = 3,
+    Overdraw = 4,
+    Pbr = 5,
+    Final = 6,
+};
+
 class MetalRenderer {
 public:
     explicit MetalRenderer(void* metalDevice);
@@ -27,6 +37,8 @@ public:
     void resize(uint32_t width, uint32_t height);
     void setViewMode(RenderViewMode mode);
     RenderViewMode viewMode() const;
+    void setGaussianVisualizationMode(GaussianVisualizationMode mode);
+    GaussianVisualizationMode gaussianVisualizationMode() const;
     void setGaussianScale(float scale);
     float gaussianScale() const;
     bool setConversionSamplesPerTriangle(uint32_t samplesPerTriangle);
