@@ -44,7 +44,7 @@ bool MetalFrameUniformBuffer::initialize(const char* label)
     for (uint32_t frameIndex = 0; frameIndex < m_impl->frameCount; ++frameIndex) {
         auto buffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
         const std::string bufferLabel = baseLabel + " " + std::to_string(frameIndex);
-        if (!buffer->createShared(sizeof(core::FrameUniforms), &defaults, bufferLabel.c_str())) {
+        if (!buffer->createSharedWriteCombined(sizeof(core::FrameUniforms), &defaults, bufferLabel.c_str())) {
             return false;
         }
         buffers.push_back(std::move(buffer));

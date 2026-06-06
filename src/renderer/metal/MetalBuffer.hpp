@@ -21,6 +21,7 @@ public:
     MetalBuffer& operator=(MetalBuffer&&) noexcept;
 
     bool createShared(std::size_t size, const void* initialData = nullptr, const char* label = nullptr);
+    bool createSharedWriteCombined(std::size_t size, const void* initialData = nullptr, const char* label = nullptr);
     bool createPrivate(std::size_t size, const char* label = nullptr);
     bool createPrivateWithData(std::size_t size, const void* initialData, const char* label = nullptr);
     bool createPrivateWithData(

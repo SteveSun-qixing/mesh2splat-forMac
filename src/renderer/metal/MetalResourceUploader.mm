@@ -20,6 +20,9 @@ NSString* uploadStagingLabel(const char* label)
     return baseLabel == nil ? nil : [baseLabel stringByAppendingString:@" Upload Staging"];
 }
 
+constexpr MTLResourceOptions kUploadStagingBufferOptions =
+    MTLResourceStorageModeShared | MTLResourceCPUCacheModeWriteCombined;
+
 } // namespace
 
 struct MetalResourceUploadBatch::Impl {
@@ -97,7 +100,7 @@ bool MetalResourceUploadBatch::uploadBufferToPrivate(
         return false;
     }
 
-    id<MTLBuffer> stagingBuffer = [m_impl->device newBufferWithLength:size options:MTLResourceStorageModeShared];
+    id<MTLBuffer> stagingBuffer = [m_impl->device newBufferWithLength:size options:kUploadStagingBufferOptions];
     if (stagingBuffer == nil || stagingBuffer.contents == nullptr) {
         return false;
     }
@@ -140,7 +143,8 @@ bool MetalResourceUploadBatch::uploadTexture2DToPrivate(
         return false;
     }
 
-    id<MTLBuffer> stagingBuffer = [m_impl->device newBufferWithLength:uploadSize options:MTLResourceStorageModeShared];
+    id<MTLBuffer> stagingBuffer =
+        [m_impl->device newBufferWithLength:uploadSize options:kUploadStagingBufferOptions];
     if (stagingBuffer == nil || stagingBuffer.contents == nullptr) {
         return false;
     }

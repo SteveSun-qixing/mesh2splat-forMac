@@ -19,6 +19,15 @@ bool storageModeIsCpuAccessible(MTLResourceOptions options)
     return storageMode == MTLResourceStorageModeShared;
 }
 
+MTLResourceOptions sharedResourceOptions(bool writeCombined)
+{
+    MTLResourceOptions options = MTLResourceStorageModeShared;
+    if (writeCombined) {
+        options |= MTLResourceCPUCacheModeWriteCombined;
+    }
+    return options;
+}
+
 } // namespace
 
 struct MetalBuffer::Impl {
@@ -48,7 +57,34 @@ bool MetalBuffer::createShared(std::size_t size, const void* initialData, const 
         return false;
     }
 
-    constexpr MTLResourceOptions options = MTLResourceStorageModeShared;
+    const MTLResourceOptions options = sharedResourceOptions(false);
+    m_impl->buffer = [m_impl->device newBufferWithLength:size options:options];
+    if (m_impl->buffer == nil) {
+        m_impl->bufferSize = 0;
+        m_impl->cpuAccessible = false;
+        return false;
+    }
+
+    m_impl->bufferSize = size;
+    m_impl->cpuAccessible = storageModeIsCpuAccessible(options);
+    if (label != nullptr) {
+        m_impl->buffer.label = [NSString stringWithUTF8String:label];
+    }
+
+    if (initialData != nullptr) {
+        std::memcpy(m_impl->buffer.contents, initialData, size);
+    }
+
+    return true;
+}
+
+bool MetalBuffer::createSharedWriteCombined(std::size_t size, const void* initialData, const char* label)
+{
+    if (m_impl->device == nil || size == 0) {
+        return false;
+    }
+
+    const MTLResourceOptions options = sharedResourceOptions(true);
     m_impl->buffer = [m_impl->device newBufferWithLength:size options:options];
     if (m_impl->buffer == nil) {
         m_impl->bufferSize = 0;
