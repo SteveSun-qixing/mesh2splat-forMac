@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -126,10 +127,16 @@ core::MeshBounds aggregateMeshBounds(const std::vector<core::MeshData>& meshes)
     return bounds;
 }
 
-bool matrixEquals(const core::Matrix4& lhs, const core::Matrix4& rhs)
+bool matrixApproximatelyEquals(
+    const core::Matrix4& lhs,
+    const core::Matrix4& rhs,
+    float absoluteEpsilon = 1.0e-5f,
+    float relativeEpsilon = 1.0e-5f)
 {
     for (std::size_t i = 0; i < 16; ++i) {
-        if (lhs.values[i] != rhs.values[i]) {
+        const float diff = std::fabs(lhs.values[i] - rhs.values[i]);
+        const float scale = std::max(std::fabs(lhs.values[i]), std::fabs(rhs.values[i]));
+        if (diff > absoluteEpsilon + scale * relativeEpsilon) {
             return false;
         }
     }
@@ -679,7 +686,7 @@ void MetalRenderer::draw(
         m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr) {
         const bool needsGaussianSort = !m_impl->hasSortedGaussianDepths ||
             m_impl->gaussianSortBuffer->count() != m_impl->gaussianBuffer->count() ||
-            !matrixEquals(m_impl->lastSortedViewMatrix, m_impl->frameUniforms.viewMatrix);
+            !matrixApproximatelyEquals(m_impl->lastSortedViewMatrix, m_impl->frameUniforms.viewMatrix);
         if (needsGaussianSort) {
             m_impl->hasSortedGaussianDepths = m_impl->gaussianSortPass->encodeDepthKeys(
                 (__bridge void*)commandBuffer,
