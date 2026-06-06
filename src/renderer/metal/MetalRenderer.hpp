@@ -40,6 +40,12 @@ struct MetalRendererStats {
     double lastConversionGpuMs = 0.0;
     double averageConversionGpuMs = 0.0;
     uint32_t lastFrameGaussianCount = 0;
+    uint64_t frameUniformResourceBytes = 0;
+    uint64_t sceneResourceBytes = 0;
+    uint64_t gaussianResourceBytes = 0;
+    uint64_t gaussianSortResourceBytes = 0;
+    uint64_t pendingConversionResourceBytes = 0;
+    uint64_t trackedResourceBytes = 0;
     bool lastFrameSortedGaussians = false;
     bool lastFrameRenderedMesh = false;
     bool lastFrameRenderedGaussians = false;

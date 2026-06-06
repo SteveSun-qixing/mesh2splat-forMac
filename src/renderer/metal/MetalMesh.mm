@@ -32,6 +32,25 @@ bool canFitUInt32(std::size_t value)
     return value <= static_cast<std::size_t>(std::numeric_limits<uint32_t>::max());
 }
 
+void addSizeBytes(std::size_t& total, std::size_t size)
+{
+    if (size > std::numeric_limits<std::size_t>::max() - total) {
+        total = std::numeric_limits<std::size_t>::max();
+        return;
+    }
+
+    total += size;
+}
+
+void addTextureVectorSize(
+    std::size_t& total,
+    const std::vector<std::unique_ptr<MetalTexture>>& textures)
+{
+    for (const std::unique_ptr<MetalTexture>& texture : textures) {
+        addSizeBytes(total, texture == nullptr ? 0 : texture->sizeBytes());
+    }
+}
+
 uint32_t normalizedSamplesPerTriangle(uint32_t samplesPerTriangle)
 {
     if (samplesPerTriangle <= 1) {
@@ -570,6 +589,20 @@ std::size_t MetalMesh::conversionCapacity(uint32_t maxSamplesPerTriangle) const
         return m_impl->conversionCapacity4;
     }
     return m_impl->conversionCapacity9;
+}
+
+std::size_t MetalMesh::sizeBytes() const
+{
+    std::size_t total = 0;
+    addSizeBytes(total, m_impl->vertexBuffer == nullptr ? 0 : m_impl->vertexBuffer->size());
+    addSizeBytes(total, m_impl->drawRangeBuffer == nullptr ? 0 : m_impl->drawRangeBuffer->size());
+    addSizeBytes(total, m_impl->materialBuffer == nullptr ? 0 : m_impl->materialBuffer->size());
+    addTextureVectorSize(total, m_impl->baseColorTextures);
+    addTextureVectorSize(total, m_impl->metallicRoughnessTextures);
+    addTextureVectorSize(total, m_impl->normalTextures);
+    addTextureVectorSize(total, m_impl->occlusionTextures);
+    addTextureVectorSize(total, m_impl->emissiveTextures);
+    return total;
 }
 
 uint32_t MetalMesh::drawRangeCount() const

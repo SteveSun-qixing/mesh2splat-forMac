@@ -30,6 +30,7 @@ public:
     std::size_t totalVertexCount() const;
     std::size_t totalDrawRangeCount() const;
     std::size_t totalMaterialCount() const;
+    std::size_t sizeBytes() const;
     std::size_t conversionCapacity(uint32_t maxSamplesPerTriangle) const;
 
     const MetalMesh* meshAt(std::size_t index) const;

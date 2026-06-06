@@ -27,6 +27,7 @@ public:
     bool isValid() const;
     uint32_t frameCount() const;
     std::size_t bufferSize() const;
+    std::size_t sizeBytes() const;
     void* buffer(uint32_t frameIndex) const;
 
 private:

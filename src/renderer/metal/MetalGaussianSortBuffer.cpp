@@ -135,6 +135,28 @@ std::size_t MetalGaussianSortBuffer::blockCount() const
     return m_impl->blockCount;
 }
 
+std::size_t MetalGaussianSortBuffer::sizeBytes() const
+{
+    std::size_t total = 0;
+    const auto addBufferSize = [&total](const std::unique_ptr<MetalBuffer>& buffer) {
+        const std::size_t size = buffer == nullptr ? 0 : buffer->size();
+        if (size > std::numeric_limits<std::size_t>::max() - total) {
+            total = std::numeric_limits<std::size_t>::max();
+            return;
+        }
+
+        total += size;
+    };
+
+    addBufferSize(m_impl->keyBuffer);
+    addBufferSize(m_impl->indexBuffer);
+    addBufferSize(m_impl->scratchKeyBuffer);
+    addBufferSize(m_impl->scratchIndexBuffer);
+    addBufferSize(m_impl->blockCountBuffer);
+    addBufferSize(m_impl->globalOffsetBuffer);
+    return total;
+}
+
 uint32_t MetalGaussianSortBuffer::count() const
 {
     return m_impl->count;

@@ -89,6 +89,15 @@ std::size_t MetalFrameUniformBuffer::bufferSize() const
     return sizeof(core::FrameUniforms);
 }
 
+std::size_t MetalFrameUniformBuffer::sizeBytes() const
+{
+    std::size_t total = 0;
+    for (const std::unique_ptr<MetalBuffer>& buffer : m_impl->buffers) {
+        total += buffer == nullptr ? 0 : buffer->size();
+    }
+    return total;
+}
+
 void* MetalFrameUniformBuffer::buffer(uint32_t frameIndex) const
 {
     if (m_impl->buffers.empty()) {

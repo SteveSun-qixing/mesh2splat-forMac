@@ -115,6 +115,19 @@ std::size_t MetalSceneResources::totalMaterialCount() const
     return m_impl->totalMaterialCount;
 }
 
+std::size_t MetalSceneResources::sizeBytes() const
+{
+    std::size_t total = 0;
+    for (const MetalMesh& mesh : m_impl->meshes) {
+        const std::size_t meshBytes = mesh.sizeBytes();
+        if (meshBytes > std::numeric_limits<std::size_t>::max() - total) {
+            return std::numeric_limits<std::size_t>::max();
+        }
+        total += meshBytes;
+    }
+    return total;
+}
+
 std::size_t MetalSceneResources::conversionCapacity(uint32_t maxSamplesPerTriangle) const
 {
     std::size_t capacity = 0;

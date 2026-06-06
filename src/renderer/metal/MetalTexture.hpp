@@ -57,6 +57,7 @@ public:
     uint32_t width() const;
     uint32_t height() const;
     MetalTextureFormat format() const;
+    std::size_t sizeBytes() const;
     void* nativeTexture() const;
 
 private:

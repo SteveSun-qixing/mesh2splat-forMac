@@ -46,6 +46,7 @@ public:
     bool isValid() const;
     std::size_t vertexCount() const;
     std::size_t conversionCapacity(uint32_t maxSamplesPerTriangle) const;
+    std::size_t sizeBytes() const;
     uint32_t drawRangeCount() const;
     uint32_t materialCount() const;
     const MetalMeshDrawRange* drawRange(uint32_t index) const;

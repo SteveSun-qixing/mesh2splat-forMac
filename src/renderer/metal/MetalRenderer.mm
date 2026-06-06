@@ -29,6 +29,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -228,6 +229,25 @@ double exponentialAverage(double currentAverage, double sample)
 {
     constexpr double kAlpha = 0.12;
     return currentAverage <= 0.0 ? sample : currentAverage + (sample - currentAverage) * kAlpha;
+}
+
+uint64_t toResourceBytes(std::size_t size)
+{
+    if (size > static_cast<std::size_t>(std::numeric_limits<uint64_t>::max())) {
+        return std::numeric_limits<uint64_t>::max();
+    }
+
+    return static_cast<uint64_t>(size);
+}
+
+void addResourceBytes(uint64_t& total, uint64_t size)
+{
+    if (size > std::numeric_limits<uint64_t>::max() - total) {
+        total = std::numeric_limits<uint64_t>::max();
+        return;
+    }
+
+    total += size;
 }
 
 } // namespace
@@ -713,7 +733,49 @@ uint32_t MetalRenderer::convertedGaussianCount() const
 
 MetalRendererStats MetalRenderer::rendererStats() const
 {
-    return m_impl->timingState == nullptr ? MetalRendererStats{} : m_impl->timingState->snapshot();
+    MetalRendererStats stats =
+        m_impl->timingState == nullptr ? MetalRendererStats{} : m_impl->timingState->snapshot();
+    stats.frameUniformResourceBytes =
+        toResourceBytes(m_impl->frameUniformBuffer == nullptr ? 0 : m_impl->frameUniformBuffer->sizeBytes());
+    stats.sceneResourceBytes =
+        toResourceBytes(m_impl->sceneResources == nullptr ? 0 : m_impl->sceneResources->sizeBytes());
+    stats.gaussianResourceBytes =
+        toResourceBytes(m_impl->gaussianBuffer == nullptr ? 0 : m_impl->gaussianBuffer->totalSizeBytes());
+    stats.gaussianSortResourceBytes =
+        toResourceBytes(m_impl->gaussianSortBuffer == nullptr ? 0 : m_impl->gaussianSortBuffer->sizeBytes());
+
+    uint64_t pendingResourceBytes = 0;
+    std::shared_ptr<PendingGaussianConversion> pendingConversion = m_impl->pendingConversion;
+    if (pendingConversion != nullptr) {
+        addResourceBytes(
+            pendingResourceBytes,
+            toResourceBytes(
+                pendingConversion->nextSceneResources == nullptr
+                    ? 0
+                    : pendingConversion->nextSceneResources->sizeBytes()));
+        addResourceBytes(
+            pendingResourceBytes,
+            toResourceBytes(
+                pendingConversion->gaussianBuffer == nullptr
+                    ? 0
+                    : pendingConversion->gaussianBuffer->totalSizeBytes()));
+        addResourceBytes(
+            pendingResourceBytes,
+            toResourceBytes(
+                pendingConversion->sortBuffer == nullptr
+                    ? 0
+                    : pendingConversion->sortBuffer->sizeBytes()));
+    }
+    stats.pendingConversionResourceBytes = pendingResourceBytes;
+
+    uint64_t totalResourceBytes = 0;
+    addResourceBytes(totalResourceBytes, stats.frameUniformResourceBytes);
+    addResourceBytes(totalResourceBytes, stats.sceneResourceBytes);
+    addResourceBytes(totalResourceBytes, stats.gaussianResourceBytes);
+    addResourceBytes(totalResourceBytes, stats.gaussianSortResourceBytes);
+    addResourceBytes(totalResourceBytes, stats.pendingConversionResourceBytes);
+    stats.trackedResourceBytes = totalResourceBytes;
+    return stats;
 }
 
 const std::string& MetalRenderer::lastDiagnostic() const

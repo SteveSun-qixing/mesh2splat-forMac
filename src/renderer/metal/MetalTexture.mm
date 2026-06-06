@@ -212,6 +212,26 @@ MetalTextureFormat MetalTexture::format() const
     return m_impl->format;
 }
 
+std::size_t MetalTexture::sizeBytes() const
+{
+    if (m_impl->texture == nil || m_impl->width == 0 || m_impl->height == 0) {
+        return 0;
+    }
+
+    const std::size_t pixelBytes = bytesPerPixel(m_impl->format);
+    if (pixelBytes == 0 ||
+        m_impl->width > std::numeric_limits<std::size_t>::max() / pixelBytes) {
+        return 0;
+    }
+
+    const std::size_t rowBytes = static_cast<std::size_t>(m_impl->width) * pixelBytes;
+    if (m_impl->height > std::numeric_limits<std::size_t>::max() / rowBytes) {
+        return 0;
+    }
+
+    return rowBytes * static_cast<std::size_t>(m_impl->height);
+}
+
 void* MetalTexture::nativeTexture() const
 {
     return (__bridge void*)m_impl->texture;

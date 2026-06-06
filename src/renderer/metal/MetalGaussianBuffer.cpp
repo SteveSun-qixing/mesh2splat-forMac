@@ -4,6 +4,7 @@
 #include "MetalDeviceContext.hpp"
 #include "MetalResourceUploader.hpp"
 
+#include <limits>
 #include <string>
 
 namespace mesh2splat::metal {
@@ -187,6 +188,24 @@ uint32_t MetalGaussianBuffer::count() const
 std::size_t MetalGaussianBuffer::sizeBytes() const
 {
     return m_impl->buffer == nullptr ? 0 : m_impl->buffer->size();
+}
+
+std::size_t MetalGaussianBuffer::totalSizeBytes() const
+{
+    std::size_t total = sizeBytes();
+    const std::size_t counterBytes = m_impl->counterBuffer == nullptr ? 0 : m_impl->counterBuffer->size();
+    if (counterBytes > std::numeric_limits<std::size_t>::max() - total) {
+        return std::numeric_limits<std::size_t>::max();
+    }
+    total += counterBytes;
+
+    const std::size_t readbackBytes =
+        m_impl->counterReadbackBuffer == nullptr ? 0 : m_impl->counterReadbackBuffer->size();
+    if (readbackBytes > std::numeric_limits<std::size_t>::max() - total) {
+        return std::numeric_limits<std::size_t>::max();
+    }
+    total += readbackBytes;
+    return total;
 }
 
 void* MetalGaussianBuffer::nativeBuffer() const

@@ -34,6 +34,7 @@ public:
     std::size_t capacity() const;
     uint32_t count() const;
     std::size_t sizeBytes() const;
+    std::size_t totalSizeBytes() const;
     void* nativeBuffer() const;
     void* nativeCounterBuffer() const;
 
