@@ -22,6 +22,7 @@ bool storageModeIsCpuAccessible(MTLResourceOptions options)
 
 struct MetalBuffer::Impl {
     id<MTLDevice> device = nil;
+    id<MTLCommandQueue> commandQueue = nil;
     id<MTLBuffer> buffer = nil;
     std::size_t bufferSize = 0;
     bool cpuAccessible = false;
@@ -31,6 +32,7 @@ MetalBuffer::MetalBuffer(MetalDeviceContext& deviceContext)
     : m_impl(std::make_unique<Impl>())
 {
     m_impl->device = (__bridge id<MTLDevice>)deviceContext.nativeDevice();
+    m_impl->commandQueue = (__bridge id<MTLCommandQueue>)deviceContext.nativeCommandQueue();
 }
 
 MetalBuffer::~MetalBuffer() = default;
@@ -86,6 +88,51 @@ bool MetalBuffer::createPrivate(std::size_t size, const char* label)
         m_impl->buffer.label = [NSString stringWithUTF8String:label];
     }
 
+    return true;
+}
+
+bool MetalBuffer::createPrivateWithData(std::size_t size, const void* initialData, const char* label)
+{
+    if (m_impl->device == nil || m_impl->commandQueue == nil || size == 0 || initialData == nullptr) {
+        return false;
+    }
+
+    id<MTLBuffer> stagingBuffer = [m_impl->device newBufferWithLength:size options:MTLResourceStorageModeShared];
+    id<MTLBuffer> privateBuffer = [m_impl->device newBufferWithLength:size options:MTLResourceStorageModePrivate];
+    if (stagingBuffer == nil || privateBuffer == nil || stagingBuffer.contents == nullptr) {
+        return false;
+    }
+
+    if (label != nullptr) {
+        privateBuffer.label = [NSString stringWithUTF8String:label];
+        stagingBuffer.label = [NSString stringWithFormat:@"%s Upload Staging", label];
+    }
+
+    std::memcpy(stagingBuffer.contents, initialData, size);
+
+    id<MTLCommandBuffer> commandBuffer = [m_impl->commandQueue commandBuffer];
+    id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+    if (commandBuffer == nil || blitEncoder == nil) {
+        return false;
+    }
+
+    commandBuffer.label = @"Mesh2Splat Private Buffer Upload";
+    blitEncoder.label = @"Mesh2Splat Private Buffer Upload Blit";
+    [blitEncoder copyFromBuffer:stagingBuffer
+                   sourceOffset:0
+                       toBuffer:privateBuffer
+              destinationOffset:0
+                           size:size];
+    [blitEncoder endEncoding];
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+    if (commandBuffer.status != MTLCommandBufferStatusCompleted) {
+        return false;
+    }
+
+    m_impl->buffer = privateBuffer;
+    m_impl->bufferSize = size;
+    m_impl->cpuAccessible = false;
     return true;
 }
 

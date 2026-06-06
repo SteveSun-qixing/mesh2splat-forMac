@@ -475,15 +475,15 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
         materialEmissiveTextureIndices.push_back(0);
     }
 
-    if (!vertexBuffer->createShared(
+    if (!vertexBuffer->createPrivateWithData(
             meshData.vertices.size() * sizeof(core::MeshVertex),
             meshData.vertices.data(),
             vertexLabel.c_str()) ||
-        !drawRangeBuffer->createShared(
+        !drawRangeBuffer->createPrivateWithData(
             drawRanges.size() * sizeof(MetalMeshDrawRange),
             drawRanges.data(),
             drawRangeLabel.c_str()) ||
-        !materialBuffer->createShared(
+        !materialBuffer->createPrivateWithData(
             materials.size() * sizeof(MetalMeshMaterial),
             materials.data(),
             materialLabel.c_str())) {
