@@ -31,7 +31,19 @@ struct MeshConversionParams {
     uint maxSamplesPerTriangle;
 };
 
+static_assert(sizeof(MeshMaterial) == 48u, "MeshMaterial must match MetalMeshMaterial.");
+static_assert(sizeof(GaussianRecord) == 96u, "GaussianRecord must remain six float4 slots.");
+static_assert(sizeof(MeshConversionParams) == 32u, "MeshConversionParams must stay 32 bytes.");
+
 constexpr uint kConversionMeshVertexFloatStride = 17u;
+constexpr uint kConversionMeshVertexPositionOffset = 0u;
+constexpr uint kConversionMeshVertexNormalOffset = 3u;
+constexpr uint kConversionMeshVertexTangentOffset = 6u;
+constexpr uint kConversionMeshVertexTangentWOffset = 9u;
+constexpr uint kConversionMeshVertexUvOffset = 10u;
+constexpr uint kConversionMeshVertexNormalizedUvOffset = 12u;
+constexpr uint kConversionMeshVertexScaleOffset = 14u;
+constexpr uint kConversionMaxUint = 0xffffffffu;
 constexpr float kConversionMinimumLengthSquared = 1.0e-12;
 constexpr float kConversionMinimumGaussianAxisScale = 1.0e-7;
 constexpr float kConversionMaximumGaussianAxisScale = 1.0e7;
@@ -303,21 +315,22 @@ kernel void meshVertexConversionKernel(
         return;
     }
 
-    if (triangleID > (0xffffffffu - params.vertexOffset) / 3u) {
+    if (triangleID > (kConversionMaxUint - params.vertexOffset) / 3u) {
         return;
     }
 
     const uint firstVertexIndex = params.vertexOffset + triangleID * 3;
-    if (firstVertexIndex > (0xffffffffu - (kConversionMeshVertexFloatStride - 1u)) / kConversionMeshVertexFloatStride - 2u) {
+    if (firstVertexIndex > (kConversionMaxUint - (kConversionMeshVertexFloatStride - 1u)) /
+            kConversionMeshVertexFloatStride - 2u) {
         return;
     }
 
     const uint base0 = firstVertexIndex * kConversionMeshVertexFloatStride;
     const uint base1 = (firstVertexIndex + 1u) * kConversionMeshVertexFloatStride;
     const uint base2 = (firstVertexIndex + 2u) * kConversionMeshVertexFloatStride;
-    const float3 p0 = conversionReadVertexFloat3(vertices, base0, 0u);
-    const float3 p1 = conversionReadVertexFloat3(vertices, base1, 0u);
-    const float3 p2 = conversionReadVertexFloat3(vertices, base2, 0u);
+    const float3 p0 = conversionReadVertexFloat3(vertices, base0, kConversionMeshVertexPositionOffset);
+    const float3 p1 = conversionReadVertexFloat3(vertices, base1, kConversionMeshVertexPositionOffset);
+    const float3 p2 = conversionReadVertexFloat3(vertices, base2, kConversionMeshVertexPositionOffset);
     if (!conversionFinite(p0) || !conversionFinite(p1) || !conversionFinite(p2)) {
         return;
     }
@@ -367,9 +380,15 @@ kernel void meshVertexConversionKernel(
     const float3 position = conversionFiniteOr(
         p0 * barycentric.x + p1 * barycentric.y + p2 * barycentric.z,
         (p0 + p1 + p2) / 3.0);
-    const float3 n0 = conversionSafeNormalize(conversionReadVertexFloat3(vertices, base0, 3u), faceNormal);
-    const float3 n1 = conversionSafeNormalize(conversionReadVertexFloat3(vertices, base1, 3u), faceNormal);
-    const float3 n2 = conversionSafeNormalize(conversionReadVertexFloat3(vertices, base2, 3u), faceNormal);
+    const float3 n0 = conversionSafeNormalize(
+        conversionReadVertexFloat3(vertices, base0, kConversionMeshVertexNormalOffset),
+        faceNormal);
+    const float3 n1 = conversionSafeNormalize(
+        conversionReadVertexFloat3(vertices, base1, kConversionMeshVertexNormalOffset),
+        faceNormal);
+    const float3 n2 = conversionSafeNormalize(
+        conversionReadVertexFloat3(vertices, base2, kConversionMeshVertexNormalOffset),
+        faceNormal);
     const float3 vertexNormal = conversionSafeNormalize(n0 * barycentric.x + n1 * barycentric.y + n2 * barycentric.z, faceNormal);
 
     uint outputIndex = 0u;
@@ -386,13 +405,25 @@ kernel void meshVertexConversionKernel(
     const float normalScale =
         conversionPositiveOr(params.normalScale, 1.0) * conversionPositiveOr(material.normalScale, 1.0);
 
-    const float2 uv0 = conversionFiniteOr(conversionReadVertexFloat2(vertices, base0, 10u), float2(0.0));
-    const float2 uv1 = conversionFiniteOr(conversionReadVertexFloat2(vertices, base1, 10u), uv0);
-    const float2 uv2 = conversionFiniteOr(conversionReadVertexFloat2(vertices, base2, 10u), uv0);
+    const float2 uv0 = conversionFiniteOr(
+        conversionReadVertexFloat2(vertices, base0, kConversionMeshVertexUvOffset),
+        float2(0.0));
+    const float2 uv1 = conversionFiniteOr(
+        conversionReadVertexFloat2(vertices, base1, kConversionMeshVertexUvOffset),
+        uv0);
+    const float2 uv2 = conversionFiniteOr(
+        conversionReadVertexFloat2(vertices, base2, kConversionMeshVertexUvOffset),
+        uv0);
     const float2 uv = conversionFiniteOr(uv0 * barycentric.x + uv1 * barycentric.y + uv2 * barycentric.z, float2(0.0));
-    const float2 atlasUv0 = conversionFiniteOr(conversionReadVertexFloat2(vertices, base0, 12u), uv0);
-    const float2 atlasUv1 = conversionFiniteOr(conversionReadVertexFloat2(vertices, base1, 12u), uv1);
-    const float2 atlasUv2 = conversionFiniteOr(conversionReadVertexFloat2(vertices, base2, 12u), uv2);
+    const float2 atlasUv0 = conversionFiniteOr(
+        conversionReadVertexFloat2(vertices, base0, kConversionMeshVertexNormalizedUvOffset),
+        uv0);
+    const float2 atlasUv1 = conversionFiniteOr(
+        conversionReadVertexFloat2(vertices, base1, kConversionMeshVertexNormalizedUvOffset),
+        uv1);
+    const float2 atlasUv2 = conversionFiniteOr(
+        conversionReadVertexFloat2(vertices, base2, kConversionMeshVertexNormalizedUvOffset),
+        uv2);
     const float2 atlasScale = conversionTriangleAtlasScale(
         edge0,
         edge1,
@@ -403,9 +434,9 @@ kernel void meshVertexConversionKernel(
         activeSamples,
         float2(fallbackX, fallbackY) / gaussianScale) * gaussianScale;
     const float3 vertexScale = conversionFiniteOr(
-        conversionReadVertexFloat3(vertices, base0, 14u) * barycentric.x +
-            conversionReadVertexFloat3(vertices, base1, 14u) * barycentric.y +
-            conversionReadVertexFloat3(vertices, base2, 14u) * barycentric.z,
+        conversionReadVertexFloat3(vertices, base0, kConversionMeshVertexScaleOffset) * barycentric.x +
+            conversionReadVertexFloat3(vertices, base1, kConversionMeshVertexScaleOffset) * barycentric.y +
+            conversionReadVertexFloat3(vertices, base2, kConversionMeshVertexScaleOffset) * barycentric.z,
         float3(1.0));
     const float scaleX = conversionAxisScaleOr(atlasScale.x * conversionPositiveOr(abs(vertexScale.x), 1.0), fallbackX);
     const float scaleY = conversionAxisScaleOr(atlasScale.y * conversionPositiveOr(abs(vertexScale.y), 1.0), fallbackY);
@@ -429,14 +460,14 @@ kernel void meshVertexConversionKernel(
     const float3 emissive = max(emissiveFactor.rgb, float3(0.0)) * emissiveSample;
     const float emissiveStrength = max(max(emissive.r, emissive.g), emissive.b);
 
-    const float3 t0 = conversionReadVertexFloat3(vertices, base0, 6u);
-    const float3 t1 = conversionReadVertexFloat3(vertices, base1, 6u);
-    const float3 t2 = conversionReadVertexFloat3(vertices, base2, 6u);
+    const float3 t0 = conversionReadVertexFloat3(vertices, base0, kConversionMeshVertexTangentOffset);
+    const float3 t1 = conversionReadVertexFloat3(vertices, base1, kConversionMeshVertexTangentOffset);
+    const float3 t2 = conversionReadVertexFloat3(vertices, base2, kConversionMeshVertexTangentOffset);
     const float3 tangent = conversionFiniteOr(t0 * barycentric.x + t1 * barycentric.y + t2 * barycentric.z, xAxis);
     const float tangentW =
-        vertices[base0 + 9] * barycentric.x +
-        vertices[base1 + 9] * barycentric.y +
-        vertices[base2 + 9] * barycentric.z;
+        vertices[base0 + kConversionMeshVertexTangentWOffset] * barycentric.x +
+        vertices[base1 + kConversionMeshVertexTangentWOffset] * barycentric.y +
+        vertices[base2 + kConversionMeshVertexTangentWOffset] * barycentric.z;
     const float tangentSign = conversionFinite(tangentW) && tangentW < 0.0 ? -1.0 : 1.0;
     const float3 tangentBasis = conversionSafeNormalize(
         tangent - vertexNormal * dot(vertexNormal, tangent),
