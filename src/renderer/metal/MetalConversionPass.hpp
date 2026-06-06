@@ -33,7 +33,8 @@ public:
         void* commandBuffer,
         const MetalSceneResources& sceneResources,
         MetalGaussianBuffer& gaussianBuffer,
-        uint32_t samplesPerTriangle) const;
+        uint32_t samplesPerTriangle,
+        std::string* errorMessage = nullptr) const;
 
 private:
     struct Impl;
