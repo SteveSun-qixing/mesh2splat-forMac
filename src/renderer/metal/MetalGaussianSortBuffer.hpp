@@ -25,9 +25,14 @@ public:
 
     bool isValid() const;
     std::size_t capacity() const;
+    std::size_t blockCount() const;
     uint32_t count() const;
     void* nativeKeyBuffer() const;
     void* nativeIndexBuffer() const;
+    void* nativeScratchKeyBuffer() const;
+    void* nativeScratchIndexBuffer() const;
+    void* nativeBlockCountBuffer() const;
+    void* nativeGlobalOffsetBuffer() const;
 
 private:
     struct Impl;

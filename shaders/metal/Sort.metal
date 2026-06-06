@@ -33,17 +33,20 @@ struct GaussianRecord {
 
 struct GaussianSortParams {
     uint gaussianCount;
-    uint sortCapacity;
     uint reserved0;
     uint reserved1;
+    uint reserved2;
 };
 
-struct BitonicSortParams {
-    uint sortCapacity;
-    uint stageSize;
-    uint passSize;
+struct RadixSortParams {
+    uint itemCount;
+    uint blockCount;
+    uint radixShift;
     uint reserved;
 };
+
+constexpr uint kRadixBinCount = 16;
+constexpr uint kRadixSortThreadCount = 256;
 
 static float4 transformPoint(Matrix4 matrix, float3 position)
 {
@@ -68,13 +71,7 @@ kernel void gaussianDepthKeyKernel(
     device uint* indices [[buffer(3)]],
     constant GaussianSortParams& params [[buffer(4)]])
 {
-    if (threadID >= params.sortCapacity) {
-        return;
-    }
-
     if (threadID >= params.gaussianCount) {
-        depthKeys[threadID] = 0xffffffffu;
-        indices[threadID] = 0u;
         return;
     }
 
@@ -85,33 +82,107 @@ kernel void gaussianDepthKeyKernel(
     indices[threadID] = threadID;
 }
 
-kernel void gaussianBitonicSortKernel(
-    uint threadID [[thread_position_in_grid]],
-    device uint* depthKeys [[buffer(0)]],
-    device uint* indices [[buffer(1)]],
-    constant BitonicSortParams& params [[buffer(2)]])
+kernel void gaussianRadixCountKernel(
+    uint localID [[thread_index_in_threadgroup]],
+    uint3 blockPosition [[threadgroup_position_in_grid]],
+    const device uint* depthKeys [[buffer(0)]],
+    device atomic_uint* blockCounts [[buffer(1)]],
+    device atomic_uint* globalOffsets [[buffer(2)]],
+    constant RadixSortParams& params [[buffer(3)]])
 {
-    if (threadID >= params.sortCapacity) {
+    const uint blockID = blockPosition.x;
+    if (blockID >= params.blockCount) {
         return;
     }
 
-    const uint partner = threadID ^ params.passSize;
-    if (partner <= threadID || partner >= params.sortCapacity) {
+    const uint itemID = blockID * kRadixSortThreadCount + localID;
+    if (itemID >= params.itemCount) {
         return;
     }
 
-    const bool ascending = (threadID & params.stageSize) == 0;
-    const uint key = depthKeys[threadID];
-    const uint partnerKey = depthKeys[partner];
-    const bool shouldSwap = ascending ? key > partnerKey : key < partnerKey;
-    if (!shouldSwap) {
+    const uint radix = (depthKeys[itemID] >> params.radixShift) & 0xfu;
+    atomic_fetch_add_explicit(
+        &blockCounts[radix * params.blockCount + blockID],
+        1u,
+        memory_order_relaxed);
+    atomic_fetch_add_explicit(&globalOffsets[radix], 1u, memory_order_relaxed);
+}
+
+kernel void gaussianRadixPrefixKernel(
+    uint threadID [[thread_position_in_grid]],
+    device uint* blockCounts [[buffer(0)]],
+    device uint* globalOffsets [[buffer(1)]],
+    constant RadixSortParams& params [[buffer(2)]])
+{
+    if (threadID < kRadixBinCount) {
+        uint blockRunning = 0;
+        for (uint blockID = 0; blockID < params.blockCount; ++blockID) {
+            const uint offset = threadID * params.blockCount + blockID;
+            const uint blockCount = blockCounts[offset];
+            blockCounts[offset] = blockRunning;
+            blockRunning += blockCount;
+        }
+    }
+
+    if (threadID == 0) {
+        uint globalRunning = 0;
+        for (uint radix = 0; radix < kRadixBinCount; ++radix) {
+            const uint radixCount = globalOffsets[radix];
+            globalOffsets[radix] = globalRunning;
+            globalRunning += radixCount;
+        }
+    }
+}
+
+kernel void gaussianRadixReorderKernel(
+    uint localID [[thread_index_in_threadgroup]],
+    uint3 blockPosition [[threadgroup_position_in_grid]],
+    const device uint* srcDepthKeys [[buffer(0)]],
+    const device uint* srcIndices [[buffer(1)]],
+    device uint* dstDepthKeys [[buffer(2)]],
+    device uint* dstIndices [[buffer(3)]],
+    const device uint* blockOffsets [[buffer(4)]],
+    const device uint* globalOffsets [[buffer(5)]],
+    constant RadixSortParams& params [[buffer(6)]])
+{
+    const uint blockID = blockPosition.x;
+    if (blockID >= params.blockCount) {
         return;
     }
 
-    depthKeys[threadID] = partnerKey;
-    depthKeys[partner] = key;
+    threadgroup uint digits[kRadixSortThreadCount];
+    threadgroup uint prefix[kRadixSortThreadCount];
 
-    const uint index = indices[threadID];
-    indices[threadID] = indices[partner];
-    indices[partner] = index;
+    const uint itemID = blockID * kRadixSortThreadCount + localID;
+    const bool isValid = itemID < params.itemCount;
+    const uint key = isValid ? srcDepthKeys[itemID] : 0u;
+    const uint index = isValid ? srcIndices[itemID] : 0u;
+    const uint itemRadix = isValid ? ((key >> params.radixShift) & 0xfu) : kRadixBinCount;
+    digits[localID] = itemRadix;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint radix = 0; radix < kRadixBinCount; ++radix) {
+        prefix[localID] = digits[localID] == radix ? 1u : 0u;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        for (uint offset = 1; offset < kRadixSortThreadCount; offset <<= 1) {
+            uint value = 0;
+            if (localID >= offset) {
+                value = prefix[localID - offset];
+            }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            prefix[localID] += value;
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+        }
+
+        if (isValid && itemRadix == radix) {
+            const uint localOffset = prefix[localID] - 1u;
+            const uint destination = globalOffsets[radix] +
+                blockOffsets[radix * params.blockCount + blockID] +
+                localOffset;
+            dstDepthKeys[destination] = key;
+            dstIndices[destination] = index;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
 }

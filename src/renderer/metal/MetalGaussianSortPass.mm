@@ -5,6 +5,7 @@
 #include "MetalPipelineCache.hpp"
 #include "MetalShaderLibrary.hpp"
 
+#import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 
 #include <algorithm>
@@ -15,31 +16,32 @@ namespace {
 
 struct GaussianSortParams {
     uint32_t gaussianCount = 0;
-    uint32_t sortCapacity = 0;
     uint32_t reserved0 = 0;
     uint32_t reserved1 = 0;
+    uint32_t reserved2 = 0;
 };
 
-struct BitonicSortParams {
-    uint32_t sortCapacity = 0;
-    uint32_t stageSize = 0;
-    uint32_t passSize = 0;
+struct RadixSortParams {
+    uint32_t itemCount = 0;
+    uint32_t blockCount = 0;
+    uint32_t radixShift = 0;
     uint32_t reserved = 0;
 };
 
 static_assert(sizeof(GaussianSortParams) == 16, "GaussianSortParams must match the Metal shader layout.");
-static_assert(sizeof(BitonicSortParams) == 16, "BitonicSortParams must match the Metal shader layout.");
+static_assert(sizeof(RadixSortParams) == 16, "RadixSortParams must match the Metal shader layout.");
 
-bool isPowerOfTwo(std::size_t value)
-{
-    return value != 0 && (value & (value - 1)) == 0;
-}
+constexpr uint32_t kRadixBinCount = 16;
+constexpr uint32_t kRadixPassCount = 8;
+constexpr uint32_t kRadixSortThreadCount = 256;
 
 } // namespace
 
 struct MetalGaussianSortPass::Impl {
     void* depthKeyPipelineState = nullptr;
-    void* bitonicPipelineState = nullptr;
+    void* radixCountPipelineState = nullptr;
+    void* radixPrefixPipelineState = nullptr;
+    void* radixReorderPipelineState = nullptr;
 };
 
 MetalGaussianSortPass::MetalGaussianSortPass()
@@ -63,16 +65,35 @@ bool MetalGaussianSortPass::initialize(MetalShaderLibrary& shaderLibrary, MetalP
         return false;
     }
 
-    MetalComputePipelineDesc bitonicDesc;
-    bitonicDesc.label = "Gaussian Bitonic Sort Pipeline";
-    bitonicDesc.function = "gaussianBitonicSortKernel";
-    m_impl->bitonicPipelineState = pipelineCache.computePipeline(shaderLibrary, bitonicDesc);
-    return m_impl->bitonicPipelineState != nullptr;
+    MetalComputePipelineDesc countDesc;
+    countDesc.label = "Gaussian Radix Count Pipeline";
+    countDesc.function = "gaussianRadixCountKernel";
+    m_impl->radixCountPipelineState = pipelineCache.computePipeline(shaderLibrary, countDesc);
+    if (m_impl->radixCountPipelineState == nullptr) {
+        return false;
+    }
+
+    MetalComputePipelineDesc prefixDesc;
+    prefixDesc.label = "Gaussian Radix Prefix Pipeline";
+    prefixDesc.function = "gaussianRadixPrefixKernel";
+    m_impl->radixPrefixPipelineState = pipelineCache.computePipeline(shaderLibrary, prefixDesc);
+    if (m_impl->radixPrefixPipelineState == nullptr) {
+        return false;
+    }
+
+    MetalComputePipelineDesc reorderDesc;
+    reorderDesc.label = "Gaussian Radix Reorder Pipeline";
+    reorderDesc.function = "gaussianRadixReorderKernel";
+    m_impl->radixReorderPipelineState = pipelineCache.computePipeline(shaderLibrary, reorderDesc);
+    return m_impl->radixReorderPipelineState != nullptr;
 }
 
 bool MetalGaussianSortPass::isReady() const
 {
-    return m_impl->depthKeyPipelineState != nullptr && m_impl->bitonicPipelineState != nullptr;
+    return m_impl->depthKeyPipelineState != nullptr &&
+        m_impl->radixCountPipelineState != nullptr &&
+        m_impl->radixPrefixPipelineState != nullptr &&
+        m_impl->radixReorderPipelineState != nullptr;
 }
 
 bool MetalGaussianSortPass::encodeDepthKeys(
@@ -90,20 +111,37 @@ bool MetalGaussianSortPass::encodeDepthKeys(
     id<MTLCommandBuffer> nativeCommandBuffer = (__bridge id<MTLCommandBuffer>)commandBuffer;
     id<MTLComputePipelineState> pipelineState =
         (__bridge id<MTLComputePipelineState>)m_impl->depthKeyPipelineState;
-    id<MTLComputePipelineState> bitonicPipelineState =
-        (__bridge id<MTLComputePipelineState>)m_impl->bitonicPipelineState;
+    id<MTLComputePipelineState> radixCountPipelineState =
+        (__bridge id<MTLComputePipelineState>)m_impl->radixCountPipelineState;
+    id<MTLComputePipelineState> radixPrefixPipelineState =
+        (__bridge id<MTLComputePipelineState>)m_impl->radixPrefixPipelineState;
+    id<MTLComputePipelineState> radixReorderPipelineState =
+        (__bridge id<MTLComputePipelineState>)m_impl->radixReorderPipelineState;
     id<MTLBuffer> gaussianBufferHandle = (__bridge id<MTLBuffer>)gaussianBuffer.nativeBuffer();
     id<MTLBuffer> frameBuffer = (__bridge id<MTLBuffer>)frameUniformBuffer;
     id<MTLBuffer> keyBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeKeyBuffer();
     id<MTLBuffer> indexBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeIndexBuffer();
-    if (nativeCommandBuffer == nil || pipelineState == nil || bitonicPipelineState == nil || gaussianBufferHandle == nil ||
-        frameBuffer == nil || keyBuffer == nil || indexBuffer == nil) {
+    id<MTLBuffer> scratchKeyBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeScratchKeyBuffer();
+    id<MTLBuffer> scratchIndexBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeScratchIndexBuffer();
+    id<MTLBuffer> blockCountBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeBlockCountBuffer();
+    id<MTLBuffer> globalOffsetBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeGlobalOffsetBuffer();
+    if (nativeCommandBuffer == nil || pipelineState == nil || radixCountPipelineState == nil ||
+        radixPrefixPipelineState == nil || radixReorderPipelineState == nil ||
+        gaussianBufferHandle == nil || frameBuffer == nil || keyBuffer == nil || indexBuffer == nil ||
+        scratchKeyBuffer == nil || scratchIndexBuffer == nil || blockCountBuffer == nil ||
+        globalOffsetBuffer == nil) {
         return false;
     }
 
-    if (!isPowerOfTwo(sortBuffer.capacity()) ||
-        sortBuffer.capacity() > static_cast<std::size_t>(UINT32_MAX) ||
+    if (sortBuffer.capacity() > static_cast<std::size_t>(UINT32_MAX) ||
+        sortBuffer.blockCount() > static_cast<std::size_t>(UINT32_MAX) ||
         !sortBuffer.setCount(gaussianBuffer.count())) {
+        return false;
+    }
+
+    if (radixCountPipelineState.maxTotalThreadsPerThreadgroup < kRadixSortThreadCount ||
+        radixReorderPipelineState.maxTotalThreadsPerThreadgroup < kRadixSortThreadCount ||
+        radixPrefixPipelineState.maxTotalThreadsPerThreadgroup < kRadixBinCount) {
         return false;
     }
 
@@ -121,49 +159,96 @@ bool MetalGaussianSortPass::encodeDepthKeys(
 
     GaussianSortParams params;
     params.gaussianCount = gaussianBuffer.count();
-    params.sortCapacity = static_cast<uint32_t>(sortBuffer.capacity());
     [encoder setBytes:&params length:sizeof(params) atIndex:4];
 
     const NSUInteger threadExecutionWidth = std::max<NSUInteger>(1, pipelineState.threadExecutionWidth);
     const NSUInteger maxThreads = std::max<NSUInteger>(1, pipelineState.maxTotalThreadsPerThreadgroup);
     const NSUInteger threadsPerGroup = std::min<NSUInteger>(threadExecutionWidth, maxThreads);
-    [encoder dispatchThreads:MTLSizeMake(sortBuffer.capacity(), 1, 1)
+    [encoder dispatchThreads:MTLSizeMake(gaussianBuffer.count(), 1, 1)
        threadsPerThreadgroup:MTLSizeMake(threadsPerGroup, 1, 1)];
     [encoder endEncoding];
 
-    id<MTLComputeCommandEncoder> sortEncoder = [nativeCommandBuffer computeCommandEncoder];
-    if (sortEncoder == nil) {
+    if (gaussianBuffer.count() <= 1) {
+        return true;
+    }
+
+    RadixSortParams sortParams;
+    sortParams.itemCount = gaussianBuffer.count();
+    const uint32_t activeBlockCount =
+        (gaussianBuffer.count() + kRadixSortThreadCount - 1) / kRadixSortThreadCount;
+    if (activeBlockCount == 0 || activeBlockCount > sortBuffer.blockCount()) {
         return false;
     }
+    sortParams.blockCount = activeBlockCount;
 
-    sortEncoder.label = @"Mesh2Splat Gaussian Bitonic Sort";
-    [sortEncoder setComputePipelineState:bitonicPipelineState];
-    [sortEncoder setBuffer:keyBuffer offset:0 atIndex:0];
-    [sortEncoder setBuffer:indexBuffer offset:0 atIndex:1];
+    const NSRange blockCountRange =
+        NSMakeRange(0, static_cast<std::size_t>(activeBlockCount) * kRadixBinCount * sizeof(uint32_t));
+    const NSRange globalOffsetRange = NSMakeRange(0, kRadixBinCount * sizeof(uint32_t));
+    const MTLSize sortThreadgroups = MTLSizeMake(activeBlockCount, 1, 1);
+    const MTLSize sortThreadsPerThreadgroup = MTLSizeMake(kRadixSortThreadCount, 1, 1);
+    const MTLSize prefixThreads = MTLSizeMake(kRadixBinCount, 1, 1);
 
-    const NSUInteger sortThreadExecutionWidth = std::max<NSUInteger>(1, bitonicPipelineState.threadExecutionWidth);
-    const NSUInteger sortMaxThreads = std::max<NSUInteger>(1, bitonicPipelineState.maxTotalThreadsPerThreadgroup);
-    const NSUInteger sortThreadsPerGroup = std::min<NSUInteger>(sortThreadExecutionWidth, sortMaxThreads);
+    id<MTLBuffer> sourceKeyBuffer = keyBuffer;
+    id<MTLBuffer> sourceIndexBuffer = indexBuffer;
+    id<MTLBuffer> destinationKeyBuffer = scratchKeyBuffer;
+    id<MTLBuffer> destinationIndexBuffer = scratchIndexBuffer;
+    for (uint32_t passIndex = 0; passIndex < kRadixPassCount; ++passIndex) {
+        sortParams.radixShift = passIndex * 4;
 
-    const uint32_t sortCapacity = static_cast<uint32_t>(sortBuffer.capacity());
-    for (uint32_t stageSize = 2; stageSize <= sortCapacity;) {
-        for (uint32_t passSize = stageSize >> 1; passSize > 0; passSize >>= 1) {
-            BitonicSortParams sortParams;
-            sortParams.sortCapacity = sortCapacity;
-            sortParams.stageSize = stageSize;
-            sortParams.passSize = passSize;
-            [sortEncoder setBytes:&sortParams length:sizeof(sortParams) atIndex:2];
-            [sortEncoder dispatchThreads:MTLSizeMake(sortCapacity, 1, 1)
-                    threadsPerThreadgroup:MTLSizeMake(sortThreadsPerGroup, 1, 1)];
+        id<MTLBlitCommandEncoder> blitEncoder = [nativeCommandBuffer blitCommandEncoder];
+        if (blitEncoder == nil) {
+            return false;
         }
+        blitEncoder.label = @"Mesh2Splat Gaussian Radix Clear";
+        [blitEncoder fillBuffer:blockCountBuffer range:blockCountRange value:0];
+        [blitEncoder fillBuffer:globalOffsetBuffer range:globalOffsetRange value:0];
+        [blitEncoder endEncoding];
 
-        if (stageSize == sortCapacity) {
-            break;
+        id<MTLComputeCommandEncoder> countEncoder = [nativeCommandBuffer computeCommandEncoder];
+        if (countEncoder == nil) {
+            return false;
         }
-        stageSize <<= 1;
+        countEncoder.label = @"Mesh2Splat Gaussian Radix Count";
+        [countEncoder setComputePipelineState:radixCountPipelineState];
+        [countEncoder setBuffer:sourceKeyBuffer offset:0 atIndex:0];
+        [countEncoder setBuffer:blockCountBuffer offset:0 atIndex:1];
+        [countEncoder setBuffer:globalOffsetBuffer offset:0 atIndex:2];
+        [countEncoder setBytes:&sortParams length:sizeof(sortParams) atIndex:3];
+        [countEncoder dispatchThreadgroups:sortThreadgroups threadsPerThreadgroup:sortThreadsPerThreadgroup];
+        [countEncoder endEncoding];
+
+        id<MTLComputeCommandEncoder> prefixEncoder = [nativeCommandBuffer computeCommandEncoder];
+        if (prefixEncoder == nil) {
+            return false;
+        }
+        prefixEncoder.label = @"Mesh2Splat Gaussian Radix Prefix";
+        [prefixEncoder setComputePipelineState:radixPrefixPipelineState];
+        [prefixEncoder setBuffer:blockCountBuffer offset:0 atIndex:0];
+        [prefixEncoder setBuffer:globalOffsetBuffer offset:0 atIndex:1];
+        [prefixEncoder setBytes:&sortParams length:sizeof(sortParams) atIndex:2];
+        [prefixEncoder dispatchThreads:prefixThreads threadsPerThreadgroup:prefixThreads];
+        [prefixEncoder endEncoding];
+
+        id<MTLComputeCommandEncoder> reorderEncoder = [nativeCommandBuffer computeCommandEncoder];
+        if (reorderEncoder == nil) {
+            return false;
+        }
+        reorderEncoder.label = @"Mesh2Splat Gaussian Radix Reorder";
+        [reorderEncoder setComputePipelineState:radixReorderPipelineState];
+        [reorderEncoder setBuffer:sourceKeyBuffer offset:0 atIndex:0];
+        [reorderEncoder setBuffer:sourceIndexBuffer offset:0 atIndex:1];
+        [reorderEncoder setBuffer:destinationKeyBuffer offset:0 atIndex:2];
+        [reorderEncoder setBuffer:destinationIndexBuffer offset:0 atIndex:3];
+        [reorderEncoder setBuffer:blockCountBuffer offset:0 atIndex:4];
+        [reorderEncoder setBuffer:globalOffsetBuffer offset:0 atIndex:5];
+        [reorderEncoder setBytes:&sortParams length:sizeof(sortParams) atIndex:6];
+        [reorderEncoder dispatchThreadgroups:sortThreadgroups threadsPerThreadgroup:sortThreadsPerThreadgroup];
+        [reorderEncoder endEncoding];
+
+        std::swap(sourceKeyBuffer, destinationKeyBuffer);
+        std::swap(sourceIndexBuffer, destinationIndexBuffer);
     }
 
-    [sortEncoder endEncoding];
     return true;
 }
 
