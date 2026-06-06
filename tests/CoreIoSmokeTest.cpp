@@ -132,6 +132,16 @@ int main()
         return fail("PLY writer emitted an unexpected PBR header");
     }
 
+    io::GaussianPlyWriteOptions invalidPlyOptions;
+    invalidPlyOptions.format = static_cast<io::GaussianPlyFormat>(99);
+    io::GaussianPlyWriteResult invalidPlyResult;
+    if (io::writeGaussianPly(outputPath.string(), std::vector<core::GaussianRecord>{gaussian}, invalidPlyOptions, &invalidPlyResult) ||
+        invalidPlyResult.error.empty()) {
+        std::filesystem::remove(outputPath);
+        return fail("PLY writer accepted an unsupported format");
+    }
+    std::filesystem::remove(outputPath);
+
     io::GltfSceneLoadResult gltfResult;
     if (io::loadGltfScene("", gltfResult) || gltfResult.error.empty()) {
         return fail("GLTF loader empty-path error handling is not stable");

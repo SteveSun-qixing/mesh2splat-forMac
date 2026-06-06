@@ -291,6 +291,12 @@ bool writeGaussianPly(
     case GaussianPlyFormat::CompactPbr:
         writeCompactPbrHeader(file, writableCount);
         break;
+    default:
+        localResult.error = "Unsupported Gaussian PLY format.";
+        if (result != nullptr) {
+            *result = localResult;
+        }
+        return false;
     }
 
     const float scaleMultiplier = sanitizedScaleMultiplier(options.scaleMultiplier);
@@ -309,9 +315,16 @@ bool writeGaussianPly(
         case GaussianPlyFormat::CompactPbr:
             writeCompactPbrRecord(file, gaussian, scaleMultiplier);
             break;
+        default:
+            localResult.error = "Unsupported Gaussian PLY format.";
+            if (result != nullptr) {
+                *result = localResult;
+            }
+            return false;
         }
     }
 
+    file.flush();
     if (!file.good()) {
         localResult.error = "Failed while writing PLY output file: " + filePath;
         if (result != nullptr) {

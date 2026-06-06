@@ -53,6 +53,14 @@ struct Mat4 {
     };
 };
 
+struct Mat3 {
+    float m[9] = {
+        1.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 1.0f,
+    };
+};
+
 struct MeshInstance {
     int meshIndex = -1;
     Mat4 transform;
@@ -195,6 +203,72 @@ Vec3 transformVector(const Mat4& matrix, Vec3 vector)
     };
 }
 
+Vec3 transformVector(const Mat3& matrix, Vec3 vector)
+{
+    return Vec3{
+        matrix.m[0] * vector.x + matrix.m[3] * vector.y + matrix.m[6] * vector.z,
+        matrix.m[1] * vector.x + matrix.m[4] * vector.y + matrix.m[7] * vector.z,
+        matrix.m[2] * vector.x + matrix.m[5] * vector.y + matrix.m[8] * vector.z,
+    };
+}
+
+float determinant3x3(const Mat4& matrix)
+{
+    const float a00 = matrix.m[0];
+    const float a01 = matrix.m[4];
+    const float a02 = matrix.m[8];
+    const float a10 = matrix.m[1];
+    const float a11 = matrix.m[5];
+    const float a12 = matrix.m[9];
+    const float a20 = matrix.m[2];
+    const float a21 = matrix.m[6];
+    const float a22 = matrix.m[10];
+
+    return
+        a00 * (a11 * a22 - a12 * a21) -
+        a01 * (a10 * a22 - a12 * a20) +
+        a02 * (a10 * a21 - a11 * a20);
+}
+
+Mat3 normalMatrix(const Mat4& matrix)
+{
+    const float a00 = matrix.m[0];
+    const float a01 = matrix.m[4];
+    const float a02 = matrix.m[8];
+    const float a10 = matrix.m[1];
+    const float a11 = matrix.m[5];
+    const float a12 = matrix.m[9];
+    const float a20 = matrix.m[2];
+    const float a21 = matrix.m[6];
+    const float a22 = matrix.m[10];
+
+    const float determinant =
+        a00 * (a11 * a22 - a12 * a21) -
+        a01 * (a10 * a22 - a12 * a20) +
+        a02 * (a10 * a21 - a11 * a20);
+    if (std::fabs(determinant) <= 1.0e-8f) {
+        return {};
+    }
+
+    const float inverseDeterminant = 1.0f / determinant;
+    Mat3 result;
+    result.m[0] = (a11 * a22 - a12 * a21) * inverseDeterminant;
+    result.m[1] = -(a01 * a22 - a02 * a21) * inverseDeterminant;
+    result.m[2] = (a01 * a12 - a02 * a11) * inverseDeterminant;
+    result.m[3] = -(a10 * a22 - a12 * a20) * inverseDeterminant;
+    result.m[4] = (a00 * a22 - a02 * a20) * inverseDeterminant;
+    result.m[5] = -(a00 * a12 - a02 * a10) * inverseDeterminant;
+    result.m[6] = (a10 * a21 - a11 * a20) * inverseDeterminant;
+    result.m[7] = -(a00 * a21 - a01 * a20) * inverseDeterminant;
+    result.m[8] = (a00 * a11 - a01 * a10) * inverseDeterminant;
+    return result;
+}
+
+Vec3 orthogonalize(Vec3 tangent, Vec3 normal)
+{
+    return normalize(subtract(tangent, scale(normal, dot(normal, tangent))));
+}
+
 bool endsWithCaseInsensitive(const std::string& value, const std::string& suffix)
 {
     if (value.size() < suffix.size()) {
@@ -245,12 +319,32 @@ bool accessorRangeValid(
         return false;
     }
 
+    if (stride < 0) {
+        return false;
+    }
+
     const tinygltf::Buffer& buffer = model.buffers[bufferView.buffer];
     const std::size_t offset = bufferView.byteOffset + accessor.byteOffset;
-    const std::size_t required = offset + static_cast<std::size_t>(stride) * (accessor.count - 1) +
-        tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(accessor.componentType)) *
-            tinygltf::GetNumComponentsInType(static_cast<uint32_t>(accessor.type));
-    return required <= buffer.data.size();
+    const std::size_t strideBytes = static_cast<std::size_t>(stride);
+    const std::size_t componentSize =
+        tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(accessor.componentType));
+    const int componentCount = tinygltf::GetNumComponentsInType(static_cast<uint32_t>(accessor.type));
+    if (componentSize == 0 || componentCount <= 0 ||
+        componentSize > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(componentCount)) {
+        return false;
+    }
+
+    const std::size_t elementSize = componentSize * static_cast<std::size_t>(componentCount);
+    const std::size_t lastElementOffset = strideBytes * (accessor.count - 1);
+    if (accessor.count > 1 && lastElementOffset / (accessor.count - 1) != strideBytes) {
+        return false;
+    }
+    if (offset > std::numeric_limits<std::size_t>::max() - lastElementOffset ||
+        offset + lastElementOffset > std::numeric_limits<std::size_t>::max() - elementSize) {
+        return false;
+    }
+
+    return offset + lastElementOffset + elementSize <= buffer.data.size();
 }
 
 bool readFloatAccessor(
@@ -278,10 +372,10 @@ bool readFloatAccessor(
     const int componentCount = tinygltf::GetNumComponentsInType(static_cast<uint32_t>(accessor.type));
     values.resize(accessor.count);
     for (std::size_t i = 0; i < accessor.count; ++i) {
-        const float* source = reinterpret_cast<const float*>(data + stride * i);
+        const unsigned char* source = data + stride * i;
         values[i] = {0.0f, 0.0f, 0.0f, 1.0f};
         for (int component = 0; component < componentCount; ++component) {
-            values[i][component] = source[component];
+            std::memcpy(&values[i][component], source + sizeof(float) * component, sizeof(float));
         }
     }
 
@@ -375,13 +469,22 @@ int32_t appendTextureImage(const tinygltf::Model& model, int textureIndex, MeshD
     }
 
     const tinygltf::Image& image = model.images[texture.source];
-    if (image.width <= 0 || image.height <= 0 || image.component <= 0 || image.image.empty()) {
+    if (image.width <= 0 || image.height <= 0 || image.component <= 0 || image.image.empty() ||
+        image.bits != 8 || image.pixel_type != TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
         return -1;
     }
 
-    const std::size_t pixelCount = static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height);
+    const std::size_t width = static_cast<std::size_t>(image.width);
+    const std::size_t height = static_cast<std::size_t>(image.height);
+    if (width > std::numeric_limits<std::size_t>::max() / height) {
+        return -1;
+    }
+
+    const std::size_t pixelCount = width * height;
     const std::size_t sourceStride = static_cast<std::size_t>(image.component);
-    if (image.image.size() < pixelCount * sourceStride) {
+    if (pixelCount > std::numeric_limits<std::size_t>::max() / sourceStride ||
+        image.image.size() < pixelCount * sourceStride ||
+        pixelCount > std::numeric_limits<std::size_t>::max() / 4) {
         return -1;
     }
 
@@ -449,6 +552,9 @@ std::vector<MeshInstance> collectMeshInstances(const tinygltf::Model& model)
 
     if (!model.scenes.empty()) {
         const int sceneIndex = model.defaultScene >= 0 ? model.defaultScene : 0;
+        if (sceneIndex < 0 || sceneIndex >= static_cast<int>(model.scenes.size())) {
+            return instances;
+        }
         for (int rootNode : model.scenes[sceneIndex].nodes) {
             traverse(rootNode, Mat4{});
         }
@@ -538,6 +644,8 @@ bool appendPrimitive(
     const uint32_t materialIndex = static_cast<uint32_t>(mesh.materials.size());
     mesh.materials.push_back(material);
     const uint32_t vertexOffset = static_cast<uint32_t>(mesh.vertices.size());
+    const Mat3 transformNormalMatrix = normalMatrix(transform);
+    const float transformHandedness = determinant3x3(transform) < 0.0f ? -1.0f : 1.0f;
     float primitiveSurfaceArea = 0.0f;
     bool hasBounds = !mesh.vertices.empty();
     if (hasBounds) {
@@ -586,20 +694,21 @@ bool appendPrimitive(
             vertex.position[2] = worldPositions[corner].z;
 
             const Vec3 normal = hasNormals ?
-                normalize(transformVector(transform, Vec3{normals[sourceIndex][0], normals[sourceIndex][1], normals[sourceIndex][2]})) :
+                normalize(transformVector(transformNormalMatrix, Vec3{normals[sourceIndex][0], normals[sourceIndex][1], normals[sourceIndex][2]})) :
                 faceNormal;
             vertex.normal[0] = normal.x;
             vertex.normal[1] = normal.y;
             vertex.normal[2] = normal.z;
 
             if (hasTangents) {
-                const Vec3 transformedTangent = normalize(transformVector(
+                const Vec3 transformedTangent = orthogonalize(transformVector(
                     transform,
-                    Vec3{tangents[sourceIndex][0], tangents[sourceIndex][1], tangents[sourceIndex][2]}));
+                    Vec3{tangents[sourceIndex][0], tangents[sourceIndex][1], tangents[sourceIndex][2]}),
+                    normal);
                 vertex.tangent[0] = transformedTangent.x;
                 vertex.tangent[1] = transformedTangent.y;
                 vertex.tangent[2] = transformedTangent.z;
-                vertex.tangent[3] = tangents[sourceIndex][3];
+                vertex.tangent[3] = tangents[sourceIndex][3] * transformHandedness;
             } else {
                 vertex.tangent[0] = tangent.x;
                 vertex.tangent[1] = tangent.y;
