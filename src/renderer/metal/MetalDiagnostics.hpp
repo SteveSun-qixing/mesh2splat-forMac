@@ -32,6 +32,9 @@ enum class MetalDiagnosticCategory : uint8_t {
     Other,
 };
 
+constexpr std::size_t kMetalDiagnosticCategoryCount =
+    static_cast<std::size_t>(MetalDiagnosticCategory::Other) + 1;
+
 struct MetalDiagnosticEvent {
     uint64_t sequence = 0;
     uint64_t frameNumber = 0;
@@ -45,17 +48,34 @@ struct MetalDiagnosticEvent {
 };
 
 struct MetalDiagnosticSummary {
-    std::size_t eventCount = 0;
-    std::size_t infoCount = 0;
-    std::size_t warningCount = 0;
-    std::size_t errorCount = 0;
-    std::array<std::size_t, 11> categoryCounts{};
+    uint64_t eventCount = 0;
+    uint64_t infoCount = 0;
+    uint64_t warningCount = 0;
+    uint64_t errorCount = 0;
+    std::array<uint64_t, kMetalDiagnosticCategoryCount> categoryCounts{};
+    std::size_t retainedEventCount = 0;
+    uint64_t droppedEventCount = 0;
     MetalDiagnosticSeverity highestSeverity = MetalDiagnosticSeverity::Info;
     MetalDiagnosticEvent latestEvent;
+    MetalDiagnosticEvent latestWarningEvent;
+    MetalDiagnosticEvent latestErrorEvent;
+    std::string latestMessage;
+    std::string latestWarning;
+    std::string latestError;
 
     bool hasEvents() const { return eventCount > 0; }
     bool hasWarnings() const { return warningCount > 0; }
     bool hasErrors() const { return errorCount > 0; }
+    bool hasRetainedEvents() const { return retainedEventCount > 0; }
+};
+
+struct MetalDiagnosticBridgeStatus {
+    MetalDiagnosticSeverity severity = MetalDiagnosticSeverity::Info;
+    std::string message;
+    std::string lastError;
+    uint64_t eventCount = 0;
+    uint64_t warningCount = 0;
+    uint64_t errorCount = 0;
 };
 
 enum class MetalBackendRuntimeState : uint8_t {
@@ -232,6 +252,16 @@ inline bool metalDiagnosticIsAtLeast(
     return static_cast<uint8_t>(value) >= static_cast<uint8_t>(threshold);
 }
 
+inline std::size_t metalDiagnosticCategoryIndex(MetalDiagnosticCategory category)
+{
+    return static_cast<std::size_t>(category);
+}
+
+inline bool metalDiagnosticCategoryIsValid(MetalDiagnosticCategory category)
+{
+    return metalDiagnosticCategoryIndex(category) < kMetalDiagnosticCategoryCount;
+}
+
 inline std::string metalDiagnosticFormatEvent(const MetalDiagnosticEvent& event)
 {
     std::string line = "[";
@@ -258,6 +288,31 @@ inline std::string metalDiagnosticFormatEvent(const MetalDiagnosticEvent& event)
     }
 
     return line;
+}
+
+inline const std::string& metalDiagnosticLatestSignificantMessage(
+    const MetalDiagnosticSummary& summary)
+{
+    if (!summary.latestError.empty()) {
+        return summary.latestError;
+    }
+    if (!summary.latestWarning.empty()) {
+        return summary.latestWarning;
+    }
+    return summary.latestMessage;
+}
+
+inline MetalDiagnosticBridgeStatus makeMetalDiagnosticBridgeStatus(
+    const MetalDiagnosticSummary& summary)
+{
+    MetalDiagnosticBridgeStatus status;
+    status.severity = summary.highestSeverity;
+    status.message = metalDiagnosticLatestSignificantMessage(summary);
+    status.lastError = summary.latestError;
+    status.eventCount = summary.eventCount;
+    status.warningCount = summary.warningCount;
+    status.errorCount = summary.errorCount;
+    return status;
 }
 
 inline MetalDiagnosticEvent makeMetalDiagnosticEvent(
@@ -291,6 +346,32 @@ public:
     {
         event.sequence = ++m_nextSequence;
         m_latestMessage = metalDiagnosticFormatEvent(event);
+        m_latestEvent = event;
+
+        ++m_eventCount;
+        switch (event.severity) {
+        case MetalDiagnosticSeverity::Info:
+            ++m_infoCount;
+            break;
+        case MetalDiagnosticSeverity::Warning:
+            ++m_warningCount;
+            m_latestWarningEvent = event;
+            m_latestWarning = m_latestMessage;
+            break;
+        case MetalDiagnosticSeverity::Error:
+            ++m_errorCount;
+            m_latestErrorEvent = event;
+            m_latestError = m_latestMessage;
+            break;
+        }
+
+        if (metalDiagnosticCategoryIsValid(event.category)) {
+            ++m_categoryCounts[metalDiagnosticCategoryIndex(event.category)];
+        }
+
+        if (metalDiagnosticIsAtLeast(event.severity, m_highestSeverity)) {
+            m_highestSeverity = event.severity;
+        }
 
         if (m_events.size() == m_capacity) {
             m_events.pop_front();
@@ -366,7 +447,18 @@ public:
     void clear()
     {
         m_events.clear();
+        m_eventCount = 0;
+        m_infoCount = 0;
+        m_warningCount = 0;
+        m_errorCount = 0;
+        m_categoryCounts = {};
+        m_highestSeverity = MetalDiagnosticSeverity::Info;
+        m_latestEvent = {};
+        m_latestWarningEvent = {};
+        m_latestErrorEvent = {};
         m_latestMessage.clear();
+        m_latestWarning.clear();
+        m_latestError.clear();
     }
 
     void setCapacity(std::size_t capacity)
@@ -384,10 +476,27 @@ public:
 
     const MetalDiagnosticEvent* latest() const
     {
-        return m_events.empty() ? nullptr : &m_events.back();
+        return m_eventCount == 0 ? nullptr : &m_latestEvent;
+    }
+
+    const MetalDiagnosticEvent* latestWarning() const
+    {
+        return m_warningCount == 0 ? nullptr : &m_latestWarningEvent;
+    }
+
+    const MetalDiagnosticEvent* latestError() const
+    {
+        return m_errorCount == 0 ? nullptr : &m_latestErrorEvent;
     }
 
     const std::string& latestMessage() const { return m_latestMessage; }
+    const std::string& latestWarningMessage() const { return m_latestWarning; }
+    const std::string& latestErrorMessage() const { return m_latestError; }
+
+    MetalDiagnosticBridgeStatus bridgeStatus() const
+    {
+        return makeMetalDiagnosticBridgeStatus(summary());
+    }
 
     std::vector<MetalDiagnosticEvent> events() const
     {
@@ -409,48 +518,41 @@ public:
     MetalDiagnosticSummary summary() const
     {
         MetalDiagnosticSummary result;
-        result.eventCount = m_events.size();
-        if (m_events.empty()) {
-            return result;
-        }
-
-        result.latestEvent = m_events.back();
-        for (const MetalDiagnosticEvent& event : m_events) {
-            switch (event.severity) {
-            case MetalDiagnosticSeverity::Info:
-                ++result.infoCount;
-                break;
-            case MetalDiagnosticSeverity::Warning:
-                ++result.warningCount;
-                break;
-            case MetalDiagnosticSeverity::Error:
-                ++result.errorCount;
-                break;
-            }
-
-            const std::size_t categoryIndex = metalDiagnosticCategoryIndex(event.category);
-            if (categoryIndex < result.categoryCounts.size()) {
-                ++result.categoryCounts[categoryIndex];
-            }
-
-            if (metalDiagnosticIsAtLeast(event.severity, result.highestSeverity)) {
-                result.highestSeverity = event.severity;
-            }
-        }
-
+        result.eventCount = m_eventCount;
+        result.infoCount = m_infoCount;
+        result.warningCount = m_warningCount;
+        result.errorCount = m_errorCount;
+        result.categoryCounts = m_categoryCounts;
+        result.retainedEventCount = m_events.size();
+        result.droppedEventCount = m_eventCount > result.retainedEventCount
+            ? m_eventCount - result.retainedEventCount
+            : 0;
+        result.highestSeverity = m_highestSeverity;
+        result.latestEvent = m_latestEvent;
+        result.latestWarningEvent = m_latestWarningEvent;
+        result.latestErrorEvent = m_latestErrorEvent;
+        result.latestMessage = m_latestMessage;
+        result.latestWarning = m_latestWarning;
+        result.latestError = m_latestError;
         return result;
     }
 
 private:
-    static std::size_t metalDiagnosticCategoryIndex(MetalDiagnosticCategory category)
-    {
-        return static_cast<std::size_t>(category);
-    }
-
     std::size_t m_capacity = kDefaultCapacity;
     uint64_t m_nextSequence = 0;
+    uint64_t m_eventCount = 0;
+    uint64_t m_infoCount = 0;
+    uint64_t m_warningCount = 0;
+    uint64_t m_errorCount = 0;
+    std::array<uint64_t, kMetalDiagnosticCategoryCount> m_categoryCounts{};
+    MetalDiagnosticSeverity m_highestSeverity = MetalDiagnosticSeverity::Info;
+    MetalDiagnosticEvent m_latestEvent;
+    MetalDiagnosticEvent m_latestWarningEvent;
+    MetalDiagnosticEvent m_latestErrorEvent;
     std::deque<MetalDiagnosticEvent> m_events;
     std::string m_latestMessage;
+    std::string m_latestWarning;
+    std::string m_latestError;
 };
 
 inline void appendMetalDiagnostic(
@@ -481,9 +583,24 @@ inline const MetalDiagnosticEvent* latestMetalDiagnostic(const MetalDiagnostics&
     return diagnostics.latest();
 }
 
+inline const MetalDiagnosticEvent* latestMetalDiagnosticWarning(const MetalDiagnostics& diagnostics)
+{
+    return diagnostics.latestWarning();
+}
+
+inline const MetalDiagnosticEvent* latestMetalDiagnosticError(const MetalDiagnostics& diagnostics)
+{
+    return diagnostics.latestError();
+}
+
 inline MetalDiagnosticSummary summarizeMetalDiagnostics(const MetalDiagnostics& diagnostics)
 {
     return diagnostics.summary();
+}
+
+inline MetalDiagnosticBridgeStatus metalDiagnosticBridgeStatus(const MetalDiagnostics& diagnostics)
+{
+    return diagnostics.bridgeStatus();
 }
 
 } // namespace mesh2splat::metal

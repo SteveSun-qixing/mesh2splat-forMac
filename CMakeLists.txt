@@ -246,6 +246,7 @@ if(APPLE)
 
     set(MACOS_APP_OPTIONAL_CORE_SOURCES
         ${CMAKE_SOURCE_DIR}/src/core/AssetFileTypes.hpp
+        ${CMAKE_SOURCE_DIR}/src/core/ConversionSettings.hpp
         ${CMAKE_SOURCE_DIR}/src/core/GaussianVisibility.hpp
         ${CMAKE_SOURCE_DIR}/src/core/NumericUtils.hpp
         ${CMAKE_SOURCE_DIR}/src/core/PathUtils.hpp
