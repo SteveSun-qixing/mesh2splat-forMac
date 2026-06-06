@@ -29,6 +29,40 @@ struct MetalMeshDrawRange {
 
 static_assert(sizeof(MetalMeshDrawRange) == 16, "MetalMeshDrawRange must stay a compact 16-byte metadata record.");
 
+struct MetalMeshTextureDiagnostics {
+    std::size_t textureCount = 0;
+    std::size_t fallbackTextureCount = 0;
+    std::size_t fallbackMaterialCount = 0;
+    std::size_t missingTextureReferenceCount = 0;
+    std::size_t invalidTextureReferenceCount = 0;
+    std::size_t failedTextureUploadCount = 0;
+    std::size_t sharedTextureReferenceCount = 0;
+};
+
+struct MetalMeshUploadDiagnostics {
+    std::size_t drawRangeMaterialFallbackCount = 0;
+    MetalMeshTextureDiagnostics baseColor;
+    MetalMeshTextureDiagnostics metallicRoughness;
+    MetalMeshTextureDiagnostics normal;
+    MetalMeshTextureDiagnostics occlusion;
+    MetalMeshTextureDiagnostics emissive;
+};
+
+enum class MetalMeshUploadStatus {
+    NotUploaded,
+    Success,
+    InvalidDeviceContext,
+    EmptyMesh,
+    VertexCountOverflow,
+    VertexCountNotTriangleList,
+    DrawRangeOutOfBounds,
+    DrawRangeNotTriangleList,
+    DrawRangeCountOverflow,
+    MaterialCountOverflow,
+    DefaultTextureUploadFailed,
+    StaticBufferUploadFailed,
+};
+
 class MetalMesh {
 public:
     explicit MetalMesh(MetalDeviceContext& deviceContext);
@@ -45,13 +79,18 @@ public:
 
     bool isValid() const;
     std::size_t vertexCount() const;
+    std::size_t indexCount() const;
     std::size_t conversionCapacity(uint32_t maxSamplesPerTriangle) const;
     std::size_t sizeBytes() const;
+    std::size_t textureCount() const;
     uint32_t drawRangeCount() const;
     uint32_t materialCount() const;
+    MetalMeshUploadStatus uploadStatus() const;
+    const MetalMeshUploadDiagnostics& uploadDiagnostics() const;
     const MetalMeshDrawRange* drawRange(uint32_t index) const;
 
     void* vertexBuffer() const;
+    void* indexBuffer() const;
     void* drawRangeBuffer() const;
     void* materialBuffer() const;
     void* baseColorTexture(uint32_t materialIndex) const;

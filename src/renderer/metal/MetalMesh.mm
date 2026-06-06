@@ -15,6 +15,8 @@
 namespace mesh2splat::metal {
 namespace {
 
+constexpr uint32_t kDefaultTextureIndex = 0;
+
 MetalMeshMaterial toMetalMaterial(const core::MeshMaterial& material)
 {
     MetalMeshMaterial metalMaterial;
@@ -30,6 +32,47 @@ MetalMeshMaterial toMetalMaterial(const core::MeshMaterial& material)
 bool canFitUInt32(std::size_t value)
 {
     return value <= static_cast<std::size_t>(std::numeric_limits<uint32_t>::max());
+}
+
+bool canAppendUInt32IndexedItem(std::size_t currentSize)
+{
+    return currentSize < static_cast<std::size_t>(std::numeric_limits<uint32_t>::max());
+}
+
+std::vector<uint32_t> makeSequentialIndices(std::size_t vertexCount)
+{
+    std::vector<uint32_t> indices;
+    indices.reserve(vertexCount);
+    for (std::size_t index = 0; index < vertexCount; ++index) {
+        indices.push_back(static_cast<uint32_t>(index));
+    }
+    return indices;
+}
+
+bool imageUploadByteCount(const core::MeshImageData& image, std::size_t& bytesPerRow, std::size_t& byteCount)
+{
+    bytesPerRow = 0;
+    byteCount = 0;
+
+    if (image.width == 0 || image.height == 0) {
+        return false;
+    }
+
+    constexpr std::size_t kRgba8BytesPerPixel = 4;
+    const std::size_t width = static_cast<std::size_t>(image.width);
+    const std::size_t height = static_cast<std::size_t>(image.height);
+    if (width > std::numeric_limits<std::size_t>::max() / kRgba8BytesPerPixel) {
+        return false;
+    }
+
+    bytesPerRow = width * kRgba8BytesPerPixel;
+    if (height > std::numeric_limits<std::size_t>::max() / bytesPerRow) {
+        bytesPerRow = 0;
+        return false;
+    }
+
+    byteCount = bytesPerRow * height;
+    return true;
 }
 
 void addSizeBytes(std::size_t& total, std::size_t size)
@@ -176,7 +219,7 @@ float fallbackRangeSurfaceArea(const core::MeshData& meshData, const core::MeshD
         (static_cast<float>(range.vertexCount) / static_cast<float>(meshData.vertices.size()));
 }
 
-bool createDefaultBaseColorTexture(MetalTexture& texture)
+bool createDefaultBaseColorTexture(MetalTexture& texture, const std::string& label)
 {
     const uint8_t whitePixel[4] = {255, 255, 255, 255};
     return texture.create2D(
@@ -184,23 +227,23 @@ bool createDefaultBaseColorTexture(MetalTexture& texture)
         1,
         MetalTextureFormat::RGBA8UnormSrgb,
         MetalTextureUsage::ShaderRead,
-        "Default Base Color Texture") &&
+        label.c_str()) &&
         texture.upload2D(whitePixel, sizeof(whitePixel), 1, 1);
 }
 
-bool createDefaultMetallicRoughnessTexture(MetalTexture& texture)
+bool createDefaultMetallicRoughnessTexture(MetalTexture& texture, const std::string& label)
 {
-    const uint8_t defaultPixel[4] = {0, 255, 0, 255};
+    const uint8_t defaultPixel[4] = {255, 255, 255, 255};
     return texture.create2D(
         1,
         1,
         MetalTextureFormat::RGBA8Unorm,
         MetalTextureUsage::ShaderRead,
-        "Default Metallic Roughness Texture") &&
+        label.c_str()) &&
         texture.upload2D(defaultPixel, sizeof(defaultPixel), 1, 1);
 }
 
-bool createDefaultNormalTexture(MetalTexture& texture)
+bool createDefaultNormalTexture(MetalTexture& texture, const std::string& label)
 {
     const uint8_t defaultPixel[4] = {128, 128, 255, 255};
     return texture.create2D(
@@ -208,11 +251,11 @@ bool createDefaultNormalTexture(MetalTexture& texture)
         1,
         MetalTextureFormat::RGBA8Unorm,
         MetalTextureUsage::ShaderRead,
-        "Default Normal Texture") &&
+        label.c_str()) &&
         texture.upload2D(defaultPixel, sizeof(defaultPixel), 1, 1);
 }
 
-bool createDefaultOcclusionTexture(MetalTexture& texture)
+bool createDefaultOcclusionTexture(MetalTexture& texture, const std::string& label)
 {
     const uint8_t whitePixel[4] = {255, 255, 255, 255};
     return texture.create2D(
@@ -220,11 +263,11 @@ bool createDefaultOcclusionTexture(MetalTexture& texture)
         1,
         MetalTextureFormat::RGBA8Unorm,
         MetalTextureUsage::ShaderRead,
-        "Default Occlusion Texture") &&
+        label.c_str()) &&
         texture.upload2D(whitePixel, sizeof(whitePixel), 1, 1);
 }
 
-bool createDefaultEmissiveTexture(MetalTexture& texture)
+bool createDefaultEmissiveTexture(MetalTexture& texture, const std::string& label)
 {
     const uint8_t whitePixel[4] = {255, 255, 255, 255};
     return texture.create2D(
@@ -232,7 +275,7 @@ bool createDefaultEmissiveTexture(MetalTexture& texture)
         1,
         MetalTextureFormat::RGBA8UnormSrgb,
         MetalTextureUsage::ShaderRead,
-        "Default Emissive Texture") &&
+        label.c_str()) &&
         texture.upload2D(whitePixel, sizeof(whitePixel), 1, 1);
 }
 
@@ -243,7 +286,9 @@ bool createMaterialTexture(
     MetalTextureFormat format,
     std::unique_ptr<MetalTexture>& texture)
 {
-    if (image.width == 0 || image.height == 0 || image.rgba8.empty()) {
+    std::size_t bytesPerRow = 0;
+    std::size_t byteCount = 0;
+    if (!imageUploadByteCount(image, bytesPerRow, byteCount) || image.rgba8.size() < byteCount) {
         return false;
     }
 
@@ -254,7 +299,36 @@ bool createMaterialTexture(
         format,
         MetalTextureUsage::ShaderRead,
         label.c_str()) &&
-        texture->upload2D(image.rgba8.data(), static_cast<std::size_t>(image.width) * 4, image.width, image.height);
+        texture->upload2D(image.rgba8.data(), bytesPerRow, image.width, image.height);
+}
+
+void finalizeTextureDiagnostics(
+    MetalMeshTextureDiagnostics& diagnostics,
+    const std::vector<std::unique_ptr<MetalTexture>>& textures)
+{
+    diagnostics.textureCount = textures.size();
+    diagnostics.fallbackTextureCount = textures.empty() ? 0 : 1;
+}
+
+void* nativeTextureForMaterial(
+    const std::vector<std::unique_ptr<MetalTexture>>& textures,
+    const std::vector<uint32_t>& materialTextureIndices,
+    uint32_t materialIndex)
+{
+    if (textures.empty()) {
+        return nullptr;
+    }
+
+    uint32_t textureIndex = kDefaultTextureIndex;
+    if (materialIndex < materialTextureIndices.size()) {
+        textureIndex = materialTextureIndices[materialIndex];
+    }
+    if (textureIndex >= textures.size()) {
+        textureIndex = kDefaultTextureIndex;
+    }
+
+    const std::unique_ptr<MetalTexture>& texture = textures[textureIndex];
+    return texture == nullptr ? nullptr : texture->nativeTexture();
 }
 
 } // namespace
@@ -262,6 +336,7 @@ bool createMaterialTexture(
 struct MetalMesh::Impl {
     MetalDeviceContext* deviceContext = nullptr;
     std::unique_ptr<MetalBuffer> vertexBuffer;
+    std::unique_ptr<MetalBuffer> indexBuffer;
     std::unique_ptr<MetalBuffer> drawRangeBuffer;
     std::unique_ptr<MetalBuffer> materialBuffer;
     std::vector<std::unique_ptr<MetalTexture>> baseColorTextures;
@@ -279,8 +354,11 @@ struct MetalMesh::Impl {
     std::size_t conversionCapacity4 = 0;
     std::size_t conversionCapacity9 = 0;
     std::size_t vertexCount = 0;
+    std::size_t indexCount = 0;
     uint32_t drawRangeCount = 0;
     uint32_t materialCount = 0;
+    MetalMeshUploadStatus uploadStatus = MetalMeshUploadStatus::NotUploaded;
+    MetalMeshUploadDiagnostics uploadDiagnostics;
 };
 
 MetalMesh::MetalMesh(MetalDeviceContext& deviceContext)
@@ -297,12 +375,28 @@ MetalMesh& MetalMesh::operator=(MetalMesh&&) noexcept = default;
 
 bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
 {
-    if (m_impl->deviceContext == nullptr || meshData.vertices.empty() || !canFitUInt32(meshData.vertices.size())) {
+    reset();
+    auto fail = [this](MetalMeshUploadStatus status) {
+        m_impl->uploadStatus = status;
         return false;
+    };
+
+    if (m_impl->deviceContext == nullptr) {
+        return fail(MetalMeshUploadStatus::InvalidDeviceContext);
+    }
+    if (meshData.vertices.empty()) {
+        return fail(MetalMeshUploadStatus::EmptyMesh);
+    }
+    if (!canFitUInt32(meshData.vertices.size())) {
+        return fail(MetalMeshUploadStatus::VertexCountOverflow);
     }
 
     std::vector<MetalMeshDrawRange> drawRanges;
     if (meshData.drawRanges.empty()) {
+        if (meshData.vertices.size() % 3 != 0) {
+            return fail(MetalMeshUploadStatus::VertexCountNotTriangleList);
+        }
+
         drawRanges.push_back(MetalMeshDrawRange{
             0,
             static_cast<uint32_t>(meshData.vertices.size()),
@@ -315,7 +409,10 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
             if (range.vertexCount == 0 ||
                 range.vertexOffset > meshData.vertices.size() ||
                 range.vertexCount > meshData.vertices.size() - range.vertexOffset) {
-                return false;
+                return fail(MetalMeshUploadStatus::DrawRangeOutOfBounds);
+            }
+            if (range.vertexCount % 3 != 0) {
+                return fail(MetalMeshUploadStatus::DrawRangeNotTriangleList);
             }
 
             drawRanges.push_back(MetalMeshDrawRange{
@@ -328,19 +425,15 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     }
 
     if (!canFitUInt32(drawRanges.size())) {
-        return false;
+        return fail(MetalMeshUploadStatus::DrawRangeCountOverflow);
     }
-
-    const std::size_t conversionCapacity1 = conversionCapacityForRanges(meshData.vertices, drawRanges, 1);
-    const std::size_t conversionCapacity4 = conversionCapacityForRanges(meshData.vertices, drawRanges, 4);
-    const std::size_t conversionCapacity9 = conversionCapacityForRanges(meshData.vertices, drawRanges, 9);
 
     std::vector<MetalMeshMaterial> materials;
     if (meshData.materials.empty()) {
         materials.push_back(MetalMeshMaterial{});
     } else {
         if (!canFitUInt32(meshData.materials.size())) {
-            return false;
+            return fail(MetalMeshUploadStatus::MaterialCountOverflow);
         }
 
         materials.reserve(meshData.materials.size());
@@ -349,14 +442,22 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
         }
     }
 
-    for (const MetalMeshDrawRange& range : drawRanges) {
+    MetalMeshUploadDiagnostics diagnostics;
+    for (MetalMeshDrawRange& range : drawRanges) {
         if (range.materialIndex >= materials.size()) {
-            return false;
+            range.materialIndex = 0;
+            ++diagnostics.drawRangeMaterialFallbackCount;
         }
     }
 
+    const std::size_t conversionCapacity1 = conversionCapacityForRanges(meshData.vertices, drawRanges, 1);
+    const std::size_t conversionCapacity4 = conversionCapacityForRanges(meshData.vertices, drawRanges, 4);
+    const std::size_t conversionCapacity9 = conversionCapacityForRanges(meshData.vertices, drawRanges, 9);
+
     const std::string baseLabel = label != nullptr ? label : (meshData.name.empty() ? "MetalMesh" : meshData.name);
+    const std::vector<uint32_t> indices = makeSequentialIndices(meshData.vertices.size());
     auto vertexBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
+    auto indexBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto drawRangeBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto materialBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     std::vector<std::unique_ptr<MetalTexture>> baseColorTextures;
@@ -386,36 +487,42 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     materialEmissiveTextureIndices.reserve(materials.size());
 
     const std::string vertexLabel = baseLabel + " Vertices";
+    const std::string indexLabel = baseLabel + " Indices";
     const std::string drawRangeLabel = baseLabel + " Draw Ranges";
     const std::string materialLabel = baseLabel + " Materials";
+    const std::string defaultBaseColorLabel = baseLabel + " Default Base Color Texture";
+    const std::string defaultMetallicRoughnessLabel = baseLabel + " Default Metallic Roughness Texture";
+    const std::string defaultNormalLabel = baseLabel + " Default Normal Texture";
+    const std::string defaultOcclusionLabel = baseLabel + " Default Occlusion Texture";
+    const std::string defaultEmissiveLabel = baseLabel + " Default Emissive Texture";
 
     auto defaultTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
-    if (!createDefaultBaseColorTexture(*defaultTexture)) {
-        return false;
+    if (!createDefaultBaseColorTexture(*defaultTexture, defaultBaseColorLabel)) {
+        return fail(MetalMeshUploadStatus::DefaultTextureUploadFailed);
     }
     baseColorTextures.push_back(std::move(defaultTexture));
 
     auto defaultMetallicRoughnessTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
-    if (!createDefaultMetallicRoughnessTexture(*defaultMetallicRoughnessTexture)) {
-        return false;
+    if (!createDefaultMetallicRoughnessTexture(*defaultMetallicRoughnessTexture, defaultMetallicRoughnessLabel)) {
+        return fail(MetalMeshUploadStatus::DefaultTextureUploadFailed);
     }
     metallicRoughnessTextures.push_back(std::move(defaultMetallicRoughnessTexture));
 
     auto defaultNormalTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
-    if (!createDefaultNormalTexture(*defaultNormalTexture)) {
-        return false;
+    if (!createDefaultNormalTexture(*defaultNormalTexture, defaultNormalLabel)) {
+        return fail(MetalMeshUploadStatus::DefaultTextureUploadFailed);
     }
     normalTextures.push_back(std::move(defaultNormalTexture));
 
     auto defaultOcclusionTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
-    if (!createDefaultOcclusionTexture(*defaultOcclusionTexture)) {
-        return false;
+    if (!createDefaultOcclusionTexture(*defaultOcclusionTexture, defaultOcclusionLabel)) {
+        return fail(MetalMeshUploadStatus::DefaultTextureUploadFailed);
     }
     occlusionTextures.push_back(std::move(defaultOcclusionTexture));
 
     auto defaultEmissiveTexture = std::make_unique<MetalTexture>(*m_impl->deviceContext);
-    if (!createDefaultEmissiveTexture(*defaultEmissiveTexture)) {
-        return false;
+    if (!createDefaultEmissiveTexture(*defaultEmissiveTexture, defaultEmissiveLabel)) {
+        return fail(MetalMeshUploadStatus::DefaultTextureUploadFailed);
     }
     emissiveTextures.push_back(std::move(defaultEmissiveTexture));
 
@@ -424,21 +531,41 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
                                       MetalTextureFormat format,
                                       const char* labelSuffix,
                                       std::vector<std::unique_ptr<MetalTexture>>& textures,
-                                      std::unordered_map<int32_t, uint32_t>& textureMap) -> uint32_t {
-        if (imageIndex < 0 || static_cast<std::size_t>(imageIndex) >= meshData.images.size()) {
-            return 0;
+                                      std::unordered_map<int32_t, uint32_t>& textureMap,
+                                      MetalMeshTextureDiagnostics& textureDiagnostics) -> uint32_t {
+        if (imageIndex < 0) {
+            ++textureDiagnostics.missingTextureReferenceCount;
+            ++textureDiagnostics.fallbackMaterialCount;
+            return kDefaultTextureIndex;
+        }
+        if (static_cast<std::size_t>(imageIndex) >= meshData.images.size()) {
+            ++textureDiagnostics.invalidTextureReferenceCount;
+            ++textureDiagnostics.fallbackMaterialCount;
+            return kDefaultTextureIndex;
         }
 
         const auto found = textureMap.find(imageIndex);
         if (found != textureMap.end()) {
+            ++textureDiagnostics.sharedTextureReferenceCount;
             return found->second;
         }
 
         const core::MeshImageData& image = meshData.images[imageIndex];
+        std::size_t bytesPerRow = 0;
+        std::size_t byteCount = 0;
+        if (!imageUploadByteCount(image, bytesPerRow, byteCount) || image.rgba8.size() < byteCount) {
+            ++textureDiagnostics.invalidTextureReferenceCount;
+            ++textureDiagnostics.fallbackMaterialCount;
+            return kDefaultTextureIndex;
+        }
+
         const std::string textureLabel = baseLabel + " " + labelSuffix + " " + std::to_string(imageIndex);
         std::unique_ptr<MetalTexture> texture;
-        if (!createMaterialTexture(*m_impl->deviceContext, image, textureLabel, format, texture)) {
-            return 0;
+        if (!canAppendUInt32IndexedItem(textures.size()) ||
+            !createMaterialTexture(*m_impl->deviceContext, image, textureLabel, format, texture)) {
+            ++textureDiagnostics.failedTextureUploadCount;
+            ++textureDiagnostics.fallbackMaterialCount;
+            return kDefaultTextureIndex;
         }
 
         textures.push_back(std::move(texture));
@@ -453,47 +580,68 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
             MetalTextureFormat::RGBA8UnormSrgb,
             "Base Color",
             baseColorTextures,
-            baseColorTextureMap));
+            baseColorTextureMap,
+            diagnostics.baseColor));
         materialMetallicRoughnessTextureIndices.push_back(resolveMaterialTexture(
             material.metallicRoughnessTextureIndex,
             MetalTextureFormat::RGBA8Unorm,
             "Metallic Roughness",
             metallicRoughnessTextures,
-            metallicRoughnessTextureMap));
+            metallicRoughnessTextureMap,
+            diagnostics.metallicRoughness));
         materialNormalTextureIndices.push_back(resolveMaterialTexture(
             material.normalTextureIndex,
             MetalTextureFormat::RGBA8Unorm,
             "Normal",
             normalTextures,
-            normalTextureMap));
+            normalTextureMap,
+            diagnostics.normal));
         materialOcclusionTextureIndices.push_back(resolveMaterialTexture(
             material.occlusionTextureIndex,
             MetalTextureFormat::RGBA8Unorm,
             "Occlusion",
             occlusionTextures,
-            occlusionTextureMap));
+            occlusionTextureMap,
+            diagnostics.occlusion));
         materialEmissiveTextureIndices.push_back(resolveMaterialTexture(
             material.emissiveTextureIndex,
             MetalTextureFormat::RGBA8UnormSrgb,
             "Emissive",
             emissiveTextures,
-            emissiveTextureMap));
+            emissiveTextureMap,
+            diagnostics.emissive));
     }
     if (materialBaseColorTextureIndices.empty()) {
-        materialBaseColorTextureIndices.push_back(0);
+        materialBaseColorTextureIndices.push_back(kDefaultTextureIndex);
+        ++diagnostics.baseColor.fallbackMaterialCount;
+        ++diagnostics.baseColor.missingTextureReferenceCount;
     }
     if (materialMetallicRoughnessTextureIndices.empty()) {
-        materialMetallicRoughnessTextureIndices.push_back(0);
+        materialMetallicRoughnessTextureIndices.push_back(kDefaultTextureIndex);
+        ++diagnostics.metallicRoughness.fallbackMaterialCount;
+        ++diagnostics.metallicRoughness.missingTextureReferenceCount;
     }
     if (materialNormalTextureIndices.empty()) {
-        materialNormalTextureIndices.push_back(0);
+        materialNormalTextureIndices.push_back(kDefaultTextureIndex);
+        ++diagnostics.normal.fallbackMaterialCount;
+        ++diagnostics.normal.missingTextureReferenceCount;
     }
     if (materialOcclusionTextureIndices.empty()) {
-        materialOcclusionTextureIndices.push_back(0);
+        materialOcclusionTextureIndices.push_back(kDefaultTextureIndex);
+        ++diagnostics.occlusion.fallbackMaterialCount;
+        ++diagnostics.occlusion.missingTextureReferenceCount;
     }
     if (materialEmissiveTextureIndices.empty()) {
-        materialEmissiveTextureIndices.push_back(0);
+        materialEmissiveTextureIndices.push_back(kDefaultTextureIndex);
+        ++diagnostics.emissive.fallbackMaterialCount;
+        ++diagnostics.emissive.missingTextureReferenceCount;
     }
+
+    finalizeTextureDiagnostics(diagnostics.baseColor, baseColorTextures);
+    finalizeTextureDiagnostics(diagnostics.metallicRoughness, metallicRoughnessTextures);
+    finalizeTextureDiagnostics(diagnostics.normal, normalTextures);
+    finalizeTextureDiagnostics(diagnostics.occlusion, occlusionTextures);
+    finalizeTextureDiagnostics(diagnostics.emissive, emissiveTextures);
 
     MetalResourceUploadBatch staticBufferUpload(
         m_impl->deviceContext->nativeDevice(),
@@ -505,6 +653,11 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
             meshData.vertices.data(),
             staticBufferUpload,
             vertexLabel.c_str()) ||
+        !indexBuffer->createPrivateWithData(
+            indices.size() * sizeof(uint32_t),
+            indices.data(),
+            staticBufferUpload,
+            indexLabel.c_str()) ||
         !drawRangeBuffer->createPrivateWithData(
             drawRanges.size() * sizeof(MetalMeshDrawRange),
             drawRanges.data(),
@@ -516,10 +669,11 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
             staticBufferUpload,
             materialLabel.c_str()) ||
         !staticBufferUpload.commitAndWait()) {
-        return false;
+        return fail(MetalMeshUploadStatus::StaticBufferUploadFailed);
     }
 
     m_impl->vertexBuffer = std::move(vertexBuffer);
+    m_impl->indexBuffer = std::move(indexBuffer);
     m_impl->drawRangeBuffer = std::move(drawRangeBuffer);
     m_impl->materialBuffer = std::move(materialBuffer);
     m_impl->baseColorTextures = std::move(baseColorTextures);
@@ -537,14 +691,18 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
     m_impl->conversionCapacity4 = conversionCapacity4;
     m_impl->conversionCapacity9 = conversionCapacity9;
     m_impl->vertexCount = meshData.vertices.size();
+    m_impl->indexCount = indices.size();
     m_impl->drawRangeCount = static_cast<uint32_t>(m_impl->drawRanges.size());
     m_impl->materialCount = static_cast<uint32_t>(materials.size());
+    m_impl->uploadStatus = MetalMeshUploadStatus::Success;
+    m_impl->uploadDiagnostics = diagnostics;
     return true;
 }
 
 void MetalMesh::reset()
 {
     m_impl->vertexBuffer.reset();
+    m_impl->indexBuffer.reset();
     m_impl->drawRangeBuffer.reset();
     m_impl->materialBuffer.reset();
     m_impl->baseColorTextures.clear();
@@ -562,21 +720,31 @@ void MetalMesh::reset()
     m_impl->conversionCapacity4 = 0;
     m_impl->conversionCapacity9 = 0;
     m_impl->vertexCount = 0;
+    m_impl->indexCount = 0;
     m_impl->drawRangeCount = 0;
     m_impl->materialCount = 0;
+    m_impl->uploadStatus = MetalMeshUploadStatus::NotUploaded;
+    m_impl->uploadDiagnostics = {};
 }
 
 bool MetalMesh::isValid() const
 {
     return m_impl->vertexBuffer != nullptr && m_impl->vertexBuffer->isValid() &&
+        m_impl->indexBuffer != nullptr && m_impl->indexBuffer->isValid() &&
         m_impl->drawRangeBuffer != nullptr && m_impl->drawRangeBuffer->isValid() &&
         m_impl->materialBuffer != nullptr && m_impl->materialBuffer->isValid() &&
-        m_impl->vertexCount > 0 && m_impl->drawRangeCount > 0 && m_impl->materialCount > 0;
+        m_impl->vertexCount > 0 && m_impl->indexCount == m_impl->vertexCount &&
+        m_impl->drawRangeCount > 0 && m_impl->materialCount > 0;
 }
 
 std::size_t MetalMesh::vertexCount() const
 {
     return m_impl->vertexCount;
+}
+
+std::size_t MetalMesh::indexCount() const
+{
+    return m_impl->indexCount;
 }
 
 std::size_t MetalMesh::conversionCapacity(uint32_t maxSamplesPerTriangle) const
@@ -595,6 +763,7 @@ std::size_t MetalMesh::sizeBytes() const
 {
     std::size_t total = 0;
     addSizeBytes(total, m_impl->vertexBuffer == nullptr ? 0 : m_impl->vertexBuffer->size());
+    addSizeBytes(total, m_impl->indexBuffer == nullptr ? 0 : m_impl->indexBuffer->size());
     addSizeBytes(total, m_impl->drawRangeBuffer == nullptr ? 0 : m_impl->drawRangeBuffer->size());
     addSizeBytes(total, m_impl->materialBuffer == nullptr ? 0 : m_impl->materialBuffer->size());
     addTextureVectorSize(total, m_impl->baseColorTextures);
@@ -602,6 +771,17 @@ std::size_t MetalMesh::sizeBytes() const
     addTextureVectorSize(total, m_impl->normalTextures);
     addTextureVectorSize(total, m_impl->occlusionTextures);
     addTextureVectorSize(total, m_impl->emissiveTextures);
+    return total;
+}
+
+std::size_t MetalMesh::textureCount() const
+{
+    std::size_t total = 0;
+    addSizeBytes(total, m_impl->baseColorTextures.size());
+    addSizeBytes(total, m_impl->metallicRoughnessTextures.size());
+    addSizeBytes(total, m_impl->normalTextures.size());
+    addSizeBytes(total, m_impl->occlusionTextures.size());
+    addSizeBytes(total, m_impl->emissiveTextures.size());
     return total;
 }
 
@@ -615,6 +795,16 @@ uint32_t MetalMesh::materialCount() const
     return m_impl->materialCount;
 }
 
+MetalMeshUploadStatus MetalMesh::uploadStatus() const
+{
+    return m_impl->uploadStatus;
+}
+
+const MetalMeshUploadDiagnostics& MetalMesh::uploadDiagnostics() const
+{
+    return m_impl->uploadDiagnostics;
+}
+
 const MetalMeshDrawRange* MetalMesh::drawRange(uint32_t index) const
 {
     return index < m_impl->drawRanges.size() ? &m_impl->drawRanges[index] : nullptr;
@@ -623,6 +813,11 @@ const MetalMeshDrawRange* MetalMesh::drawRange(uint32_t index) const
 void* MetalMesh::vertexBuffer() const
 {
     return m_impl->vertexBuffer == nullptr ? nullptr : m_impl->vertexBuffer->nativeBuffer();
+}
+
+void* MetalMesh::indexBuffer() const
+{
+    return m_impl->indexBuffer == nullptr ? nullptr : m_impl->indexBuffer->nativeBuffer();
 }
 
 void* MetalMesh::drawRangeBuffer() const
@@ -637,77 +832,42 @@ void* MetalMesh::materialBuffer() const
 
 void* MetalMesh::baseColorTexture(uint32_t materialIndex) const
 {
-    if (materialIndex >= m_impl->materialBaseColorTextureIndices.size()) {
-        return nullptr;
-    }
-
-    const uint32_t textureIndex = m_impl->materialBaseColorTextureIndices[materialIndex];
-    if (textureIndex >= m_impl->baseColorTextures.size()) {
-        return nullptr;
-    }
-
-    const std::unique_ptr<MetalTexture>& texture = m_impl->baseColorTextures[textureIndex];
-    return texture == nullptr ? nullptr : texture->nativeTexture();
+    return nativeTextureForMaterial(
+        m_impl->baseColorTextures,
+        m_impl->materialBaseColorTextureIndices,
+        materialIndex);
 }
 
 void* MetalMesh::metallicRoughnessTexture(uint32_t materialIndex) const
 {
-    if (materialIndex >= m_impl->materialMetallicRoughnessTextureIndices.size()) {
-        return nullptr;
-    }
-
-    const uint32_t textureIndex = m_impl->materialMetallicRoughnessTextureIndices[materialIndex];
-    if (textureIndex >= m_impl->metallicRoughnessTextures.size()) {
-        return nullptr;
-    }
-
-    const std::unique_ptr<MetalTexture>& texture = m_impl->metallicRoughnessTextures[textureIndex];
-    return texture == nullptr ? nullptr : texture->nativeTexture();
+    return nativeTextureForMaterial(
+        m_impl->metallicRoughnessTextures,
+        m_impl->materialMetallicRoughnessTextureIndices,
+        materialIndex);
 }
 
 void* MetalMesh::normalTexture(uint32_t materialIndex) const
 {
-    if (materialIndex >= m_impl->materialNormalTextureIndices.size()) {
-        return nullptr;
-    }
-
-    const uint32_t textureIndex = m_impl->materialNormalTextureIndices[materialIndex];
-    if (textureIndex >= m_impl->normalTextures.size()) {
-        return nullptr;
-    }
-
-    const std::unique_ptr<MetalTexture>& texture = m_impl->normalTextures[textureIndex];
-    return texture == nullptr ? nullptr : texture->nativeTexture();
+    return nativeTextureForMaterial(
+        m_impl->normalTextures,
+        m_impl->materialNormalTextureIndices,
+        materialIndex);
 }
 
 void* MetalMesh::occlusionTexture(uint32_t materialIndex) const
 {
-    if (materialIndex >= m_impl->materialOcclusionTextureIndices.size()) {
-        return nullptr;
-    }
-
-    const uint32_t textureIndex = m_impl->materialOcclusionTextureIndices[materialIndex];
-    if (textureIndex >= m_impl->occlusionTextures.size()) {
-        return nullptr;
-    }
-
-    const std::unique_ptr<MetalTexture>& texture = m_impl->occlusionTextures[textureIndex];
-    return texture == nullptr ? nullptr : texture->nativeTexture();
+    return nativeTextureForMaterial(
+        m_impl->occlusionTextures,
+        m_impl->materialOcclusionTextureIndices,
+        materialIndex);
 }
 
 void* MetalMesh::emissiveTexture(uint32_t materialIndex) const
 {
-    if (materialIndex >= m_impl->materialEmissiveTextureIndices.size()) {
-        return nullptr;
-    }
-
-    const uint32_t textureIndex = m_impl->materialEmissiveTextureIndices[materialIndex];
-    if (textureIndex >= m_impl->emissiveTextures.size()) {
-        return nullptr;
-    }
-
-    const std::unique_ptr<MetalTexture>& texture = m_impl->emissiveTextures[textureIndex];
-    return texture == nullptr ? nullptr : texture->nativeTexture();
+    return nativeTextureForMaterial(
+        m_impl->emissiveTextures,
+        m_impl->materialEmissiveTextureIndices,
+        materialIndex);
 }
 
 } // namespace mesh2splat::metal
