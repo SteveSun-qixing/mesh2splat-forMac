@@ -63,7 +63,7 @@ bool MetalGaussianBuffer::upload(const std::vector<core::GaussianRecord>& gaussi
     auto buffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto counterBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     const uint32_t initialCount = static_cast<uint32_t>(gaussians.size());
-    if (!buffer->createShared(
+    if (!buffer->createPrivateWithData(
             core::gaussianBufferByteSize(gaussians.size()),
             gaussians.data(),
             baseLabel.c_str()) ||
