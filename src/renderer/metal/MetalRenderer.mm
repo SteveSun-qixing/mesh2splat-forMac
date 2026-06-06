@@ -1009,3 +1009,12 @@ void MetalRenderer::draw(
 }
 
 } // namespace mesh2splat::metal
+
+namespace mesh2splat::renderer {
+
+std::unique_ptr<Renderer> createMetalRenderer(void* metalDevice)
+{
+    return std::make_unique<metal::MetalRenderer>(metalDevice);
+}
+
+} // namespace mesh2splat::renderer

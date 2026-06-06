@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/InputState.hpp"
+#include "renderer/RendererInterface.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -8,78 +8,39 @@
 
 namespace mesh2splat::metal {
 
-enum class RenderViewMode : uint32_t {
-    Combined = 0,
-    MeshOnly = 1,
-    GaussianOnly = 2,
-};
+using mesh2splat::renderer::GaussianVisualizationMode;
+using mesh2splat::renderer::RenderViewMode;
+using MetalRendererStats = mesh2splat::renderer::RendererStats;
 
-enum class GaussianVisualizationMode : uint32_t {
-    Albedo = 0,
-    Depth = 1,
-    Normal = 2,
-    Geometry = 3,
-    Overdraw = 4,
-    Pbr = 5,
-    Final = 6,
-};
-
-struct MetalRendererStats {
-    uint64_t submittedFrameCount = 0;
-    uint64_t completedFrameCount = 0;
-    uint64_t failedFrameCount = 0;
-    uint64_t submittedConversionCount = 0;
-    uint64_t completedConversionCount = 0;
-    uint64_t failedConversionCount = 0;
-    double lastFrameCpuEncodeMs = 0.0;
-    double averageFrameCpuEncodeMs = 0.0;
-    double lastFrameGpuMs = 0.0;
-    double averageFrameGpuMs = 0.0;
-    double lastConversionCpuSubmitMs = 0.0;
-    double averageConversionCpuSubmitMs = 0.0;
-    double lastConversionGpuMs = 0.0;
-    double averageConversionGpuMs = 0.0;
-    uint32_t lastFrameGaussianCount = 0;
-    uint64_t frameUniformResourceBytes = 0;
-    uint64_t sceneResourceBytes = 0;
-    uint64_t gaussianResourceBytes = 0;
-    uint64_t gaussianSortResourceBytes = 0;
-    uint64_t pendingConversionResourceBytes = 0;
-    uint64_t trackedResourceBytes = 0;
-    bool lastFrameSortedGaussians = false;
-    bool lastFrameRenderedMesh = false;
-    bool lastFrameRenderedGaussians = false;
-};
-
-class MetalRenderer {
+class MetalRenderer final : public mesh2splat::renderer::Renderer {
 public:
     explicit MetalRenderer(void* metalDevice);
-    ~MetalRenderer();
+    ~MetalRenderer() override;
 
     MetalRenderer(const MetalRenderer&) = delete;
     MetalRenderer& operator=(const MetalRenderer&) = delete;
 
-    bool initialize();
-    bool loadMeshFile(const std::string& filePath);
-    void resize(uint32_t width, uint32_t height);
-    void setViewMode(RenderViewMode mode);
-    RenderViewMode viewMode() const;
-    void setGaussianVisualizationMode(GaussianVisualizationMode mode);
-    GaussianVisualizationMode gaussianVisualizationMode() const;
-    void setGaussianScale(float scale);
-    float gaussianScale() const;
-    bool setConversionSamplesPerTriangle(uint32_t samplesPerTriangle);
-    uint32_t conversionSamplesPerTriangle() const;
-    bool isConvertingGaussians() const;
-    uint32_t convertedGaussianCount() const;
-    MetalRendererStats rendererStats() const;
-    const std::string& lastDiagnostic() const;
-    const std::string& loadedMeshPath() const;
+    bool initialize() override;
+    bool loadMeshFile(const std::string& filePath) override;
+    void resize(uint32_t width, uint32_t height) override;
+    void setViewMode(RenderViewMode mode) override;
+    RenderViewMode viewMode() const override;
+    void setGaussianVisualizationMode(GaussianVisualizationMode mode) override;
+    GaussianVisualizationMode gaussianVisualizationMode() const override;
+    void setGaussianScale(float scale) override;
+    float gaussianScale() const override;
+    bool setConversionSamplesPerTriangle(uint32_t samplesPerTriangle) override;
+    uint32_t conversionSamplesPerTriangle() const override;
+    bool isConvertingGaussians() const override;
+    uint32_t convertedGaussianCount() const override;
+    MetalRendererStats rendererStats() const override;
+    const std::string& lastDiagnostic() const override;
+    const std::string& loadedMeshPath() const override;
     void draw(
         void* renderPassDescriptor,
         void* drawable,
         const core::InputState& inputState,
-        double deltaTimeSeconds);
+        double deltaTimeSeconds) override;
 
 private:
     struct Impl;

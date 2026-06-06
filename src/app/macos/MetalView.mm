@@ -1,7 +1,7 @@
 #include "MetalView.hpp"
 
 #include "core/InputState.hpp"
-#include "renderer/metal/MetalRenderer.hpp"
+#include "renderer/RendererInterface.hpp"
 
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
@@ -27,7 +27,7 @@
 
 - (instancetype)initWithView:(Mesh2SplatMetalView*)view;
 - (BOOL)loadMeshAtPath:(NSString*)path;
-- (void)setViewMode:(mesh2splat::metal::RenderViewMode)mode;
+- (void)setViewMode:(mesh2splat::renderer::RenderViewMode)mode;
 - (void)setGaussianScale:(float)scale;
 - (float)gaussianScale;
 - (BOOL)setConversionSamplesPerTriangle:(uint32_t)samplesPerTriangle;
@@ -36,7 +36,7 @@
 @end
 
 @implementation Mesh2SplatMetalViewDelegate {
-    std::unique_ptr<mesh2splat::metal::MetalRenderer> _renderer;
+    std::unique_ptr<mesh2splat::renderer::Renderer> _renderer;
     __weak Mesh2SplatMetalView* _view;
     CFTimeInterval _lastFrameTime;
 }
@@ -50,7 +50,7 @@
 
     _view = view;
     _lastFrameTime = CACurrentMediaTime();
-    _renderer = std::make_unique<mesh2splat::metal::MetalRenderer>((__bridge void*)view.device);
+    _renderer = mesh2splat::renderer::createMetalRenderer((__bridge void*)view.device);
     if (!_renderer->initialize()) {
         const std::string& diagnostic = _renderer->lastDiagnostic();
         if (diagnostic.empty()) {
@@ -102,7 +102,7 @@
     return _renderer->loadMeshFile(std::string(path.UTF8String)) ? YES : NO;
 }
 
-- (void)setViewMode:(mesh2splat::metal::RenderViewMode)mode
+- (void)setViewMode:(mesh2splat::renderer::RenderViewMode)mode
 {
     if (_renderer != nullptr) {
         _renderer->setViewMode(mode);
@@ -134,13 +134,13 @@
 
     NSString* mode = @"Combined";
     switch (_renderer->viewMode()) {
-    case mesh2splat::metal::RenderViewMode::Combined:
+    case mesh2splat::renderer::RenderViewMode::Combined:
         mode = @"Combined";
         break;
-    case mesh2splat::metal::RenderViewMode::MeshOnly:
+    case mesh2splat::renderer::RenderViewMode::MeshOnly:
         mode = @"Mesh";
         break;
-    case mesh2splat::metal::RenderViewMode::GaussianOnly:
+    case mesh2splat::renderer::RenderViewMode::GaussianOnly:
         mode = @"Gaussians";
         break;
     }
@@ -263,21 +263,21 @@
 - (IBAction)showCombinedView:(id)sender
 {
     (void)sender;
-    [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::Combined];
+    [self.meshDelegate setViewMode:mesh2splat::renderer::RenderViewMode::Combined];
     [self updateWindowTitle];
 }
 
 - (IBAction)showMeshView:(id)sender
 {
     (void)sender;
-    [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::MeshOnly];
+    [self.meshDelegate setViewMode:mesh2splat::renderer::RenderViewMode::MeshOnly];
     [self updateWindowTitle];
 }
 
 - (IBAction)showGaussianView:(id)sender
 {
     (void)sender;
-    [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::GaussianOnly];
+    [self.meshDelegate setViewMode:mesh2splat::renderer::RenderViewMode::GaussianOnly];
     [self updateWindowTitle];
 }
 
@@ -404,17 +404,17 @@
         return;
     }
     if ([key isEqualToString:@"1"]) {
-        [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::Combined];
+        [self.meshDelegate setViewMode:mesh2splat::renderer::RenderViewMode::Combined];
         [self updateWindowTitle];
         return;
     }
     if ([key isEqualToString:@"2"]) {
-        [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::MeshOnly];
+        [self.meshDelegate setViewMode:mesh2splat::renderer::RenderViewMode::MeshOnly];
         [self updateWindowTitle];
         return;
     }
     if ([key isEqualToString:@"3"]) {
-        [self.meshDelegate setViewMode:mesh2splat::metal::RenderViewMode::GaussianOnly];
+        [self.meshDelegate setViewMode:mesh2splat::renderer::RenderViewMode::GaussianOnly];
         [self updateWindowTitle];
         return;
     }

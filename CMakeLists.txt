@@ -143,6 +143,7 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_write_impl.cpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/RendererInterface.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalCommandScheduler.mm
