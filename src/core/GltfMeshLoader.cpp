@@ -657,17 +657,19 @@ bool loadGltfMeshData(const std::string& filePath, GltfMeshLoadResult& result)
         for (const tinygltf::Primitive& primitive : gltfMesh.primitives) {
             MeshData mesh;
             if (appendPrimitive(model, gltfMesh, primitive, instance.transform, instance.meshIndex, primitiveIndex, mesh)) {
-                result.meshes.push_back(std::move(mesh));
+                result.scene.meshes.push_back(std::move(mesh));
             }
             ++primitiveIndex;
         }
     }
 
-    if (result.meshes.empty()) {
+    if (result.scene.meshes.empty()) {
         result.error = "No triangle mesh data was found in glTF file: " + filePath;
         return false;
     }
 
+    result.scene.name = filePath;
+    result.scene.bounds = aggregateSceneBounds(result.scene);
     return true;
 }
 

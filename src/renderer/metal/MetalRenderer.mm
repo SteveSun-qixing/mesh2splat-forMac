@@ -163,31 +163,6 @@ uint32_t normalizedConversionSamples(uint32_t samplesPerTriangle)
     return 9;
 }
 
-core::MeshBounds aggregateMeshBounds(const std::vector<core::MeshData>& meshes)
-{
-    core::MeshBounds bounds;
-    bool hasBounds = false;
-
-    for (const core::MeshData& mesh : meshes) {
-        if (mesh.empty()) {
-            continue;
-        }
-
-        if (!hasBounds) {
-            bounds = mesh.bounds;
-            hasBounds = true;
-            continue;
-        }
-
-        for (int axis = 0; axis < 3; ++axis) {
-            bounds.min[axis] = std::min(bounds.min[axis], mesh.bounds.min[axis]);
-            bounds.max[axis] = std::max(bounds.max[axis], mesh.bounds.max[axis]);
-        }
-    }
-
-    return bounds;
-}
-
 bool matrixApproximatelyEquals(
     const core::Matrix4& lhs,
     const core::Matrix4& rhs,
@@ -724,7 +699,7 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
     }
 
     auto nextSceneResources = std::make_unique<MetalSceneResources>(*m_impl->deviceContext);
-    if (!nextSceneResources->uploadMeshes(loadResult.meshes)) {
+    if (!nextSceneResources->uploadMeshes(loadResult.scene.meshes)) {
         NSLog(@"Failed to upload mesh resources: %s", filePath.c_str());
         return false;
     }
@@ -733,7 +708,7 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
         NSLog(@"glTF load warning: %s", loadResult.warning.c_str());
     }
 
-    const core::MeshBounds meshBounds = aggregateMeshBounds(loadResult.meshes);
+    const core::MeshBounds meshBounds = loadResult.scene.bounds;
     if (!m_impl->submitSceneConversion(
             *nextSceneResources,
             std::move(nextSceneResources),

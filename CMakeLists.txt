@@ -140,6 +140,7 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/core/NativeCamera.hpp
         ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.cpp
         ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.hpp
+        ${CMAKE_SOURCE_DIR}/src/core/SceneData.hpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_write_impl.cpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp

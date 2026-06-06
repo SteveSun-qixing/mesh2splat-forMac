@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MeshData.hpp"
+#include "SceneData.hpp"
 
 #include <string>
 #include <vector>
@@ -8,7 +8,7 @@
 namespace mesh2splat::core {
 
 struct GltfMeshLoadResult {
-    std::vector<MeshData> meshes;
+    SceneData scene;
     std::string warning;
     std::string error;
 };
