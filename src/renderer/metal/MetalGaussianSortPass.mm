@@ -2,6 +2,7 @@
 
 #include "MetalGaussianBuffer.hpp"
 #include "MetalGaussianSortBuffer.hpp"
+#include "MetalDispatchUtils.hpp"
 #include "MetalPipelineCache.hpp"
 #include "MetalShaderLibrary.hpp"
 
@@ -161,9 +162,8 @@ bool MetalGaussianSortPass::encodeDepthKeys(
     params.gaussianCount = gaussianBuffer.count();
     [encoder setBytes:&params length:sizeof(params) atIndex:4];
 
-    const NSUInteger threadExecutionWidth = std::max<NSUInteger>(1, pipelineState.threadExecutionWidth);
-    const NSUInteger maxThreads = std::max<NSUInteger>(1, pipelineState.maxTotalThreadsPerThreadgroup);
-    const NSUInteger threadsPerGroup = std::min<NSUInteger>(threadExecutionWidth, maxThreads);
+    const NSUInteger threadsPerGroup =
+        static_cast<NSUInteger>(computeThreadgroupSize1D((__bridge void*)pipelineState));
     [encoder dispatchThreads:MTLSizeMake(gaussianBuffer.count(), 1, 1)
        threadsPerThreadgroup:MTLSizeMake(threadsPerGroup, 1, 1)];
     [encoder endEncoding];

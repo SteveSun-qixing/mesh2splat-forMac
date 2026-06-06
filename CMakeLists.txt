@@ -151,6 +151,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalConversionPass.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDispatchUtils.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDispatchUtils.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameUniformBuffer.cpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameUniformBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.cpp

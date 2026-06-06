@@ -1,6 +1,7 @@
 #include "MetalConversionPass.hpp"
 
 #include "MetalGaussianBuffer.hpp"
+#include "MetalDispatchUtils.hpp"
 #include "MetalMesh.hpp"
 #include "MetalPipelineCache.hpp"
 #include "MetalRenderStateCache.hpp"
@@ -138,9 +139,8 @@ bool MetalConversionPass::encode(
     [encoder setBuffer:outputBuffer offset:0 atIndex:2];
     [encoder setBuffer:counterBuffer offset:0 atIndex:4];
 
-    const NSUInteger threadExecutionWidth = std::max<NSUInteger>(1, pipelineState.threadExecutionWidth);
-    const NSUInteger maxThreads = std::max<NSUInteger>(1, pipelineState.maxTotalThreadsPerThreadgroup);
-    const NSUInteger threadsPerGroup = std::min<NSUInteger>(threadExecutionWidth, maxThreads);
+    const NSUInteger threadsPerGroup =
+        static_cast<NSUInteger>(computeThreadgroupSize1D((__bridge void*)pipelineState));
     const uint32_t sampleCount = normalizedSamplesPerTriangle(samplesPerTriangle);
 
     for (std::size_t meshIndex = 0; meshIndex < sceneResources.meshCount(); ++meshIndex) {
