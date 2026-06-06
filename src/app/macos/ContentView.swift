@@ -33,6 +33,15 @@ private struct SidebarView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
 
+            Button {
+                appState.openExportPanel()
+            } label: {
+                Label("Export PLY", systemImage: "square.and.arrow.up")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+
             Picker("Workspace", selection: $appState.selectedSection) {
                 ForEach(Mesh2SplatAppState.SidebarSection.allCases) { section in
                     Text(section.rawValue).tag(section)
@@ -44,6 +53,7 @@ private struct SidebarView: View {
 
             GroupBox("Asset") {
                 LabeledContent("Input", value: appState.importedFileName ?? "None")
+                LabeledContent("Output", value: appState.exportedFileName ?? "None")
                 LabeledContent("State", value: appState.statusText)
             }
 
@@ -95,7 +105,13 @@ private struct StatusBar: View {
             }
 
             Spacer()
-            Text("Renderer status")
+            Text(appState.importStatus)
+                .foregroundStyle(.secondary)
+            Divider()
+            Text(appState.conversionStatus)
+                .foregroundStyle(.secondary)
+            Divider()
+            Text(appState.exportStatus)
                 .foregroundStyle(.secondary)
         }
         .font(.caption)

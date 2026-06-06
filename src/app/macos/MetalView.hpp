@@ -10,6 +10,7 @@
 - (IBAction)openDocument:(id)sender;
 - (IBAction)exportDocument:(id)sender;
 - (BOOL)openMeshAtURL:(NSURL*)url;
+- (BOOL)exportGaussianPlyAtURL:(NSURL*)url;
 - (void)refreshRendererStatus;
 - (void)applyRenderMode:(NSInteger)renderMode
               splatSize:(double)splatSize

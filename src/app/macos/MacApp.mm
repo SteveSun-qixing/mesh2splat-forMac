@@ -5,6 +5,7 @@
 @interface Mesh2SplatAppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 
 @property (nonatomic, strong) NSWindow* window;
+@property (nonatomic, weak) Mesh2SplatMetalView* metalView;
 
 @end
 
@@ -38,6 +39,11 @@
                                                keyEquivalent:@"o"];
     openItem.target = nil;
     [fileMenu addItem:openItem];
+    NSMenuItem* exportItem = [[NSMenuItem alloc] initWithTitle:@"Export Gaussian PLY..."
+                                                        action:@selector(exportDocument:)
+                                                 keyEquivalent:@"e"];
+    exportItem.target = nil;
+    [fileMenu addItem:exportItem];
     fileMenuItem.submenu = fileMenu;
 
     NSMenuItem* viewMenuItem = [[NSMenuItem alloc] initWithTitle:@"View"
@@ -124,16 +130,54 @@
                                                   defer:NO];
     self.window.title = @"Mesh2Splat Metal";
     self.window.delegate = self;
-    self.window.contentView = [[Mesh2SplatMetalView alloc] initWithFrame:frame];
+    self.window.minSize = NSMakeSize(800, 500);
+    self.window.acceptsMouseMovedEvents = YES;
+
+    Mesh2SplatMetalView* metalView = [[Mesh2SplatMetalView alloc] initWithFrame:frame];
+    metalView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    self.window.contentView = metalView;
+    self.metalView = metalView;
     [self.window center];
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
+}
+
+- (BOOL)application:(NSApplication*)sender openFile:(NSString*)filename
+{
+    (void)sender;
+    return [self.metalView openMeshAtURL:[NSURL fileURLWithPath:filename]];
+}
+
+- (void)application:(NSApplication*)sender openFiles:(NSArray<NSString*>*)filenames
+{
+    (void)sender;
+    BOOL openedFile = NO;
+    for (NSString* filename in filenames) {
+        if ([self.metalView openMeshAtURL:[NSURL fileURLWithPath:filename]]) {
+            openedFile = YES;
+            break;
+        }
+    }
+
+    [NSApp replyToOpenOrPrint:openedFile ? NSApplicationDelegateReplySuccess : NSApplicationDelegateReplyFailure];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender
 {
     (void)sender;
     return YES;
+}
+
+- (void)windowDidBecomeKey:(NSNotification*)notification
+{
+    (void)notification;
+    [self.window makeFirstResponder:self.metalView];
+}
+
+- (void)windowDidResize:(NSNotification*)notification
+{
+    (void)notification;
+    [self.metalView refreshRendererStatus];
 }
 
 @end

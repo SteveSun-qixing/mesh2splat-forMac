@@ -17,6 +17,11 @@ struct Mesh2SplatSwiftUIApp: App {
                     appState.openImportPanel()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+
+                Button("Export Gaussian PLY...") {
+                    appState.openExportPanel()
+                }
+                .keyboardShortcut("e", modifiers: .command)
             }
         }
     }

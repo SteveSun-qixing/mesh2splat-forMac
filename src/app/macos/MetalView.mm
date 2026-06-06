@@ -554,13 +554,23 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.runtimeState = macRuntimeStateFromRenderer(diagnostics.state);
     summary.diagnosticSeverity = macSeverityFromRenderer(diagnostics.severity);
     summary.viewMode = macViewModeFromRenderer(diagnostics.viewMode);
+    summary.backend.runtimeState = summary.runtimeState;
+    summary.backend.supported = true;
+    summary.backend.initialized = true;
+    summary.backend.shaderLibraryReady = true;
+    summary.backend.pipelineCacheReady = true;
     summary.loadedScenePath = diagnostics.loadedScenePath;
     summary.diagnosticMessage = diagnosticOverride.length > 0 ?
         std::string(diagnosticOverride.UTF8String) :
         diagnostics.message;
+    summary.lastError = diagnostics.lastError;
     summary.convertedGaussianCount = diagnostics.convertedGaussianCount;
     summary.gaussianScale = diagnostics.gaussianScale;
+    summary.conversionProgress = diagnostics.progress;
     summary.conversionSamplesPerTriangle = diagnostics.conversionSamplesPerTriangle;
+    summary.submittedConversionCount = stats.submittedConversionCount;
+    summary.completedConversionCount = stats.completedConversionCount;
+    summary.failedConversionCount = stats.failedConversionCount;
     summary.submittedFrameCount = stats.submittedFrameCount;
     summary.completedFrameCount = stats.completedFrameCount;
     summary.failedFrameCount = stats.failedFrameCount;
@@ -568,11 +578,53 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.averageFrameCpuEncodeMs = stats.averageFrameCpuEncodeMs;
     summary.lastFrameGpuMs = stats.lastFrameGpuMs;
     summary.averageFrameGpuMs = stats.averageFrameGpuMs;
+    summary.lastConversionCpuSubmitMs = stats.lastConversionCpuSubmitMs;
+    summary.averageConversionCpuSubmitMs = stats.averageConversionCpuSubmitMs;
+    summary.lastConversionGpuMs = stats.lastConversionGpuMs;
+    summary.averageConversionGpuMs = stats.averageConversionGpuMs;
+    summary.frameUniformResourceBytes = stats.frameUniformResourceBytes;
+    summary.sceneResourceBytes = stats.sceneResourceBytes;
+    summary.gaussianResourceBytes = stats.gaussianResourceBytes;
+    summary.gaussianSortResourceBytes = stats.gaussianSortResourceBytes;
+    summary.pendingConversionResourceBytes = stats.pendingConversionResourceBytes;
+    summary.trackedResourceBytes = stats.trackedResourceBytes;
     summary.hasScene = diagnostics.hasScene;
+    summary.hasGaussians = diagnostics.hasGaussians;
     summary.isConverting = diagnostics.converting;
     summary.lastFrameRenderedMesh = stats.lastFrameRenderedMesh;
     summary.lastFrameRenderedGaussians = stats.lastFrameRenderedGaussians;
     summary.lastFrameSortedGaussians = stats.lastFrameSortedGaussians;
+    summary.frameTiming.submittedFrameCount = stats.submittedFrameCount;
+    summary.frameTiming.completedFrameCount = stats.completedFrameCount;
+    summary.frameTiming.failedFrameCount = stats.failedFrameCount;
+    summary.frameTiming.lastCpuEncodeMs = stats.lastFrameCpuEncodeMs;
+    summary.frameTiming.averageCpuEncodeMs = stats.averageFrameCpuEncodeMs;
+    summary.frameTiming.lastGpuMs = stats.lastFrameGpuMs;
+    summary.frameTiming.averageGpuMs = stats.averageFrameGpuMs;
+    summary.frameTiming.lastRenderedMesh = stats.lastFrameRenderedMesh;
+    summary.frameTiming.lastRenderedGaussians = stats.lastFrameRenderedGaussians;
+    summary.frameTiming.lastSortedGaussians = stats.lastFrameSortedGaussians;
+    summary.resources.frameUniformBytes = stats.frameUniformResourceBytes;
+    summary.resources.sceneBytes = stats.sceneResourceBytes;
+    summary.resources.gaussianBytes = stats.gaussianResourceBytes;
+    summary.resources.gaussianSortBytes = stats.gaussianSortResourceBytes;
+    summary.resources.pendingConversionBytes = stats.pendingConversionResourceBytes;
+    summary.resources.trackedBytes = stats.trackedResourceBytes;
+    summary.resources.gaussianCount = diagnostics.convertedGaussianCount;
+    summary.conversion.active = diagnostics.converting;
+    summary.conversion.progress = diagnostics.progress;
+    summary.conversion.samplesPerTriangle = diagnostics.conversionSamplesPerTriangle;
+    summary.conversion.convertedGaussianCount = diagnostics.convertedGaussianCount;
+    summary.conversion.submittedConversionCount = stats.submittedConversionCount;
+    summary.conversion.completedConversionCount = stats.completedConversionCount;
+    summary.conversion.failedConversionCount = stats.failedConversionCount;
+    summary.conversion.lastCpuSubmitMs = stats.lastConversionCpuSubmitMs;
+    summary.conversion.averageCpuSubmitMs = stats.averageConversionCpuSubmitMs;
+    summary.conversion.lastGpuMs = stats.lastConversionGpuMs;
+    summary.conversion.averageGpuMs = stats.averageConversionGpuMs;
+    summary.diagnostics.severity = summary.diagnosticSeverity;
+    summary.diagnostics.message = summary.diagnosticMessage;
+    summary.diagnostics.lastError = summary.lastError;
 
     NSString* title = [self rendererStatusTitle];
     summary.statusText = title.length > 0 ? std::string(title.UTF8String) : std::string();
@@ -808,25 +860,9 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
             return;
         }
 
-        NSURL* url = panel.URL;
-        strongSelf.lastExportStatus = [NSString stringWithFormat:@"Export: writing %@", url.lastPathComponent];
-        [strongSelf refreshRendererStatus];
-        mesh2splat::renderer::RendererExportPlyResult result = [strongSelf.meshDelegate exportPlyAtPath:url.path];
-        if (!result.exported) {
-            strongSelf.lastDiagnosticMessage = result.diagnostic.empty() ?
-                @"Could not export Gaussian PLY." :
-                stringFromUtf8(result.diagnostic);
-            strongSelf.lastExportStatus = @"Export: failed";
-            [strongSelf refreshRendererStatus];
+        if (![strongSelf exportGaussianPlyAtURL:panel.URL]) {
             NSBeep();
-            return;
         }
-
-        strongSelf.lastDiagnosticMessage = [NSString stringWithFormat:@"Exported %llu gaussians to %@.",
-                                                                      result.writtenCount,
-                                                                      url.lastPathComponent];
-        strongSelf.lastExportStatus = [NSString stringWithFormat:@"Export: saved %@", url.lastPathComponent];
-        [strongSelf refreshRendererStatus];
     }];
 }
 
@@ -910,12 +946,53 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
         NSString* rendererDiagnostic = [self.meshDelegate rendererDiagnostic];
         self.lastDiagnosticMessage =
             rendererDiagnostic.length > 0 ? rendererDiagnostic : [NSString stringWithFormat:@"Could not open %@.", url.lastPathComponent];
+        self.lastImportStatus = @"Import: failed";
+        self.lastConversionStatus = @"Conversion: idle";
+        self.lastExportStatus = @"Export: not ready";
         [self refreshRendererStatus];
         return NO;
     }
 
     self.lastDiagnosticMessage = nil;
+    self.lastImportStatus = [NSString stringWithFormat:@"Import: loaded %@", url.lastPathComponent];
+    self.lastConversionStatus = @"Conversion: running";
+    self.lastExportStatus = @"Export: waiting";
     [self.meshDelegate resetFrameClock];
+    [self refreshRendererStatus];
+    return YES;
+}
+
+- (BOOL)exportGaussianPlyAtURL:(NSURL*)url
+{
+    if (url == nil || !url.isFileURL) {
+        self.lastExportStatus = @"Export: failed";
+        self.lastDiagnosticMessage = @"Choose a valid .ply export path.";
+        [self refreshRendererStatus];
+        return NO;
+    }
+
+    self.lastExportStatus = [NSString stringWithFormat:@"Export: writing %@", url.lastPathComponent];
+    [self refreshRendererStatus];
+
+    const BOOL hasSecurityScope = [url startAccessingSecurityScopedResource];
+    mesh2splat::renderer::RendererExportPlyResult result = [self.meshDelegate exportPlyAtPath:url.path];
+    if (hasSecurityScope) {
+        [url stopAccessingSecurityScopedResource];
+    }
+
+    if (!result.exported) {
+        self.lastDiagnosticMessage = result.diagnostic.empty() ?
+            @"Could not export Gaussian PLY." :
+            stringFromUtf8(result.diagnostic);
+        self.lastExportStatus = @"Export: failed";
+        [self refreshRendererStatus];
+        return NO;
+    }
+
+    self.lastDiagnosticMessage = [NSString stringWithFormat:@"Exported %llu gaussians to %@.",
+                                                            result.writtenCount,
+                                                            url.lastPathComponent];
+    self.lastExportStatus = [NSString stringWithFormat:@"Export: saved %@", url.lastPathComponent];
     [self refreshRendererStatus];
     return YES;
 }
@@ -945,6 +1022,15 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     }
 
     self.window.title = title;
+    const BOOL isConverting = [self.meshDelegate isConvertingGaussians];
+    const uint32_t gaussianCount = [self.meshDelegate convertedGaussianCount];
+    self.lastConversionStatus = isConverting ?
+        @"Conversion: running" :
+        [NSString stringWithFormat:@"Conversion: %u gaussians", gaussianCount];
+    if (gaussianCount > 0 && !isConverting && [self.lastExportStatus isEqualToString:@"Export: waiting"]) {
+        self.lastExportStatus = @"Export: ready";
+    }
+    [self updateStatusLabelWithTitle:title];
 }
 
 - (void)applyRenderMode:(NSInteger)renderMode

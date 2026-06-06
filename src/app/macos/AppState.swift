@@ -53,6 +53,10 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var selectedSection: SidebarSection = .scene
     @Published var statusText = "Ready"
     @Published var importedFileName: String?
+    @Published var exportedFileName: String?
+    @Published var importStatus = "Import: waiting"
+    @Published var conversionStatus = "Conversion: idle"
+    @Published var exportStatus = "Export: not ready"
     @Published var lastError: String?
     @Published var metalView: NSView?
     @Published var renderMode: RenderMode = .final { didSet { submitRenderSettings() } }
@@ -67,6 +71,11 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var conversionEnabled = true { didSet { submitRenderSettings() } }
 
     private var isResettingRenderSettings = false
+
+    enum DocumentAction {
+        case importMesh
+        case exportGaussians
+    }
 
     enum SidebarSection: String, CaseIterable, Identifiable {
         case scene = "Scene"
@@ -83,44 +92,77 @@ final class Mesh2SplatAppState: ObservableObject {
     }
 
     func openImportPanel() {
-        let panel = NSOpenPanel()
-        panel.title = "Import Mesh"
-        panel.prompt = "Import"
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [
-            .init(filenameExtension: "glb"),
-            .init(filenameExtension: "gltf")
-        ].compactMap { $0 }
+        importStatus = "Import: choosing file"
+        statusText = importStatus
+        documentActions.importMesh()
+    }
 
-        panel.begin { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in
-                self?.importMesh(at: url)
-            }
-        }
+    func openExportPanel() {
+        exportStatus = "Export: choosing destination"
+        statusText = exportStatus
+        documentActions.exportGaussians(defaultName: defaultExportFileName)
     }
 
     func importMesh(at url: URL) {
         guard let metalView else {
             lastError = "Viewport is not ready."
             statusText = "Import failed"
+            importStatus = "Import: failed"
             return
         }
 
-        let loaded = Mesh2SplatOpenMeshInView(metalView, url as NSURL)
+        let loaded = Mesh2SplatOpenMeshInView(metalView, url)
         if loaded {
             importedFileName = url.lastPathComponent
             lastError = nil
             statusText = "Loaded \(url.lastPathComponent)"
+            importStatus = "Import: loaded \(url.lastPathComponent)"
+            conversionStatus = "Conversion: running"
+            exportStatus = "Export: waiting"
             Mesh2SplatFocusMetalView(metalView)
         } else {
             lastError = "Could not load \(url.lastPathComponent)."
             statusText = "Import failed"
+            importStatus = "Import: failed"
         }
 
         Mesh2SplatRefreshMetalViewStatus(metalView)
+    }
+
+    func exportGaussians(to url: URL) {
+        guard let metalView else {
+            lastError = "Viewport is not ready."
+            statusText = "Export failed"
+            exportStatus = "Export: failed"
+            return
+        }
+
+        exportStatus = "Export: writing \(url.lastPathComponent)"
+        statusText = exportStatus
+        let exported = Mesh2SplatExportGaussianPlyFromView(metalView, url)
+        if exported {
+            exportedFileName = url.lastPathComponent
+            lastError = nil
+            statusText = "Exported \(url.lastPathComponent)"
+            exportStatus = "Export: saved \(url.lastPathComponent)"
+        } else {
+            lastError = "Could not export \(url.lastPathComponent)."
+            statusText = "Export failed"
+            exportStatus = "Export: failed"
+        }
+
+        Mesh2SplatRefreshMetalViewStatus(metalView)
+    }
+
+    func documentActionCancelled(_ action: DocumentAction) {
+        switch action {
+        case .importMesh:
+            importStatus = "Import: cancelled"
+            statusText = importStatus
+        case .exportGaussians:
+            exportStatus = "Export: cancelled"
+            statusText = exportStatus
+        }
     }
 
     func resetRenderSettings() {
@@ -156,6 +198,23 @@ final class Mesh2SplatAppState: ObservableObject {
             conversionEnabled
         )
         Mesh2SplatRefreshMetalViewStatus(metalView)
+    }
+
+    private var documentActions: Mesh2SplatDocumentActions {
+        Mesh2SplatDocumentActions(
+            openScene: { [weak self] url in self?.importMesh(at: url) },
+            exportGaussianPly: { [weak self] url in self?.exportGaussians(to: url) },
+            cancel: { [weak self] action in self?.documentActionCancelled(action) }
+        )
+    }
+
+    private var defaultExportFileName: String {
+        guard let importedFileName, !importedFileName.isEmpty else {
+            return "mesh2splat-gaussians.ply"
+        }
+
+        let stem = URL(fileURLWithPath: importedFileName).deletingPathExtension().lastPathComponent
+        return "\(stem)-gaussians.ply"
     }
 }
 

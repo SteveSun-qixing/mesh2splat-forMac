@@ -27,6 +27,22 @@ BOOL Mesh2SplatOpenMeshInView(NSView* view, NSURL* url)
     return message(view, selector, url);
 }
 
+BOOL Mesh2SplatExportGaussianPlyFromView(NSView* view, NSURL* url)
+{
+    if (![view isKindOfClass:Mesh2SplatMetalView.class]) {
+        return NO;
+    }
+
+    SEL selector = NSSelectorFromString(@"exportGaussianPlyAtURL:");
+    if (![view respondsToSelector:selector]) {
+        return NO;
+    }
+
+    using ExportPlyMessage = BOOL (*)(id, SEL, NSURL*);
+    ExportPlyMessage message = reinterpret_cast<ExportPlyMessage>(objc_msgSend);
+    return message(view, selector, url);
+}
+
 void Mesh2SplatRefreshMetalViewStatus(NSView* view)
 {
     if (![view isKindOfClass:Mesh2SplatMetalView.class]) {
@@ -43,9 +59,11 @@ void Mesh2SplatRefreshMetalViewStatus(NSView* view)
 
 void Mesh2SplatFocusMetalView(NSView* view)
 {
-    if ([view isKindOfClass:Mesh2SplatMetalView.class]) {
-        [view.window makeFirstResponder:view];
+    if (![view isKindOfClass:Mesh2SplatMetalView.class]) {
+        return;
     }
+
+    [view.window makeFirstResponder:view];
 }
 
 void Mesh2SplatApplyRenderSettingsToView(NSView* view,
