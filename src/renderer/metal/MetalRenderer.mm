@@ -26,12 +26,16 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace mesh2splat::metal {
 namespace {
+
+using Clock = std::chrono::steady_clock;
 
 constexpr uint32_t kDefaultMetalConversionSamplesPerTriangle = 4;
 
@@ -133,7 +137,100 @@ bool matrixEquals(const core::Matrix4& lhs, const core::Matrix4& rhs)
     return true;
 }
 
+double elapsedMilliseconds(Clock::time_point start, Clock::time_point end)
+{
+    return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
+double commandBufferGpuMilliseconds(id<MTLCommandBuffer> commandBuffer)
+{
+    if (commandBuffer == nil || commandBuffer.status != MTLCommandBufferStatusCompleted) {
+        return 0.0;
+    }
+
+    const CFTimeInterval startTime = commandBuffer.GPUStartTime;
+    const CFTimeInterval endTime = commandBuffer.GPUEndTime;
+    if (startTime <= 0.0 || endTime <= startTime) {
+        return 0.0;
+    }
+
+    return static_cast<double>(endTime - startTime) * 1000.0;
+}
+
+double exponentialAverage(double currentAverage, double sample)
+{
+    constexpr double kAlpha = 0.12;
+    return currentAverage <= 0.0 ? sample : currentAverage + (sample - currentAverage) * kAlpha;
+}
+
 } // namespace
+
+struct MetalRendererTimingState {
+    mutable std::mutex mutex;
+    MetalRendererStats stats;
+
+    MetalRendererStats snapshot() const
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return stats;
+    }
+
+    void recordFrameSubmitted(
+        double cpuEncodeMs,
+        uint32_t gaussianCount,
+        bool sortedGaussians,
+        bool renderedMesh,
+        bool renderedGaussians)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++stats.submittedFrameCount;
+        stats.lastFrameCpuEncodeMs = cpuEncodeMs;
+        stats.averageFrameCpuEncodeMs = exponentialAverage(stats.averageFrameCpuEncodeMs, cpuEncodeMs);
+        stats.lastFrameGaussianCount = gaussianCount;
+        stats.lastFrameSortedGaussians = sortedGaussians;
+        stats.lastFrameRenderedMesh = renderedMesh;
+        stats.lastFrameRenderedGaussians = renderedGaussians;
+    }
+
+    void recordFrameCompleted(bool succeeded, double gpuMs)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++stats.completedFrameCount;
+        if (!succeeded) {
+            ++stats.failedFrameCount;
+            return;
+        }
+
+        stats.lastFrameGpuMs = gpuMs;
+        if (gpuMs > 0.0) {
+            stats.averageFrameGpuMs = exponentialAverage(stats.averageFrameGpuMs, gpuMs);
+        }
+    }
+
+    void recordConversionSubmitted(double cpuSubmitMs)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++stats.submittedConversionCount;
+        stats.lastConversionCpuSubmitMs = cpuSubmitMs;
+        stats.averageConversionCpuSubmitMs =
+            exponentialAverage(stats.averageConversionCpuSubmitMs, cpuSubmitMs);
+    }
+
+    void recordConversionCompleted(bool succeeded, double gpuMs)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++stats.completedConversionCount;
+        if (!succeeded) {
+            ++stats.failedConversionCount;
+            return;
+        }
+
+        stats.lastConversionGpuMs = gpuMs;
+        if (gpuMs > 0.0) {
+            stats.averageConversionGpuMs = exponentialAverage(stats.averageConversionGpuMs, gpuMs);
+        }
+    }
+};
 
 struct PendingGaussianConversion {
     std::unique_ptr<MetalSceneResources> nextSceneResources;
@@ -187,6 +284,7 @@ struct MetalRenderer::Impl {
     uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
     uint32_t height = 0;
+    std::shared_ptr<MetalRendererTimingState> timingState = std::make_shared<MetalRendererTimingState>();
 };
 
 bool MetalRenderer::Impl::submitSceneConversion(
@@ -204,6 +302,7 @@ bool MetalRenderer::Impl::submitSceneConversion(
         return false;
     }
 
+    const Clock::time_point conversionCpuStart = Clock::now();
     const std::size_t gaussianCapacity =
         conversionSceneResources.conversionCapacity(conversionSamplesPerTriangle);
     if (gaussianCapacity == 0) {
@@ -247,6 +346,7 @@ bool MetalRenderer::Impl::submitSceneConversion(
     }
 
     nextConversion->nextSceneResources = std::move(nextSceneResources);
+    std::shared_ptr<MetalRendererTimingState> conversionTimingState = timingState;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
         bool didSucceed = completedCommandBuffer.status == MTLCommandBufferStatusCompleted &&
             nextConversion->gaussianBuffer != nullptr &&
@@ -258,9 +358,17 @@ bool MetalRenderer::Impl::submitSceneConversion(
 
         nextConversion->convertedCount.store(nextConvertedCount, std::memory_order_relaxed);
         nextConversion->succeeded.store(didSucceed, std::memory_order_relaxed);
+        if (conversionTimingState != nullptr) {
+            conversionTimingState->recordConversionCompleted(
+                didSucceed,
+                commandBufferGpuMilliseconds(completedCommandBuffer));
+        }
         nextConversion->completed.store(true, std::memory_order_release);
     }];
 
+    if (timingState != nullptr) {
+        timingState->recordConversionSubmitted(elapsedMilliseconds(conversionCpuStart, Clock::now()));
+    }
     pendingConversion = nextConversion;
     [commandBuffer commit];
     return true;
@@ -503,6 +611,11 @@ uint32_t MetalRenderer::convertedGaussianCount() const
     return m_impl->convertedGaussianCount;
 }
 
+MetalRendererStats MetalRenderer::rendererStats() const
+{
+    return m_impl->timingState == nullptr ? MetalRendererStats{} : m_impl->timingState->snapshot();
+}
+
 const std::string& MetalRenderer::loadedMeshPath() const
 {
     return m_impl->loadedMeshPath;
@@ -524,6 +637,7 @@ void MetalRenderer::draw(
         return;
     }
 
+    const Clock::time_point frameCpuStart = Clock::now();
     m_impl->frameResources.beginFrame();
     m_impl->finalizePendingConversion();
     m_impl->camera.update(inputState, deltaTimeSeconds);
@@ -548,11 +662,17 @@ void MetalRenderer::draw(
     }
     commandBuffer.label = @"Mesh2Splat Metal Frame";
     dispatch_semaphore_t frameSemaphore = m_impl->frameSemaphore;
+    std::shared_ptr<MetalRendererTimingState> frameTimingState = m_impl->timingState;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
-        (void)completedCommandBuffer;
+        if (frameTimingState != nullptr) {
+            frameTimingState->recordFrameCompleted(
+                completedCommandBuffer.status == MTLCommandBufferStatusCompleted,
+                commandBufferGpuMilliseconds(completedCommandBuffer));
+        }
         dispatch_semaphore_signal(frameSemaphore);
     }];
 
+    bool sortedGaussiansThisFrame = false;
     const bool showGaussians =
         m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
     if (showGaussians && m_impl->gaussianSortPass != nullptr && m_impl->gaussianBuffer != nullptr &&
@@ -567,6 +687,7 @@ void MetalRenderer::draw(
                 *m_impl->gaussianSortBuffer,
                 m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
             if (m_impl->hasSortedGaussianDepths) {
+                sortedGaussiansThisFrame = true;
                 m_impl->lastSortedViewMatrix = m_impl->frameUniforms.viewMatrix;
             }
         }
@@ -574,21 +695,35 @@ void MetalRenderer::draw(
 
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
     if (encoder == nil) {
+        if (frameTimingState != nullptr) {
+            const uint32_t gaussianCount =
+                m_impl->gaussianBuffer == nullptr ? 0 : m_impl->gaussianBuffer->count();
+            frameTimingState->recordFrameSubmitted(
+                elapsedMilliseconds(frameCpuStart, Clock::now()),
+                gaussianCount,
+                sortedGaussiansThisFrame,
+                false,
+                false);
+        }
         [commandBuffer commit];
         return;
     }
     encoder.label = @"Mesh2Splat Drawable Render";
     const bool showMesh = m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::MeshOnly;
-    if (showMesh && m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
-        m_impl->frameUniformBuffer != nullptr) {
+    const bool renderMeshThisFrame =
+        showMesh && m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
+        m_impl->frameUniformBuffer != nullptr;
+    if (renderMeshThisFrame) {
         m_impl->meshRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->sceneResources,
             m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
     }
-    if (showGaussians && m_impl->hasSortedGaussianDepths &&
+    const bool renderGaussiansThisFrame =
+        showGaussians && m_impl->hasSortedGaussianDepths &&
         m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
-        m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr) {
+        m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr;
+    if (renderGaussiansThisFrame) {
         m_impl->gaussianRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->gaussianBuffer,
@@ -597,6 +732,16 @@ void MetalRenderer::draw(
     }
     [encoder endEncoding];
 
+    if (frameTimingState != nullptr) {
+        const uint32_t gaussianCount =
+            m_impl->gaussianBuffer == nullptr ? 0 : m_impl->gaussianBuffer->count();
+        frameTimingState->recordFrameSubmitted(
+            elapsedMilliseconds(frameCpuStart, Clock::now()),
+            gaussianCount,
+            sortedGaussiansThisFrame,
+            renderMeshThisFrame,
+            renderGaussiansThisFrame);
+    }
     [commandBuffer presentDrawable:metalDrawable];
     [commandBuffer commit];
 }

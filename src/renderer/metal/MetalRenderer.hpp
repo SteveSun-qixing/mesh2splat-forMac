@@ -24,6 +24,27 @@ enum class GaussianVisualizationMode : uint32_t {
     Final = 6,
 };
 
+struct MetalRendererStats {
+    uint64_t submittedFrameCount = 0;
+    uint64_t completedFrameCount = 0;
+    uint64_t failedFrameCount = 0;
+    uint64_t submittedConversionCount = 0;
+    uint64_t completedConversionCount = 0;
+    uint64_t failedConversionCount = 0;
+    double lastFrameCpuEncodeMs = 0.0;
+    double averageFrameCpuEncodeMs = 0.0;
+    double lastFrameGpuMs = 0.0;
+    double averageFrameGpuMs = 0.0;
+    double lastConversionCpuSubmitMs = 0.0;
+    double averageConversionCpuSubmitMs = 0.0;
+    double lastConversionGpuMs = 0.0;
+    double averageConversionGpuMs = 0.0;
+    uint32_t lastFrameGaussianCount = 0;
+    bool lastFrameSortedGaussians = false;
+    bool lastFrameRenderedMesh = false;
+    bool lastFrameRenderedGaussians = false;
+};
+
 class MetalRenderer {
 public:
     explicit MetalRenderer(void* metalDevice);
@@ -45,6 +66,7 @@ public:
     uint32_t conversionSamplesPerTriangle() const;
     bool isConvertingGaussians() const;
     uint32_t convertedGaussianCount() const;
+    MetalRendererStats rendererStats() const;
     const std::string& loadedMeshPath() const;
     void draw(
         void* renderPassDescriptor,
