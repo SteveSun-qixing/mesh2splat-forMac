@@ -411,7 +411,7 @@ bool MetalMesh::upload(const core::MeshData& meshData, const char* label)
                 range.vertexCount > meshData.vertices.size() - range.vertexOffset) {
                 return fail(MetalMeshUploadStatus::DrawRangeOutOfBounds);
             }
-            if (range.vertexCount % 3 != 0) {
+            if (range.vertexOffset % 3 != 0 || range.vertexCount % 3 != 0) {
                 return fail(MetalMeshUploadStatus::DrawRangeNotTriangleList);
             }
 
