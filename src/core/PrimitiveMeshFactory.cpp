@@ -1,5 +1,7 @@
 #include "PrimitiveMeshFactory.hpp"
 
+#include "GpuTypes.hpp"
+
 namespace mesh2splat::core {
 
 MeshData createPreviewTriangleMesh()
