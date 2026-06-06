@@ -296,6 +296,7 @@ if(APPLE)
         set(MESH2SPLAT_USE_SWIFTUI_APP ON)
         list(REMOVE_ITEM MACOS_APP_OBJCXX_SOURCES ${CMAKE_SOURCE_DIR}/src/app/macos/MacApp.mm)
         list(APPEND MACOS_APP_OBJCXX_SOURCES
+            ${CMAKE_SOURCE_DIR}/src/app/macos/MacBridgeTypes.hpp
             ${CMAKE_SOURCE_DIR}/src/app/macos/SwiftUIApp.hpp
             ${CMAKE_SOURCE_DIR}/src/app/macos/SwiftUIApp.mm
         )
@@ -344,7 +345,7 @@ if(APPLE)
             $<$<COMPILE_LANGUAGE:Swift>:-import-objc-header>
             $<$<COMPILE_LANGUAGE:Swift>:${CMAKE_SOURCE_DIR}/src/app/macos/SwiftUIApp.hpp>
         )
-        target_compile_definitions(Mesh2SplatMetal PRIVATE MESH2SPLAT_USE_SWIFTUI_APP=1)
+        target_compile_definitions(Mesh2SplatMetal PRIVATE MESH2SPLAT_USE_SWIFTUI_APP)
     endif()
     target_include_directories(Mesh2SplatMetal PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_include_directories(Mesh2SplatMetal SYSTEM PRIVATE ${THIRD_PARTY_DIR})

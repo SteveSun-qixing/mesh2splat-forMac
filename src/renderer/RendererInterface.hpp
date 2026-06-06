@@ -372,6 +372,17 @@ inline void rendererStateClearDirtyFlag(
     flags &= ~static_cast<RendererStateDirtyFlags>(flag);
 }
 
+inline float rendererClampSnapshotProgress(float progress)
+{
+    if (progress < 0.0f) {
+        return 0.0f;
+    }
+    if (progress > 1.0f) {
+        return 1.0f;
+    }
+    return progress;
+}
+
 class Renderer {
 public:
     virtual ~Renderer() = default;
@@ -400,12 +411,18 @@ public:
 
     virtual void resize(const RendererResizeRequest& request)
     {
+        if (request.minimized) {
+            return;
+        }
         resize(request.width, request.height);
     }
 
     virtual RendererSceneLoadResult loadScene(const RendererSceneLoadRequest& request)
     {
         RendererSceneLoadResult result;
+        result.requestId = request.requestId;
+        result.kind = request.kind;
+        result.filePath = request.filePath;
         result.accepted = !request.filePath.empty();
         if (!result.accepted) {
             result.diagnostic = "Scene file path is empty.";
@@ -413,6 +430,8 @@ public:
         }
 
         result.loaded = loadMeshFile(request.filePath);
+        result.displayName = loadedSceneSnapshot().displayName;
+        result.sceneCounts = sceneCounts();
         result.diagnostic = lastDiagnostic();
         return result;
     }
@@ -420,10 +439,13 @@ public:
     virtual RendererConversionResult startConversion(const RendererConversionRequest& request = {})
     {
         RendererConversionResult result;
+        result.requestId = request.requestId;
         result.accepted = !isConvertingGaussians();
         if (!result.accepted) {
             result.diagnostic = "Renderer is already converting gaussians.";
             result.samplesPerTriangle = conversionSamplesPerTriangle();
+            result.convertedGaussianCount = convertedGaussianCount();
+            result.state = conversionState();
             return result;
         }
 
@@ -439,6 +461,7 @@ public:
         }
         result.samplesPerTriangle = conversionSamplesPerTriangle();
         result.convertedGaussianCount = convertedGaussianCount();
+        result.state = conversionState();
         if (result.diagnostic.empty()) {
             result.diagnostic = lastDiagnostic();
         }
@@ -452,6 +475,7 @@ public:
         setGaussianScale(request.gaussianScale);
 
         RendererModeResult result;
+        result.requestId = request.requestId;
         result.applied = true;
         result.viewMode = viewMode();
         result.gaussianVisualizationMode = gaussianVisualizationMode();
@@ -463,6 +487,7 @@ public:
     virtual RendererExportPlyResult exportPly(const RendererExportPlyRequest& request)
     {
         RendererExportPlyResult result;
+        result.requestId = request.requestId;
         result.accepted = !request.filePath.empty();
         result.requestedCount = convertedGaussianCount();
         if (!result.accepted) {
@@ -482,11 +507,23 @@ public:
 
     virtual RendererFrameResult tickFrame(const RendererFrameTick& frame)
     {
+        if (frame.resizeRequested) {
+            resize(frame.resize);
+        }
+
         draw(frame.renderPassDescriptor, frame.drawable, frame.inputState, frame.deltaTimeSeconds);
 
         RendererFrameResult result;
-        result.submitted = frame.renderPassDescriptor != nullptr && frame.drawable != nullptr;
+        result.drawableAvailable = frame.renderPassDescriptor != nullptr && frame.drawable != nullptr;
+        result.submitted = result.drawableAvailable;
+        result.frameIndex = frame.frameIndex;
+        result.frameNumber = frame.frameNumber;
+        result.state = runtimeState();
         result.stats = rendererStats();
+        result.sceneCounts = sceneCounts();
+        result.conversion = conversionState();
+        result.renderedMesh = result.stats.lastFrameRenderedMesh;
+        result.renderedGaussians = result.stats.lastFrameRenderedGaussians;
         result.diagnostic = lastDiagnostic();
         return result;
     }
@@ -494,29 +531,42 @@ public:
     virtual RendererDiagnostics diagnostics() const
     {
         RendererDiagnostics diagnostics;
+        diagnostics.revision = rendererStateRevision();
         diagnostics.stats = rendererStats();
         diagnostics.message = lastDiagnostic();
         diagnostics.lastError = lastDiagnostic();
         diagnostics.loadedScenePath = loadedMeshPath();
-        diagnostics.progress = conversionProgress();
+        diagnostics.loadedScene = loadedSceneSnapshot();
+        diagnostics.sceneCounts = sceneCounts();
+        diagnostics.renderSettings = renderSettingsSummary();
+        diagnostics.conversion = conversionState();
+        diagnostics.progress = diagnostics.conversion.progress;
         diagnostics.convertedGaussianCount = convertedGaussianCount();
         diagnostics.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
         diagnostics.viewMode = viewMode();
         diagnostics.gaussianVisualizationMode = gaussianVisualizationMode();
         diagnostics.gaussianScale = gaussianScale();
         diagnostics.converting = isConvertingGaussians();
-        diagnostics.hasScene = !loadedMeshPath().empty();
+        diagnostics.hasScene = diagnostics.loadedScene.loaded || !loadedMeshPath().empty();
         diagnostics.hasGaussians = diagnostics.convertedGaussianCount > 0;
-        diagnostics.state = diagnostics.converting ? RendererRuntimeState::Converting : RendererRuntimeState::Ready;
+        diagnostics.hasVisibleMesh = diagnostics.sceneCounts.hasVisibleMesh();
+        diagnostics.state = runtimeState();
+        if (diagnostics.state == RendererRuntimeState::Unknown) {
+            diagnostics.state = diagnostics.converting ? RendererRuntimeState::Converting : RendererRuntimeState::Ready;
+        }
         diagnostics.severity = diagnostics.message.empty() ?
             RendererDiagnosticSeverity::Info :
             RendererDiagnosticSeverity::Warning;
+        diagnostics.statusText = diagnostics.message.empty() ? std::string("Ready") : diagnostics.message;
         return diagnostics;
     }
 
     virtual RendererRuntimeState runtimeState() const
     {
-        return diagnostics().state;
+        if (isConvertingGaussians()) {
+            return RendererRuntimeState::Converting;
+        }
+        return RendererRuntimeState::Ready;
     }
 
     virtual float conversionProgress() const
@@ -530,6 +580,100 @@ public:
     virtual std::string lastError() const
     {
         return lastDiagnostic();
+    }
+
+    virtual uint64_t rendererStateRevision() const
+    {
+        return rendererStats().submittedFrameCount;
+    }
+
+    virtual RendererLoadedSceneSnapshot loadedSceneSnapshot() const
+    {
+        RendererLoadedSceneSnapshot loadedScene;
+        loadedScene.loaded = !loadedMeshPath().empty();
+        loadedScene.kind = RendererSceneKind::Mesh;
+        loadedScene.filePath = loadedMeshPath();
+        loadedScene.displayName = rendererDisplayNameFromPath(loadedScene.filePath);
+        loadedScene.revision = rendererStateRevision();
+        return loadedScene;
+    }
+
+    virtual RendererSceneCounts sceneCounts() const
+    {
+        const RendererStats stats = rendererStats();
+
+        RendererSceneCounts counts;
+        counts.meshCount = stats.lastFrameMeshCount;
+        counts.visibleMeshCount = stats.lastFrameVisibleMeshCount;
+        if (counts.visibleMeshCount == 0 && stats.lastFrameRenderedMesh) {
+            counts.visibleMeshCount = counts.meshCount == 0 ? 1 : counts.meshCount;
+        }
+        counts.triangleCount = stats.lastFrameTriangleCount;
+        counts.gaussianCount = convertedGaussianCount();
+        counts.visibleGaussianCount = stats.lastFrameGaussianCount;
+        return counts;
+    }
+
+    virtual RendererRenderSettingsSummary renderSettingsSummary() const
+    {
+        RendererRenderSettingsSummary settings;
+        settings.viewMode = viewMode();
+        settings.gaussianVisualizationMode = gaussianVisualizationMode();
+        settings.gaussianScale = gaussianScale();
+        settings.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
+        settings.meshRenderingEnabled = settings.viewMode != RenderViewMode::GaussianOnly;
+        settings.gaussianRenderingEnabled = settings.viewMode != RenderViewMode::MeshOnly;
+        return settings;
+    }
+
+    virtual RendererConversionState conversionState() const
+    {
+        const RendererStats stats = rendererStats();
+
+        RendererConversionState conversion;
+        conversion.active = isConvertingGaussians();
+        conversion.phase = conversion.active ?
+            RendererConversionPhase::Running :
+            (convertedGaussianCount() == 0 ? RendererConversionPhase::Idle : RendererConversionPhase::Completed);
+        conversion.progressKnown = !conversion.active;
+        conversion.progress = rendererClampSnapshotProgress(conversionProgress());
+        conversion.samplesPerTriangle = conversionSamplesPerTriangle();
+        conversion.convertedGaussianCount = convertedGaussianCount();
+        conversion.lastCpuSubmitMs = stats.lastConversionCpuSubmitMs;
+        conversion.averageCpuSubmitMs = stats.averageConversionCpuSubmitMs;
+        conversion.lastGpuMs = stats.lastConversionGpuMs;
+        conversion.averageGpuMs = stats.averageConversionGpuMs;
+        conversion.diagnostic = lastDiagnostic();
+        return conversion;
+    }
+
+    virtual RendererStateSnapshot stateSnapshot() const
+    {
+        RendererStateSnapshot snapshot;
+        snapshot.revision = rendererStateRevision();
+        snapshot.runtimeState = runtimeState();
+        snapshot.loadedScene = loadedSceneSnapshot();
+        snapshot.sceneCounts = sceneCounts();
+        snapshot.renderSettings = renderSettingsSummary();
+        snapshot.conversion = conversionState();
+        snapshot.stats = rendererStats();
+        snapshot.diagnostic = lastDiagnostic();
+        snapshot.lastError = lastError();
+        snapshot.diagnosticSeverity = snapshot.diagnostic.empty() ?
+            RendererDiagnosticSeverity::Info :
+            RendererDiagnosticSeverity::Warning;
+        snapshot.statusText = snapshot.diagnostic.empty() ? std::string("Ready") : snapshot.diagnostic;
+        return snapshot;
+    }
+
+protected:
+    static std::string rendererDisplayNameFromPath(const std::string& filePath)
+    {
+        const std::string::size_type lastSeparator = filePath.find_last_of("/\\");
+        if (lastSeparator == std::string::npos) {
+            return filePath;
+        }
+        return filePath.substr(lastSeparator + 1);
     }
 };
 

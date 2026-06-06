@@ -1495,13 +1495,29 @@ void MetalRenderer::draw(
     m_impl->frameUniforms.frameIndex = frameResourceIndex;
     m_impl->frameUniforms.renderMode = static_cast<uint32_t>(m_impl->gaussianVisualizationMode);
     m_impl->frameUniforms.gaussianParams[0] = m_impl->gaussianScale;
-    if (m_impl->frameUniformBuffer != nullptr) {
-        m_impl->frameUniformBuffer->update(
-            frameResourceIndex,
-            m_impl->frameUniforms);
+    if (m_impl->frameUniformBuffer == nullptr ||
+        !m_impl->frameUniformBuffer->update(frameResourceIndex, m_impl->frameUniforms)) {
+        m_impl->recordDiagnostic(
+            m_impl->frameUniformBuffer == nullptr
+                ? "Cannot draw Metal frame: frame uniform buffer is unavailable."
+                : m_impl->frameUniformBuffer->lastDiagnostic());
+        m_impl->recordFrameEncodeFailure(frameCpuStart, false, false, false);
+        m_impl->renderingFrame = false;
+        dispatch_semaphore_signal(m_impl->frameSemaphore);
+        return;
     }
 
-    m_impl->attachDrawableDepthTarget(descriptor, drawableWidth, drawableHeight);
+    if (!m_impl->prepareDrawableRenderPassDescriptor(
+            descriptor,
+            metalDrawable.texture,
+            drawableWidth,
+            drawableHeight)) {
+        m_impl->recordFrameEncodeFailure(frameCpuStart, false, false, false);
+        m_impl->renderingFrame = false;
+        dispatch_semaphore_signal(m_impl->frameSemaphore);
+        return;
+    }
+
     MetalCommandScheduler commandScheduler(m_impl->deviceContext->nativeCommandQueue());
     id<MTLCommandBuffer> commandBuffer =
         (__bridge id<MTLCommandBuffer>)commandScheduler.createCommandBuffer("Mesh2Splat Metal Frame");
@@ -1515,6 +1531,7 @@ void MetalRenderer::draw(
     dispatch_semaphore_t frameSemaphore = m_impl->frameSemaphore;
     std::shared_ptr<MetalRendererTimingState> frameTimingState = m_impl->timingState;
     std::shared_ptr<MetalFrameResources> frameResources = m_impl->frameResources;
+    std::shared_ptr<MetalFrameUniformBuffer> frameUniformBuffer = m_impl->frameUniformBuffer;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
         if (frameTimingState != nullptr) {
             frameTimingState->recordFrameCompleted(
@@ -1523,6 +1540,9 @@ void MetalRenderer::draw(
         }
         if (frameResources != nullptr) {
             frameResources->markFrameCompleted(frameResourceIndex);
+        }
+        if (frameUniformBuffer != nullptr) {
+            frameUniformBuffer->markFrameCompleted(frameResourceIndex);
         }
         dispatch_semaphore_signal(frameSemaphore);
     }];
@@ -1552,86 +1572,74 @@ void MetalRenderer::draw(
 
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
     if (encoder == nil) {
-        if (frameTimingState != nullptr) {
-            const uint32_t gaussianCount =
-                m_impl->gaussianBuffer == nullptr ? 0 : m_impl->gaussianBuffer->count();
-            frameTimingState->recordFrameSubmitted(
-                elapsedMilliseconds(frameCpuStart, Clock::now()),
-                gaussianCount,
-                sortedGaussiansThisFrame,
-                false,
-                false);
-        }
         m_impl->recordDiagnostic("Cannot draw Metal frame: failed to create render command encoder.");
-        const bool didCommit = commandScheduler.commit((__bridge void*)commandBuffer);
-        if (didCommit) {
-            m_impl->frameResources->markFrameSubmitted(frameResourceIndex);
-            m_impl->renderingFrame = false;
-        } else {
-            m_impl->recordFrameEncodeFailure(frameCpuStart, sortedGaussiansThisFrame, false, false);
-            m_impl->renderingFrame = false;
-            dispatch_semaphore_signal(m_impl->frameSemaphore);
-        }
+        m_impl->recordFrameEncodeFailure(frameCpuStart, sortedGaussiansThisFrame, false, false);
+        m_impl->renderingFrame = false;
+        dispatch_semaphore_signal(m_impl->frameSemaphore);
         return;
     }
     encoder.label = @"Mesh2Splat Drawable Render";
     const bool showMesh = m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::MeshOnly;
-    const bool renderMeshThisFrame =
+    const bool canRenderMeshThisFrame =
         showMesh && m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
         m_impl->frameUniformBuffer != nullptr;
-    if (renderMeshThisFrame) {
+    bool renderedMeshThisFrame = false;
+    if (canRenderMeshThisFrame) {
         m_impl->meshRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->sceneResources,
             m_impl->frameUniformBuffer->buffer(frameResourceIndex));
         m_impl->recordDiagnostic(m_impl->meshRenderPass->lastDiagnostic());
+        renderedMeshThisFrame =
+            m_impl->meshRenderPass->lastEncodeDiagnostics().encodedDrawRangeCount > 0;
     }
-    const bool renderGaussiansThisFrame =
+    const bool canRenderGaussiansThisFrame =
         showGaussians && m_impl->hasSortedGaussianDepths &&
         m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
         m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr;
-    if (renderGaussiansThisFrame) {
+    bool renderedGaussiansThisFrame = false;
+    if (canRenderGaussiansThisFrame) {
         m_impl->gaussianRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->gaussianBuffer,
             *m_impl->gaussianSortBuffer,
             m_impl->frameUniformBuffer->buffer(frameResourceIndex));
         m_impl->recordDiagnostic(m_impl->gaussianRenderPass->lastDiagnostic());
+        renderedGaussiansThisFrame =
+            m_impl->gaussianRenderPass->lastEncodeDiagnostics().instanceCount > 0;
     }
     [encoder endEncoding];
 
-    if (frameTimingState != nullptr) {
-        const uint32_t gaussianCount =
-            m_impl->gaussianBuffer == nullptr ? 0 : m_impl->gaussianBuffer->count();
-        frameTimingState->recordFrameSubmitted(
-            elapsedMilliseconds(frameCpuStart, Clock::now()),
-            gaussianCount,
-            sortedGaussiansThisFrame,
-            renderMeshThisFrame,
-            renderGaussiansThisFrame);
-    }
     if (!MetalCommandScheduler::presentDrawable((__bridge void*)commandBuffer, (__bridge void*)metalDrawable)) {
         m_impl->recordDiagnostic("Cannot draw Metal frame: failed to schedule drawable presentation.");
         m_impl->recordFrameEncodeFailure(
             frameCpuStart,
             sortedGaussiansThisFrame,
-            renderMeshThisFrame,
-            renderGaussiansThisFrame);
+            renderedMeshThisFrame,
+            renderedGaussiansThisFrame);
         m_impl->renderingFrame = false;
         dispatch_semaphore_signal(m_impl->frameSemaphore);
         return;
     }
 
     if (commandScheduler.commit((__bridge void*)commandBuffer)) {
-        m_impl->frameResources->markFrameSubmitted(frameResourceIndex);
+        if (frameTimingState != nullptr) {
+            frameTimingState->recordFrameSubmitted(
+                elapsedMilliseconds(frameCpuStart, Clock::now()),
+                m_impl->currentGaussianCount(),
+                sortedGaussiansThisFrame,
+                renderedMeshThisFrame,
+                renderedGaussiansThisFrame);
+        }
+        m_impl->markFrameSubmitted(frameResourceIndex);
         m_impl->renderingFrame = false;
     } else {
         m_impl->recordDiagnostic("Cannot draw Metal frame: failed to commit command buffer.");
         m_impl->recordFrameEncodeFailure(
             frameCpuStart,
             sortedGaussiansThisFrame,
-            renderMeshThisFrame,
-            renderGaussiansThisFrame);
+            renderedMeshThisFrame,
+            renderedGaussiansThisFrame);
         m_impl->renderingFrame = false;
         dispatch_semaphore_signal(m_impl->frameSemaphore);
     }
