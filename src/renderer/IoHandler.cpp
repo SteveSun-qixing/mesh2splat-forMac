@@ -4,6 +4,8 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "IoHandler.hpp"
+#include "utils/Camera.hpp"
+
 #include <imgui.h>
 
 bool IoHandler::mouseDragging = false;
@@ -63,4 +65,3 @@ void IoHandler::processInput(float deltaTime)
     }
 
 }
-
