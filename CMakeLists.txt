@@ -76,6 +76,19 @@ add_executable(Mesh2Splat ${SOURCES})
 
 target_compile_definitions(Mesh2Splat PRIVATE GLEW_STATIC)
 
+add_executable(CoreIoSmokeTest
+    ${CMAKE_SOURCE_DIR}/tests/CoreIoSmokeTest.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CameraController.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.cpp
+    ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp
+    ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
+    ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_write_impl.cpp
+)
+target_compile_features(CoreIoSmokeTest PRIVATE cxx_std_17)
+target_include_directories(CoreIoSmokeTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 if(MSVC)
     target_compile_options(Mesh2Splat PRIVATE
         /wd4244   # conversion, possible loss of data
