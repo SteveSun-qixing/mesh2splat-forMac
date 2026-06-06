@@ -23,6 +23,14 @@ struct GaussianPlyWriteOptions {
 struct GaussianPlyWriteResult {
     uint64_t requestedCount = 0;
     uint64_t writtenCount = 0;
+    uint64_t skippedInvalidCount = 0;
+    uint64_t headerByteCount = 0;
+    uint64_t recordByteCount = 0;
+    uint64_t outputByteCount = 0;
+    GaussianPlyFormat format = GaussianPlyFormat::Standard3DGS;
+    float effectiveScaleMultiplier = 1.0f;
+    bool scaleMultiplierWasSanitized = false;
+    std::string warning;
     std::string error;
 
     bool succeeded() const

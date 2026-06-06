@@ -8,9 +8,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,13 +39,6 @@ struct Vec3 {
     float z = 0.0f;
 };
 
-struct Vec4 {
-    float x = 0.0f;
-    float y = 0.0f;
-    float z = 0.0f;
-    float w = 1.0f;
-};
-
 struct Mat4 {
     float m[16] = {
         1.0f, 0.0f, 0.0f, 0.0f,
@@ -65,6 +60,189 @@ struct MeshInstance {
     int meshIndex = -1;
     Mat4 transform;
 };
+
+enum class TextureLoadStatus {
+    Missing,
+    InvalidTexture,
+    InvalidImage,
+    UnsupportedImage,
+    Loaded,
+};
+
+struct TextureLoadResult {
+    int32_t imageIndex = -1;
+    TextureLoadStatus status = TextureLoadStatus::Missing;
+    std::string diagnostic;
+};
+
+struct MeshInstanceCollection {
+    std::vector<MeshInstance> instances;
+    uint64_t invalidNodeReferenceCount = 0;
+    bool usedMeshFallbackForEmptyScene = false;
+    std::vector<std::string> diagnostics;
+};
+
+struct PrimitiveLoadReport {
+    bool loaded = false;
+    uint64_t vertexCount = 0;
+    uint64_t drawRangeCount = 0;
+    uint64_t materialCount = 0;
+    uint64_t imageCount = 0;
+    uint64_t missingMaterialCount = 0;
+    uint64_t invalidMaterialCount = 0;
+    uint64_t referencedTextureCount = 0;
+    uint64_t missingTextureCount = 0;
+    uint64_t invalidTextureCount = 0;
+    uint64_t missingNormalCount = 0;
+    uint64_t missingTangentCount = 0;
+    uint64_t missingUvCount = 0;
+    uint64_t generatedIndexCount = 0;
+    uint64_t unsupportedPrimitiveModeCount = 0;
+    uint64_t missingPositionCount = 0;
+    uint64_t invalidAccessorCount = 0;
+    uint64_t invalidIndexCount = 0;
+    std::string diagnostic;
+};
+
+void appendLine(std::string& target, const std::string& line)
+{
+    if (line.empty()) {
+        return;
+    }
+
+    if (!target.empty() && target.back() != '\n') {
+        target.push_back('\n');
+    }
+    target += line;
+}
+
+void appendDiagnostic(GltfSceneLoadResult& result, const std::string& line)
+{
+    if (line.empty()) {
+        return;
+    }
+
+    result.diagnostics.push_back(line);
+}
+
+void appendWarning(GltfSceneLoadResult& result, const std::string& line)
+{
+    appendLine(result.warning, line);
+    appendDiagnostic(result, line);
+}
+
+bool isBlank(const std::string& value)
+{
+    return std::all_of(value.begin(), value.end(), [](char character) {
+        return std::isspace(static_cast<unsigned char>(character)) != 0;
+    });
+}
+
+bool hasPathFilename(const std::string& filePath)
+{
+    const std::size_t separator = filePath.find_last_of("/\\");
+    return separator == std::string::npos || separator + 1 < filePath.size();
+}
+
+std::string lowerExtension(const std::string& filePath)
+{
+    const std::size_t separator = filePath.find_last_of("/\\");
+    const std::size_t dot = filePath.find_last_of('.');
+    if (dot == std::string::npos || dot + 1 >= filePath.size() ||
+        (separator != std::string::npos && dot < separator)) {
+        return {};
+    }
+
+    std::string extension = filePath.substr(dot);
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](char character) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    });
+    return extension;
+}
+
+PrimitiveLoadReport skipPrimitive(PrimitiveLoadReport report, std::string diagnostic)
+{
+    report.diagnostic = std::move(diagnostic);
+    return report;
+}
+
+std::string parentPath(const std::string& filePath)
+{
+    const std::size_t separator = filePath.find_last_of("/\\");
+    if (separator == std::string::npos) {
+        return ".";
+    }
+    if (separator == 0) {
+        return filePath.substr(0, 1);
+    }
+    return filePath.substr(0, separator);
+}
+
+bool isDataUri(const std::string& uri)
+{
+    return uri.rfind("data:", 0) == 0;
+}
+
+bool hasUriScheme(const std::string& uri)
+{
+    const std::size_t colon = uri.find(':');
+    if (colon == std::string::npos) {
+        return false;
+    }
+    const std::size_t slash = uri.find_first_of("/\\");
+    return slash == std::string::npos || colon < slash;
+}
+
+void collectResourcePathDiagnostics(
+    const tinygltf::Model& model,
+    const std::string& filePath,
+    GltfSceneLoadResult& result)
+{
+    const std::string baseDirectory = parentPath(filePath);
+    uint64_t externalBufferCount = 0;
+    uint64_t externalImageCount = 0;
+    uint64_t remoteResourceCount = 0;
+
+    for (const tinygltf::Buffer& buffer : model.buffers) {
+        if (buffer.uri.empty() || isDataUri(buffer.uri)) {
+            ++result.stats.embeddedBufferCount;
+            continue;
+        }
+        ++externalBufferCount;
+        if (hasUriScheme(buffer.uri)) {
+            ++remoteResourceCount;
+        }
+    }
+
+    for (const tinygltf::Image& image : model.images) {
+        if (image.uri.empty() || isDataUri(image.uri)) {
+            ++result.stats.embeddedImageCount;
+            continue;
+        }
+        ++externalImageCount;
+        if (hasUriScheme(image.uri)) {
+            ++remoteResourceCount;
+        }
+    }
+
+    result.stats.externalBufferUriCount = externalBufferCount;
+    result.stats.externalImageUriCount = externalImageCount;
+
+    std::ostringstream summary;
+    summary << "Resolved glTF resources relative to " << baseDirectory
+            << " (external buffers: " << externalBufferCount
+            << ", external images: " << externalImageCount
+            << ", embedded buffers: " << result.stats.embeddedBufferCount
+            << ", embedded images: " << result.stats.embeddedImageCount << ").";
+    appendDiagnostic(result, summary.str());
+
+    if (remoteResourceCount > 0) {
+        appendWarning(
+            result,
+            "glTF references " + std::to_string(remoteResourceCount) +
+                " URI resources with explicit schemes; local import depends on tinygltf resolver support.");
+    }
+}
 
 Vec3 add(Vec3 lhs, Vec3 rhs)
 {
@@ -269,17 +447,6 @@ Vec3 orthogonalize(Vec3 tangent, Vec3 normal)
     return normalize(subtract(tangent, scale(normal, dot(normal, tangent))));
 }
 
-bool endsWithCaseInsensitive(const std::string& value, const std::string& suffix)
-{
-    if (value.size() < suffix.size()) {
-        return false;
-    }
-
-    return std::equal(suffix.rbegin(), suffix.rend(), value.rbegin(), [](char lhs, char rhs) {
-        return std::tolower(static_cast<unsigned char>(lhs)) == std::tolower(static_cast<unsigned char>(rhs));
-    });
-}
-
 const unsigned char* accessorData(
     const tinygltf::Model& model,
     const tinygltf::Accessor& accessor,
@@ -457,27 +624,43 @@ MeshMaterial parseMaterial(const tinygltf::Model& model, int materialIndex)
     return material;
 }
 
-int32_t appendTextureImage(const tinygltf::Model& model, int textureIndex, MeshData& mesh)
+TextureLoadResult appendTextureImage(const tinygltf::Model& model, int textureIndex, MeshData& mesh)
 {
     if (textureIndex < 0 || textureIndex >= static_cast<int>(model.textures.size())) {
-        return -1;
+        return TextureLoadResult{
+            -1,
+            textureIndex < 0 ? TextureLoadStatus::Missing : TextureLoadStatus::InvalidTexture,
+            textureIndex < 0 ? std::string{} : ("Texture index is out of range: " + std::to_string(textureIndex)),
+        };
     }
 
     const tinygltf::Texture& texture = model.textures[textureIndex];
     if (texture.source < 0 || texture.source >= static_cast<int>(model.images.size())) {
-        return -1;
+        return TextureLoadResult{
+            -1,
+            TextureLoadStatus::InvalidImage,
+            "Texture " + std::to_string(textureIndex) + " references a missing image.",
+        };
     }
 
     const tinygltf::Image& image = model.images[texture.source];
     if (image.width <= 0 || image.height <= 0 || image.component <= 0 || image.image.empty() ||
         image.bits != 8 || image.pixel_type != TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-        return -1;
+        return TextureLoadResult{
+            -1,
+            TextureLoadStatus::UnsupportedImage,
+            "Texture " + std::to_string(textureIndex) + " image data is unsupported or empty.",
+        };
     }
 
     const std::size_t width = static_cast<std::size_t>(image.width);
     const std::size_t height = static_cast<std::size_t>(image.height);
     if (width > std::numeric_limits<std::size_t>::max() / height) {
-        return -1;
+        return TextureLoadResult{
+            -1,
+            TextureLoadStatus::UnsupportedImage,
+            "Texture " + std::to_string(textureIndex) + " image dimensions overflow.",
+        };
     }
 
     const std::size_t pixelCount = width * height;
@@ -485,7 +668,11 @@ int32_t appendTextureImage(const tinygltf::Model& model, int textureIndex, MeshD
     if (pixelCount > std::numeric_limits<std::size_t>::max() / sourceStride ||
         image.image.size() < pixelCount * sourceStride ||
         pixelCount > std::numeric_limits<std::size_t>::max() / 4) {
-        return -1;
+        return TextureLoadResult{
+            -1,
+            TextureLoadStatus::UnsupportedImage,
+            "Texture " + std::to_string(textureIndex) + " image byte count is invalid.",
+        };
     }
 
     MeshImageData meshImage;
@@ -505,7 +692,45 @@ int32_t appendTextureImage(const tinygltf::Model& model, int textureIndex, MeshD
     }
 
     mesh.images.push_back(std::move(meshImage));
-    return static_cast<int32_t>(mesh.images.size() - 1);
+    return TextureLoadResult{
+        static_cast<int32_t>(mesh.images.size() - 1),
+        TextureLoadStatus::Loaded,
+        {},
+    };
+}
+
+void assignTextureSlot(
+    TextureLoadResult texture,
+    int textureIndex,
+    int32_t& materialTextureIndex,
+    PrimitiveLoadReport& report)
+{
+    materialTextureIndex = texture.imageIndex;
+    if (textureIndex < 0) {
+        return;
+    }
+
+    ++report.referencedTextureCount;
+    switch (texture.status) {
+    case TextureLoadStatus::Loaded:
+        break;
+    case TextureLoadStatus::InvalidTexture:
+    case TextureLoadStatus::InvalidImage:
+        ++report.missingTextureCount;
+        break;
+    case TextureLoadStatus::UnsupportedImage:
+        ++report.invalidTextureCount;
+        break;
+    case TextureLoadStatus::Missing:
+        break;
+    }
+
+    if (!texture.diagnostic.empty()) {
+        if (!report.diagnostic.empty()) {
+            report.diagnostic += " ";
+        }
+        report.diagnostic += texture.diagnostic;
+    }
 }
 
 float triangleArea(Vec3 a, Vec3 b, Vec3 c)
@@ -531,18 +756,23 @@ void updateBounds(MeshBounds& bounds, Vec3 point, bool& hasBounds)
     bounds.max[2] = std::max(bounds.max[2], point.z);
 }
 
-std::vector<MeshInstance> collectMeshInstances(const tinygltf::Model& model)
+MeshInstanceCollection collectMeshInstances(const tinygltf::Model& model)
 {
-    std::vector<MeshInstance> instances;
+    MeshInstanceCollection collection;
     std::function<void(int, const Mat4&)> traverse = [&](int nodeIndex, const Mat4& parentTransform) {
         if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
+            ++collection.invalidNodeReferenceCount;
+            collection.diagnostics.push_back("Scene references an invalid node index: " + std::to_string(nodeIndex));
             return;
         }
 
         const tinygltf::Node& node = model.nodes[nodeIndex];
         const Mat4 worldTransform = multiply(parentTransform, nodeLocalTransform(node));
         if (node.mesh >= 0 && node.mesh < static_cast<int>(model.meshes.size())) {
-            instances.push_back(MeshInstance{node.mesh, worldTransform});
+            collection.instances.push_back(MeshInstance{node.mesh, worldTransform});
+        } else if (node.mesh >= 0) {
+            ++collection.invalidNodeReferenceCount;
+            collection.diagnostics.push_back("Node references an invalid mesh index: " + std::to_string(node.mesh));
         }
 
         for (int child : node.children) {
@@ -551,25 +781,34 @@ std::vector<MeshInstance> collectMeshInstances(const tinygltf::Model& model)
     };
 
     if (!model.scenes.empty()) {
-        const int sceneIndex = model.defaultScene >= 0 ? model.defaultScene : 0;
+        int sceneIndex = model.defaultScene >= 0 ? model.defaultScene : 0;
         if (sceneIndex < 0 || sceneIndex >= static_cast<int>(model.scenes.size())) {
-            return instances;
+            collection.diagnostics.push_back(
+                "Default scene index is invalid; falling back to scene 0.");
+            sceneIndex = 0;
         }
         for (int rootNode : model.scenes[sceneIndex].nodes) {
             traverse(rootNode, Mat4{});
         }
+    } else if (!model.meshes.empty()) {
+        collection.diagnostics.push_back("glTF has no scenes; falling back to direct mesh loading.");
     }
 
-    if (instances.empty()) {
+    if (collection.instances.empty()) {
         for (int meshIndex = 0; meshIndex < static_cast<int>(model.meshes.size()); ++meshIndex) {
-            instances.push_back(MeshInstance{meshIndex, Mat4{}});
+            collection.instances.push_back(MeshInstance{meshIndex, Mat4{}});
+        }
+        collection.usedMeshFallbackForEmptyScene = !model.meshes.empty();
+        if (collection.usedMeshFallbackForEmptyScene) {
+            collection.diagnostics.push_back(
+                "Selected scene did not contain mesh nodes; loading all meshes directly.");
         }
     }
 
-    return instances;
+    return collection;
 }
 
-bool appendPrimitive(
+PrimitiveLoadReport appendPrimitive(
     const tinygltf::Model& model,
     const tinygltf::Mesh& gltfMesh,
     const tinygltf::Primitive& primitive,
@@ -578,18 +817,22 @@ bool appendPrimitive(
     int primitiveIndex,
     MeshData& mesh)
 {
+    PrimitiveLoadReport report;
     if (primitive.mode != TINYGLTF_MODE_TRIANGLES && primitive.mode != -1) {
-        return false;
+        report.unsupportedPrimitiveModeCount = 1;
+        return skipPrimitive(report, "Primitive uses an unsupported non-triangle mode.");
     }
 
     const auto positionIt = primitive.attributes.find("POSITION");
     if (positionIt == primitive.attributes.end()) {
-        return false;
+        report.missingPositionCount = 1;
+        return skipPrimitive(report, "Primitive is missing POSITION data.");
     }
 
     std::vector<std::array<float, 4>> positions;
     if (!readFloatAccessor(model, positionIt->second, TINYGLTF_TYPE_VEC3, positions)) {
-        return false;
+        report.invalidAccessorCount = 1;
+        return skipPrimitive(report, "Primitive POSITION accessor is invalid or unsupported.");
     }
 
     std::vector<std::array<float, 4>> normals;
@@ -597,48 +840,86 @@ bool appendPrimitive(
     const bool hasNormals = normalIt != primitive.attributes.end() &&
         readFloatAccessor(model, normalIt->second, TINYGLTF_TYPE_VEC3, normals) &&
         normals.size() == positions.size();
+    if (!hasNormals) {
+        report.missingNormalCount = 1;
+    }
 
     std::vector<std::array<float, 4>> tangents;
     const auto tangentIt = primitive.attributes.find("TANGENT");
     const bool hasTangents = tangentIt != primitive.attributes.end() &&
         readFloatAccessor(model, tangentIt->second, TINYGLTF_TYPE_VEC4, tangents) &&
         tangents.size() == positions.size();
+    if (!hasTangents) {
+        report.missingTangentCount = 1;
+    }
 
     std::vector<std::array<float, 4>> uvs;
     const auto uvIt = primitive.attributes.find("TEXCOORD_0");
     const bool hasUvs = uvIt != primitive.attributes.end() &&
         readFloatAccessor(model, uvIt->second, TINYGLTF_TYPE_VEC2, uvs) &&
         uvs.size() == positions.size();
+    if (!hasUvs) {
+        report.missingUvCount = 1;
+    }
 
     std::vector<uint32_t> indices;
     if (primitive.indices >= 0) {
         if (!readIndices(model, primitive.indices, indices)) {
-            return false;
+            report.invalidIndexCount = 1;
+            return skipPrimitive(report, "Primitive index accessor is invalid or unsupported.");
         }
     } else {
         if (positions.size() > static_cast<std::size_t>(std::numeric_limits<uint32_t>::max())) {
-            return false;
+            report.invalidIndexCount = 1;
+            return skipPrimitive(report, "Primitive has too many unindexed vertices.");
         }
         indices.resize(positions.size());
         for (std::size_t i = 0; i < positions.size(); ++i) {
             indices[i] = static_cast<uint32_t>(i);
         }
+        report.generatedIndexCount = indices.size();
     }
 
-    if (indices.size() < 3 || indices.size() % 3 != 0) {
-        return false;
+    if (indices.size() < 3 || indices.size() % 3 != 0 ||
+        indices.size() > static_cast<std::size_t>(std::numeric_limits<uint32_t>::max())) {
+        report.invalidIndexCount = 1;
+        return skipPrimitive(report, "Primitive index data does not form complete triangles.");
     }
 
+    const std::size_t imageOffset = mesh.images.size();
     MeshMaterial material = parseMaterial(model, primitive.material);
-    if (primitive.material >= 0 && primitive.material < static_cast<int>(model.materials.size())) {
+    if (primitive.material < 0) {
+        report.missingMaterialCount = 1;
+    } else if (primitive.material >= static_cast<int>(model.materials.size())) {
+        report.invalidMaterialCount = 1;
+        report.diagnostic = "Primitive references an invalid material; using default material factors.";
+    } else {
         const tinygltf::Material& gltfMaterial = model.materials[primitive.material];
-        material.baseColorTextureIndex =
-            appendTextureImage(model, gltfMaterial.pbrMetallicRoughness.baseColorTexture.index, mesh);
-        material.metallicRoughnessTextureIndex =
-            appendTextureImage(model, gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index, mesh);
-        material.normalTextureIndex = appendTextureImage(model, gltfMaterial.normalTexture.index, mesh);
-        material.occlusionTextureIndex = appendTextureImage(model, gltfMaterial.occlusionTexture.index, mesh);
-        material.emissiveTextureIndex = appendTextureImage(model, gltfMaterial.emissiveTexture.index, mesh);
+        assignTextureSlot(
+            appendTextureImage(model, gltfMaterial.pbrMetallicRoughness.baseColorTexture.index, mesh),
+            gltfMaterial.pbrMetallicRoughness.baseColorTexture.index,
+            material.baseColorTextureIndex,
+            report);
+        assignTextureSlot(
+            appendTextureImage(model, gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index, mesh),
+            gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index,
+            material.metallicRoughnessTextureIndex,
+            report);
+        assignTextureSlot(
+            appendTextureImage(model, gltfMaterial.normalTexture.index, mesh),
+            gltfMaterial.normalTexture.index,
+            material.normalTextureIndex,
+            report);
+        assignTextureSlot(
+            appendTextureImage(model, gltfMaterial.occlusionTexture.index, mesh),
+            gltfMaterial.occlusionTexture.index,
+            material.occlusionTextureIndex,
+            report);
+        assignTextureSlot(
+            appendTextureImage(model, gltfMaterial.emissiveTexture.index, mesh),
+            gltfMaterial.emissiveTexture.index,
+            material.emissiveTextureIndex,
+            report);
     }
 
     const uint32_t materialIndex = static_cast<uint32_t>(mesh.materials.size());
@@ -657,7 +938,9 @@ bool appendPrimitive(
         const uint32_t index1 = indices[triangle + 1];
         const uint32_t index2 = indices[triangle + 2];
         if (index0 >= positions.size() || index1 >= positions.size() || index2 >= positions.size()) {
-            return false;
+            report.invalidIndexCount = 1;
+            report.diagnostic = "Primitive index data references a missing vertex.";
+            return report;
         }
 
         const std::array<uint32_t, 3> triangleIndices{index0, index1, index2};
@@ -738,7 +1021,40 @@ bool appendPrimitive(
         mesh.name = baseName + "_" + std::to_string(meshIndex) + "_" + std::to_string(primitiveIndex);
     }
 
-    return vertexCount > 0;
+    report.loaded = vertexCount > 0;
+    report.vertexCount = vertexCount;
+    report.drawRangeCount = report.loaded ? 1 : 0;
+    report.materialCount = report.loaded ? 1 : 0;
+    report.imageCount = mesh.images.size() - imageOffset;
+    return report;
+}
+
+void accumulatePrimitiveReport(GltfSceneLoadResult& result, const PrimitiveLoadReport& report)
+{
+    GltfSceneLoadStats& stats = result.stats;
+    if (report.loaded) {
+        ++stats.loadedPrimitiveCount;
+    } else {
+        ++stats.skippedPrimitiveCount;
+    }
+
+    stats.loadedVertexCount += report.vertexCount;
+    stats.loadedDrawRangeCount += report.drawRangeCount;
+    stats.loadedMaterialCount += report.materialCount;
+    stats.loadedImageCount += report.imageCount;
+    stats.missingMaterialCount += report.missingMaterialCount;
+    stats.invalidMaterialCount += report.invalidMaterialCount;
+    stats.referencedTextureCount += report.referencedTextureCount;
+    stats.missingTextureCount += report.missingTextureCount;
+    stats.invalidTextureCount += report.invalidTextureCount;
+    stats.missingNormalCount += report.missingNormalCount;
+    stats.missingTangentCount += report.missingTangentCount;
+    stats.missingUvCount += report.missingUvCount;
+    stats.generatedIndexCount += report.generatedIndexCount;
+    stats.unsupportedPrimitiveModeCount += report.unsupportedPrimitiveModeCount;
+    stats.missingPositionCount += report.missingPositionCount;
+    stats.invalidAccessorCount += report.invalidAccessorCount;
+    stats.invalidIndexCount += report.invalidIndexCount;
 }
 
 } // namespace
@@ -746,34 +1062,103 @@ bool appendPrimitive(
 bool loadGltfScene(const std::string& filePath, GltfSceneLoadResult& result)
 {
     result = {};
-    if (filePath.empty()) {
+    if (filePath.empty() || isBlank(filePath)) {
         result.error = "glTF path is empty.";
+        appendDiagnostic(result, result.error);
+        return false;
+    }
+
+    if (!hasPathFilename(filePath)) {
+        result.error = "glTF path does not name a file: " + filePath;
+        appendDiagnostic(result, result.error);
+        return false;
+    }
+
+    const std::string extension = lowerExtension(filePath);
+    if (extension != ".gltf" && extension != ".glb") {
+        result.error = "Unsupported glTF extension for file: " + filePath;
+        appendDiagnostic(result, result.error);
+        return false;
+    }
+
+    std::ifstream inputProbe(filePath, std::ios::binary);
+    if (!inputProbe.good()) {
+        result.error = "glTF file is not readable: " + filePath;
+        appendDiagnostic(result, result.error);
         return false;
     }
 
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
-    const bool loaded = endsWithCaseInsensitive(filePath, ".gltf") ?
-        loader.LoadASCIIFromFile(&model, &result.error, &result.warning, filePath) :
-        loader.LoadBinaryFromFile(&model, &result.error, &result.warning, filePath);
+    std::string loaderError;
+    std::string loaderWarning;
+    const bool loaded = extension == ".gltf" ?
+        loader.LoadASCIIFromFile(&model, &loaderError, &loaderWarning, filePath) :
+        loader.LoadBinaryFromFile(&model, &loaderError, &loaderWarning, filePath);
+    if (!loaderWarning.empty()) {
+        appendWarning(result, loaderWarning);
+    }
     if (!loaded) {
+        result.error = loaderError;
         if (result.error.empty()) {
             result.error = "Failed to load glTF file: " + filePath;
         }
+        appendDiagnostic(result, result.error);
+        return false;
+    }
+    if (!loaderError.empty()) {
+        appendWarning(result, loaderError);
+    }
+
+    result.stats.sourceSceneCount = model.scenes.size();
+    result.stats.sourceNodeCount = model.nodes.size();
+    result.stats.sourceMeshCount = model.meshes.size();
+    result.stats.sourceMaterialCount = model.materials.size();
+    result.stats.sourceTextureCount = model.textures.size();
+    result.stats.sourceImageCount = model.images.size();
+    collectResourcePathDiagnostics(model, filePath, result);
+
+    if (model.meshes.empty()) {
+        result.error = "glTF file contains no mesh definitions: " + filePath;
+        appendDiagnostic(result, result.error);
         return false;
     }
 
-    const std::vector<MeshInstance> instances = collectMeshInstances(model);
+    const MeshInstanceCollection instanceCollection = collectMeshInstances(model);
+    result.stats.meshInstanceCount = instanceCollection.instances.size();
+    result.stats.invalidNodeReferenceCount = instanceCollection.invalidNodeReferenceCount;
+    result.stats.usedMeshFallbackForEmptyScene = instanceCollection.usedMeshFallbackForEmptyScene;
+    for (const std::string& diagnostic : instanceCollection.diagnostics) {
+        appendWarning(result, diagnostic);
+    }
+
+    if (instanceCollection.instances.empty()) {
+        result.error = "No mesh instances could be resolved in glTF file: " + filePath;
+        appendDiagnostic(result, result.error);
+        return false;
+    }
+
     int primitiveIndex = 0;
-    for (const MeshInstance& instance : instances) {
+    for (const MeshInstance& instance : instanceCollection.instances) {
         if (instance.meshIndex < 0 || instance.meshIndex >= static_cast<int>(model.meshes.size())) {
+            appendWarning(result, "Skipping invalid mesh instance index: " + std::to_string(instance.meshIndex));
             continue;
         }
 
         const tinygltf::Mesh& gltfMesh = model.meshes[instance.meshIndex];
         for (const tinygltf::Primitive& primitive : gltfMesh.primitives) {
+            ++result.stats.primitiveCount;
             MeshData mesh;
-            if (appendPrimitive(model, gltfMesh, primitive, instance.transform, instance.meshIndex, primitiveIndex, mesh)) {
+            const PrimitiveLoadReport report =
+                appendPrimitive(model, gltfMesh, primitive, instance.transform, instance.meshIndex, primitiveIndex, mesh);
+            accumulatePrimitiveReport(result, report);
+            if (!report.diagnostic.empty()) {
+                appendWarning(
+                    result,
+                    "Mesh " + std::to_string(instance.meshIndex) +
+                        " primitive " + std::to_string(primitiveIndex) + ": " + report.diagnostic);
+            }
+            if (report.loaded) {
                 result.scene.meshes.push_back(std::move(mesh));
             }
             ++primitiveIndex;
@@ -781,12 +1166,36 @@ bool loadGltfScene(const std::string& filePath, GltfSceneLoadResult& result)
     }
 
     if (result.scene.meshes.empty()) {
-        result.error = "No triangle mesh data was found in glTF file: " + filePath;
+        result.error =
+            "No triangle mesh data was found in glTF file: " + filePath +
+            " (processed " + std::to_string(result.stats.primitiveCount) + " primitives).";
+        appendDiagnostic(result, result.error);
         return false;
     }
 
     result.scene.name = filePath;
     result.scene.bounds = aggregateSceneBounds(result.scene);
+    result.stats.loadedMeshCount = result.scene.meshes.size();
+
+    if (result.stats.skippedPrimitiveCount > 0) {
+        appendWarning(
+            result,
+            "Skipped " + std::to_string(result.stats.skippedPrimitiveCount) +
+                " of " + std::to_string(result.stats.primitiveCount) + " glTF primitives.");
+    }
+    if (result.stats.missingMaterialCount > 0 || result.stats.invalidMaterialCount > 0) {
+        appendWarning(
+            result,
+            "Used default material fallback for " +
+                std::to_string(result.stats.missingMaterialCount + result.stats.invalidMaterialCount) +
+                " glTF primitives.");
+    }
+    if (result.stats.missingTextureCount > 0 || result.stats.invalidTextureCount > 0) {
+        appendWarning(
+            result,
+            "Ignored " + std::to_string(result.stats.missingTextureCount + result.stats.invalidTextureCount) +
+                " missing or unsupported glTF texture references.");
+    }
     return true;
 }
 

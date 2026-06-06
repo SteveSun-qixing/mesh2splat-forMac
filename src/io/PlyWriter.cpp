@@ -1,15 +1,113 @@
 #include "io/PlyWriter.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <string>
 
 namespace mesh2splat::io {
 namespace {
 
 constexpr float kDefaultPlyScaleMultiplier = 1.0f;
+
+bool isBlank(const std::string& value)
+{
+    return std::all_of(value.begin(), value.end(), [](char character) {
+        return std::isspace(static_cast<unsigned char>(character)) != 0;
+    });
+}
+
+bool hasPathFilename(const std::string& filePath)
+{
+    const std::size_t separator = filePath.find_last_of("/\\");
+    return separator == std::string::npos || separator + 1 < filePath.size();
+}
+
+std::string parentPath(const std::string& filePath)
+{
+    const std::size_t separator = filePath.find_last_of("/\\");
+    if (separator == std::string::npos) {
+        return {};
+    }
+    if (separator == 0) {
+        return filePath.substr(0, 1);
+    }
+    return filePath.substr(0, separator);
+}
+
+bool directoryExists(const std::string& path)
+{
+    std::error_code error;
+    return std::filesystem::is_directory(path, error) && !error;
+}
+
+std::string lowerExtension(const std::string& filePath)
+{
+    const std::size_t separator = filePath.find_last_of("/\\");
+    const std::size_t dot = filePath.find_last_of('.');
+    if (dot == std::string::npos || dot + 1 >= filePath.size() ||
+        (separator != std::string::npos && dot < separator)) {
+        return {};
+    }
+
+    std::string extension = filePath.substr(dot);
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](char character) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    });
+    return extension;
+}
+
+void appendWarning(GaussianPlyWriteResult& result, const std::string& warning)
+{
+    if (warning.empty()) {
+        return;
+    }
+
+    if (!result.warning.empty() && result.warning.back() != '\n') {
+        result.warning.push_back('\n');
+    }
+    result.warning += warning;
+}
+
+bool isSupportedFormat(GaussianPlyFormat format)
+{
+    switch (format) {
+    case GaussianPlyFormat::Standard3DGS:
+    case GaussianPlyFormat::Pbr3DGS:
+    case GaussianPlyFormat::CompactPbr:
+        return true;
+    default:
+        return false;
+    }
+}
+
+uint64_t recordByteSize(GaussianPlyFormat format)
+{
+    switch (format) {
+    case GaussianPlyFormat::Standard3DGS:
+        return sizeof(float) * 62;
+    case GaussianPlyFormat::Pbr3DGS:
+        return sizeof(float) * 19;
+    case GaussianPlyFormat::CompactPbr:
+        return sizeof(float) * 10 + sizeof(uint8_t) * 8;
+    default:
+        return 0;
+    }
+}
+
+uint64_t streamPosition(std::ofstream& file)
+{
+    const std::streampos position = file.tellp();
+    if (position == std::streampos(-1)) {
+        return 0;
+    }
+
+    return static_cast<uint64_t>(position);
+}
 
 bool shouldWriteGaussian(const core::GaussianRecord& gaussian, bool skipInvalidRecords)
 {
@@ -260,9 +358,43 @@ bool writeGaussianPly(
 {
     GaussianPlyWriteResult localResult;
     localResult.requestedCount = gaussians.size();
+    localResult.format = options.format;
 
-    if (filePath.empty()) {
+    if (filePath.empty() || isBlank(filePath)) {
         localResult.error = "PLY output path is empty.";
+        if (result != nullptr) {
+            *result = localResult;
+        }
+        return false;
+    }
+
+    if (!hasPathFilename(filePath)) {
+        localResult.error = "PLY output path does not name a file: " + filePath;
+        if (result != nullptr) {
+            *result = localResult;
+        }
+        return false;
+    }
+
+    if (lowerExtension(filePath) != ".ply") {
+        localResult.error = "PLY output path must use the .ply extension: " + filePath;
+        if (result != nullptr) {
+            *result = localResult;
+        }
+        return false;
+    }
+
+    const std::string outputDirectory = parentPath(filePath);
+    if (!outputDirectory.empty() && !directoryExists(outputDirectory)) {
+        localResult.error = "PLY output directory does not exist: " + outputDirectory;
+        if (result != nullptr) {
+            *result = localResult;
+        }
+        return false;
+    }
+
+    if (!isSupportedFormat(options.format)) {
+        localResult.error = "Unsupported Gaussian PLY format.";
         if (result != nullptr) {
             *result = localResult;
         }
@@ -271,6 +403,23 @@ bool writeGaussianPly(
 
     const uint64_t writableCount = countWritableGaussians(gaussians, options.skipInvalidRecords);
     localResult.writtenCount = writableCount;
+    localResult.skippedInvalidCount = localResult.requestedCount - localResult.writtenCount;
+    localResult.effectiveScaleMultiplier = sanitizedScaleMultiplier(options.scaleMultiplier);
+    localResult.scaleMultiplierWasSanitized =
+        !std::isfinite(options.scaleMultiplier) || options.scaleMultiplier <= 0.0f;
+    if (localResult.scaleMultiplierWasSanitized) {
+        appendWarning(localResult, "PLY scale multiplier was invalid; using 1.0.");
+    }
+    if (localResult.requestedCount == 0) {
+        appendWarning(localResult, "PLY writer emitted an empty point cloud.");
+    } else if (localResult.writtenCount == 0) {
+        appendWarning(localResult, "PLY writer skipped all gaussian records as invalid.");
+    } else if (localResult.skippedInvalidCount > 0) {
+        appendWarning(
+            localResult,
+            "PLY writer skipped " + std::to_string(localResult.skippedInvalidCount) +
+                " invalid gaussian records.");
+    }
 
     std::ofstream file(filePath, std::ios::binary | std::ios::out | std::ios::trunc);
     if (!file.is_open()) {
@@ -292,14 +441,10 @@ bool writeGaussianPly(
         writeCompactPbrHeader(file, writableCount);
         break;
     default:
-        localResult.error = "Unsupported Gaussian PLY format.";
-        if (result != nullptr) {
-            *result = localResult;
-        }
-        return false;
+        break;
     }
+    localResult.headerByteCount = streamPosition(file);
 
-    const float scaleMultiplier = sanitizedScaleMultiplier(options.scaleMultiplier);
     for (const core::GaussianRecord& gaussian : gaussians) {
         if (!shouldWriteGaussian(gaussian, options.skipInvalidRecords)) {
             continue;
@@ -307,22 +452,19 @@ bool writeGaussianPly(
 
         switch (options.format) {
         case GaussianPlyFormat::Standard3DGS:
-            writeStandardRecord(file, gaussian, scaleMultiplier);
+            writeStandardRecord(file, gaussian, localResult.effectiveScaleMultiplier);
             break;
         case GaussianPlyFormat::Pbr3DGS:
-            writePbrRecord(file, gaussian, scaleMultiplier);
+            writePbrRecord(file, gaussian, localResult.effectiveScaleMultiplier);
             break;
         case GaussianPlyFormat::CompactPbr:
-            writeCompactPbrRecord(file, gaussian, scaleMultiplier);
+            writeCompactPbrRecord(file, gaussian, localResult.effectiveScaleMultiplier);
             break;
         default:
-            localResult.error = "Unsupported Gaussian PLY format.";
-            if (result != nullptr) {
-                *result = localResult;
-            }
-            return false;
+            break;
         }
     }
+    localResult.recordByteCount = recordByteSize(options.format) * localResult.writtenCount;
 
     file.flush();
     if (!file.good()) {
@@ -331,6 +473,10 @@ bool writeGaussianPly(
             *result = localResult;
         }
         return false;
+    }
+    localResult.outputByteCount = streamPosition(file);
+    if (localResult.outputByteCount == 0) {
+        localResult.outputByteCount = localResult.headerByteCount + localResult.recordByteCount;
     }
 
     if (result != nullptr) {
