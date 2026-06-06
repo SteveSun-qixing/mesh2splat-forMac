@@ -3,11 +3,29 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace mesh2splat::metal {
 
 class MetalDeviceContext;
 class MetalResourceUploadBatch;
+
+enum class MetalBufferMemoryPolicy : uint8_t {
+    Unknown,
+    Shared,
+    SharedWriteCombined,
+    Private
+};
+
+struct MetalBufferMemoryDiagnostics {
+    MetalBufferMemoryPolicy policy = MetalBufferMemoryPolicy::Unknown;
+    std::size_t size = 0;
+    bool cpuAccessible = false;
+    bool unifiedMemoryDevice = false;
+    std::string label;
+    std::string storageMode;
+    std::string cpuCacheMode;
+};
 
 class MetalBuffer {
 public:
@@ -43,6 +61,11 @@ public:
     bool isCpuAccessible() const;
     std::size_t size() const;
     void* nativeBuffer() const;
+    MetalBufferMemoryPolicy memoryPolicy() const;
+    MetalBufferMemoryDiagnostics memoryDiagnostics() const;
+    std::string memoryDescription() const;
+
+    static const char* memoryPolicyName(MetalBufferMemoryPolicy policy);
 
 private:
     struct Impl;

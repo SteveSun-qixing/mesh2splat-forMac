@@ -8,15 +8,15 @@
 
 #include <cstddef>
 #include <cstring>
+#include <string>
 #include <utility>
 
 namespace mesh2splat::metal {
 namespace {
 
-bool storageModeIsCpuAccessible(MTLResourceOptions options)
+bool storageModeIsCpuAccessible(MTLStorageMode storageMode)
 {
-    const MTLResourceOptions storageMode = options & MTLResourceStorageModeMask;
-    return storageMode == MTLResourceStorageModeShared;
+    return storageMode == MTLStorageModeShared || storageMode == MTLStorageModeManaged;
 }
 
 MTLResourceOptions sharedResourceOptions(bool writeCombined)
@@ -28,6 +28,51 @@ MTLResourceOptions sharedResourceOptions(bool writeCombined)
     return options;
 }
 
+const char* storageModeName(MTLStorageMode storageMode)
+{
+    switch (storageMode) {
+    case MTLStorageModeShared:
+        return "shared";
+    case MTLStorageModeManaged:
+        return "managed";
+    case MTLStorageModePrivate:
+        return "private";
+    case MTLStorageModeMemoryless:
+        return "memoryless";
+    default:
+        return "unknown";
+    }
+}
+
+const char* cpuCacheModeName(MTLCPUCacheMode cacheMode)
+{
+    switch (cacheMode) {
+    case MTLCPUCacheModeDefaultCache:
+        return "default-cache";
+    case MTLCPUCacheModeWriteCombined:
+        return "write-combined";
+    default:
+        return "unknown";
+    }
+}
+
+std::string nsStringToUtf8(NSString* value)
+{
+    if (value == nil) {
+        return {};
+    }
+
+    const char* utf8 = [value UTF8String];
+    return utf8 == nullptr ? std::string{} : std::string(utf8);
+}
+
+void applyBufferLabel(id<MTLBuffer> buffer, const char* label)
+{
+    if (buffer != nil && label != nullptr) {
+        buffer.label = [NSString stringWithUTF8String:label];
+    }
+}
+
 } // namespace
 
 struct MetalBuffer::Impl {
@@ -36,6 +81,36 @@ struct MetalBuffer::Impl {
     id<MTLBuffer> buffer = nil;
     std::size_t bufferSize = 0;
     bool cpuAccessible = false;
+    MetalBufferMemoryDiagnostics diagnostics;
+
+    void clearMemoryDiagnostics()
+    {
+        bufferSize = 0;
+        cpuAccessible = false;
+        diagnostics = {};
+    }
+
+    void recordMemoryDiagnostics(
+        id<MTLBuffer> sourceBuffer,
+        MetalBufferMemoryPolicy policy,
+        std::size_t size,
+        const char* requestedLabel)
+    {
+        bufferSize = size;
+        cpuAccessible = sourceBuffer != nil && storageModeIsCpuAccessible(sourceBuffer.storageMode);
+
+        diagnostics = {};
+        diagnostics.policy = policy;
+        diagnostics.size = size;
+        diagnostics.cpuAccessible = cpuAccessible;
+        diagnostics.unifiedMemoryDevice = device != nil && device.hasUnifiedMemory;
+        diagnostics.label = nsStringToUtf8(sourceBuffer.label);
+        if (diagnostics.label.empty() && requestedLabel != nullptr) {
+            diagnostics.label = requestedLabel;
+        }
+        diagnostics.storageMode = sourceBuffer == nil ? "unknown" : storageModeName(sourceBuffer.storageMode);
+        diagnostics.cpuCacheMode = sourceBuffer == nil ? "unknown" : cpuCacheModeName(sourceBuffer.cpuCacheMode);
+    }
 };
 
 MetalBuffer::MetalBuffer(MetalDeviceContext& deviceContext)
@@ -60,16 +135,12 @@ bool MetalBuffer::createShared(std::size_t size, const void* initialData, const 
     const MTLResourceOptions options = sharedResourceOptions(false);
     m_impl->buffer = [m_impl->device newBufferWithLength:size options:options];
     if (m_impl->buffer == nil) {
-        m_impl->bufferSize = 0;
-        m_impl->cpuAccessible = false;
+        m_impl->clearMemoryDiagnostics();
         return false;
     }
 
-    m_impl->bufferSize = size;
-    m_impl->cpuAccessible = storageModeIsCpuAccessible(options);
-    if (label != nullptr) {
-        m_impl->buffer.label = [NSString stringWithUTF8String:label];
-    }
+    applyBufferLabel(m_impl->buffer, label);
+    m_impl->recordMemoryDiagnostics(m_impl->buffer, MetalBufferMemoryPolicy::Shared, size, label);
 
     if (initialData != nullptr) {
         std::memcpy(m_impl->buffer.contents, initialData, size);
@@ -87,16 +158,12 @@ bool MetalBuffer::createSharedWriteCombined(std::size_t size, const void* initia
     const MTLResourceOptions options = sharedResourceOptions(true);
     m_impl->buffer = [m_impl->device newBufferWithLength:size options:options];
     if (m_impl->buffer == nil) {
-        m_impl->bufferSize = 0;
-        m_impl->cpuAccessible = false;
+        m_impl->clearMemoryDiagnostics();
         return false;
     }
 
-    m_impl->bufferSize = size;
-    m_impl->cpuAccessible = storageModeIsCpuAccessible(options);
-    if (label != nullptr) {
-        m_impl->buffer.label = [NSString stringWithUTF8String:label];
-    }
+    applyBufferLabel(m_impl->buffer, label);
+    m_impl->recordMemoryDiagnostics(m_impl->buffer, MetalBufferMemoryPolicy::SharedWriteCombined, size, label);
 
     if (initialData != nullptr) {
         std::memcpy(m_impl->buffer.contents, initialData, size);
@@ -114,16 +181,12 @@ bool MetalBuffer::createPrivate(std::size_t size, const char* label)
     constexpr MTLResourceOptions options = MTLResourceStorageModePrivate;
     m_impl->buffer = [m_impl->device newBufferWithLength:size options:options];
     if (m_impl->buffer == nil) {
-        m_impl->bufferSize = 0;
-        m_impl->cpuAccessible = false;
+        m_impl->clearMemoryDiagnostics();
         return false;
     }
 
-    m_impl->bufferSize = size;
-    m_impl->cpuAccessible = storageModeIsCpuAccessible(options);
-    if (label != nullptr) {
-        m_impl->buffer.label = [NSString stringWithUTF8String:label];
-    }
+    applyBufferLabel(m_impl->buffer, label);
+    m_impl->recordMemoryDiagnostics(m_impl->buffer, MetalBufferMemoryPolicy::Private, size, label);
 
     return true;
 }
@@ -145,8 +208,7 @@ bool MetalBuffer::createPrivateWithData(std::size_t size, const void* initialDat
 
     if (!uploadBatch.commitAndWait()) {
         m_impl->buffer = nil;
-        m_impl->bufferSize = 0;
-        m_impl->cpuAccessible = false;
+        m_impl->clearMemoryDiagnostics();
         return false;
     }
 
@@ -168,17 +230,14 @@ bool MetalBuffer::createPrivateWithData(
         return false;
     }
 
-    if (label != nullptr) {
-        privateBuffer.label = [NSString stringWithUTF8String:label];
-    }
+    applyBufferLabel(privateBuffer, label);
 
     if (!uploadBatch.uploadBufferToPrivate(initialData, size, (__bridge void*)privateBuffer, label)) {
         return false;
     }
 
     m_impl->buffer = privateBuffer;
-    m_impl->bufferSize = size;
-    m_impl->cpuAccessible = false;
+    m_impl->recordMemoryDiagnostics(privateBuffer, MetalBufferMemoryPolicy::Private, size, label);
     return true;
 }
 
@@ -279,6 +338,57 @@ std::size_t MetalBuffer::size() const
 void* MetalBuffer::nativeBuffer() const
 {
     return (__bridge void*)m_impl->buffer;
+}
+
+MetalBufferMemoryPolicy MetalBuffer::memoryPolicy() const
+{
+    return m_impl->buffer == nil ? MetalBufferMemoryPolicy::Unknown : m_impl->diagnostics.policy;
+}
+
+MetalBufferMemoryDiagnostics MetalBuffer::memoryDiagnostics() const
+{
+    if (m_impl->buffer == nil) {
+        return {};
+    }
+
+    return m_impl->diagnostics;
+}
+
+std::string MetalBuffer::memoryDescription() const
+{
+    const MetalBufferMemoryDiagnostics diagnostics = memoryDiagnostics();
+
+    std::string description = "MetalBuffer[policy=";
+    description += memoryPolicyName(diagnostics.policy);
+    description += ", storage=";
+    description += diagnostics.storageMode.empty() ? "unknown" : diagnostics.storageMode;
+    description += ", cache=";
+    description += diagnostics.cpuCacheMode.empty() ? "unknown" : diagnostics.cpuCacheMode;
+    description += ", label=\"";
+    description += diagnostics.label;
+    description += "\", size=";
+    description += std::to_string(diagnostics.size);
+    description += ", cpuAccessible=";
+    description += diagnostics.cpuAccessible ? "true" : "false";
+    description += ", unifiedMemoryDevice=";
+    description += diagnostics.unifiedMemoryDevice ? "true" : "false";
+    description += "]";
+    return description;
+}
+
+const char* MetalBuffer::memoryPolicyName(MetalBufferMemoryPolicy policy)
+{
+    switch (policy) {
+    case MetalBufferMemoryPolicy::Shared:
+        return "shared";
+    case MetalBufferMemoryPolicy::SharedWriteCombined:
+        return "shared-write-combined";
+    case MetalBufferMemoryPolicy::Private:
+        return "private";
+    case MetalBufferMemoryPolicy::Unknown:
+    default:
+        return "unknown";
+    }
 }
 
 } // namespace mesh2splat::metal
