@@ -11,6 +11,7 @@ struct MetalGaussianBuffer::Impl {
     MetalDeviceContext* deviceContext = nullptr;
     std::unique_ptr<MetalBuffer> buffer;
     std::unique_ptr<MetalBuffer> counterBuffer;
+    std::unique_ptr<MetalBuffer> counterReadbackBuffer;
     std::size_t capacity = 0;
     uint32_t count = 0;
 };
@@ -36,17 +37,23 @@ bool MetalGaussianBuffer::create(std::size_t capacity, const char* label)
     const std::string baseLabel = label != nullptr ? label : "Metal Gaussian Buffer";
     auto buffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto counterBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
+    auto counterReadbackBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     const uint32_t initialCount = 0;
     if (!buffer->createPrivate(core::gaussianBufferByteSize(capacity), baseLabel.c_str()) ||
-        !counterBuffer->createShared(
+        !counterBuffer->createPrivateWithData(
             sizeof(initialCount),
             &initialCount,
-            (baseLabel + " Count").c_str())) {
+            (baseLabel + " Count").c_str()) ||
+        !counterReadbackBuffer->createShared(
+            sizeof(initialCount),
+            &initialCount,
+            (baseLabel + " Count Readback").c_str())) {
         return false;
     }
 
     m_impl->buffer = std::move(buffer);
     m_impl->counterBuffer = std::move(counterBuffer);
+    m_impl->counterReadbackBuffer = std::move(counterReadbackBuffer);
     m_impl->capacity = capacity;
     m_impl->count = 0;
     return true;
@@ -62,21 +69,27 @@ bool MetalGaussianBuffer::upload(const std::vector<core::GaussianRecord>& gaussi
     const std::string baseLabel = label != nullptr ? label : "Metal Gaussian Buffer";
     auto buffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto counterBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
+    auto counterReadbackBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     const uint32_t initialCount = static_cast<uint32_t>(gaussians.size());
     if (!buffer->createPrivateWithData(
             core::gaussianBufferByteSize(gaussians.size()),
             gaussians.data(),
             baseLabel.c_str()) ||
-        !counterBuffer->createShared(
+        !counterBuffer->createPrivateWithData(
             sizeof(initialCount),
             &initialCount,
-            (baseLabel + " Count").c_str())) {
+            (baseLabel + " Count").c_str()) ||
+        !counterReadbackBuffer->createShared(
+            sizeof(initialCount),
+            &initialCount,
+            (baseLabel + " Count Readback").c_str())) {
         reset();
         return false;
     }
 
     m_impl->buffer = std::move(buffer);
     m_impl->counterBuffer = std::move(counterBuffer);
+    m_impl->counterReadbackBuffer = std::move(counterReadbackBuffer);
     m_impl->capacity = gaussians.size();
     m_impl->count = initialCount;
     return true;
@@ -89,13 +102,16 @@ bool MetalGaussianBuffer::setCount(uint32_t count)
     }
 
     m_impl->count = count;
-    return m_impl->counterBuffer == nullptr || m_impl->counterBuffer->update(&count, sizeof(count));
+    return m_impl->counterReadbackBuffer == nullptr ||
+        m_impl->counterReadbackBuffer->update(&count, sizeof(count));
 }
 
-bool MetalGaussianBuffer::resetGpuCounter()
+bool MetalGaussianBuffer::encodeResetGpuCounter(void* commandBuffer)
 {
     const uint32_t count = 0;
-    if (m_impl->counterBuffer == nullptr || !m_impl->counterBuffer->update(&count, sizeof(count))) {
+    if (m_impl->counterBuffer == nullptr || m_impl->counterReadbackBuffer == nullptr ||
+        !m_impl->counterBuffer->encodeFill(commandBuffer, 0, 0, sizeof(count)) ||
+        !m_impl->counterReadbackBuffer->update(&count, sizeof(count))) {
         return false;
     }
 
@@ -103,10 +119,20 @@ bool MetalGaussianBuffer::resetGpuCounter()
     return true;
 }
 
+bool MetalGaussianBuffer::encodeReadbackGpuCounter(void* commandBuffer)
+{
+    return m_impl->counterBuffer != nullptr && m_impl->counterReadbackBuffer != nullptr &&
+        m_impl->counterBuffer->encodeCopyTo(
+            commandBuffer,
+            *m_impl->counterReadbackBuffer,
+            sizeof(uint32_t));
+}
+
 bool MetalGaussianBuffer::readGpuCounter()
 {
     uint32_t count = 0;
-    if (m_impl->counterBuffer == nullptr || !m_impl->counterBuffer->read(&count, sizeof(count)) ||
+    if (m_impl->counterReadbackBuffer == nullptr ||
+        !m_impl->counterReadbackBuffer->read(&count, sizeof(count)) ||
         count > m_impl->capacity) {
         return false;
     }
@@ -119,6 +145,7 @@ void MetalGaussianBuffer::reset()
 {
     m_impl->buffer.reset();
     m_impl->counterBuffer.reset();
+    m_impl->counterReadbackBuffer.reset();
     m_impl->capacity = 0;
     m_impl->count = 0;
 }
@@ -127,6 +154,7 @@ bool MetalGaussianBuffer::isValid() const
 {
     return m_impl->buffer != nullptr && m_impl->buffer->isValid() &&
         m_impl->counterBuffer != nullptr && m_impl->counterBuffer->isValid() &&
+        m_impl->counterReadbackBuffer != nullptr && m_impl->counterReadbackBuffer->isValid() &&
         m_impl->capacity > 0;
 }
 

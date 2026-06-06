@@ -144,6 +144,59 @@ bool MetalBuffer::read(void* destination, std::size_t size, std::size_t offset) 
     return true;
 }
 
+bool MetalBuffer::encodeFill(void* commandBuffer, uint8_t value, std::size_t offset, std::size_t size) const
+{
+    id<MTLCommandBuffer> nativeCommandBuffer = (__bridge id<MTLCommandBuffer>)commandBuffer;
+    if (nativeCommandBuffer == nil || m_impl->buffer == nil || offset > m_impl->bufferSize) {
+        return false;
+    }
+
+    const std::size_t fillSize = size == 0 ? m_impl->bufferSize - offset : size;
+    if (fillSize == 0 || fillSize > m_impl->bufferSize - offset) {
+        return false;
+    }
+
+    id<MTLBlitCommandEncoder> blitEncoder = [nativeCommandBuffer blitCommandEncoder];
+    if (blitEncoder == nil) {
+        return false;
+    }
+
+    blitEncoder.label = @"Mesh2Splat Buffer Fill";
+    [blitEncoder fillBuffer:m_impl->buffer range:NSMakeRange(offset, fillSize) value:value];
+    [blitEncoder endEncoding];
+    return true;
+}
+
+bool MetalBuffer::encodeCopyTo(
+    void* commandBuffer,
+    const MetalBuffer& destination,
+    std::size_t size,
+    std::size_t sourceOffset,
+    std::size_t destinationOffset) const
+{
+    id<MTLCommandBuffer> nativeCommandBuffer = (__bridge id<MTLCommandBuffer>)commandBuffer;
+    id<MTLBuffer> destinationBuffer = (__bridge id<MTLBuffer>)destination.nativeBuffer();
+    if (nativeCommandBuffer == nil || m_impl->buffer == nil || destinationBuffer == nil ||
+        size == 0 || sourceOffset > m_impl->bufferSize || size > m_impl->bufferSize - sourceOffset ||
+        destinationOffset > destination.size() || size > destination.size() - destinationOffset) {
+        return false;
+    }
+
+    id<MTLBlitCommandEncoder> blitEncoder = [nativeCommandBuffer blitCommandEncoder];
+    if (blitEncoder == nil) {
+        return false;
+    }
+
+    blitEncoder.label = @"Mesh2Splat Buffer Copy";
+    [blitEncoder copyFromBuffer:m_impl->buffer
+                   sourceOffset:sourceOffset
+                       toBuffer:destinationBuffer
+              destinationOffset:destinationOffset
+                           size:size];
+    [blitEncoder endEncoding];
+    return true;
+}
+
 bool MetalBuffer::isValid() const
 {
     return m_impl->buffer != nil;

@@ -25,7 +25,8 @@ public:
     bool create(std::size_t capacity, const char* label = nullptr);
     bool upload(const std::vector<core::GaussianRecord>& gaussians, const char* label = nullptr);
     bool setCount(uint32_t count);
-    bool resetGpuCounter();
+    bool encodeResetGpuCounter(void* commandBuffer);
+    bool encodeReadbackGpuCounter(void* commandBuffer);
     bool readGpuCounter();
     void reset();
 

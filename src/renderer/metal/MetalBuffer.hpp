@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 namespace mesh2splat::metal {
@@ -23,6 +24,13 @@ public:
     bool createPrivateWithData(std::size_t size, const void* initialData, const char* label = nullptr);
     bool update(const void* data, std::size_t size, std::size_t offset = 0);
     bool read(void* destination, std::size_t size, std::size_t offset = 0) const;
+    bool encodeFill(void* commandBuffer, uint8_t value, std::size_t offset = 0, std::size_t size = 0) const;
+    bool encodeCopyTo(
+        void* commandBuffer,
+        const MetalBuffer& destination,
+        std::size_t size,
+        std::size_t sourceOffset = 0,
+        std::size_t destinationOffset = 0) const;
 
     bool isValid() const;
     bool isCpuAccessible() const;

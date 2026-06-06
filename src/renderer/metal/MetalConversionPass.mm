@@ -122,7 +122,8 @@ bool MetalConversionPass::encode(
     id<MTLBuffer> counterBuffer = (__bridge id<MTLBuffer>)gaussianBuffer.nativeCounterBuffer();
     if (nativeCommandBuffer == nil || pipelineState == nil || samplerState == nil ||
         outputBuffer == nil || counterBuffer == nil ||
-        gaussianBuffer.capacity() > static_cast<std::size_t>(UINT32_MAX) || !gaussianBuffer.resetGpuCounter()) {
+        gaussianBuffer.capacity() > static_cast<std::size_t>(UINT32_MAX) ||
+        !gaussianBuffer.encodeResetGpuCounter(commandBuffer)) {
         return false;
     }
 
@@ -200,7 +201,7 @@ bool MetalConversionPass::encode(
     }
 
     [encoder endEncoding];
-    return true;
+    return gaussianBuffer.encodeReadbackGpuCounter(commandBuffer);
 }
 
 } // namespace mesh2splat::metal
