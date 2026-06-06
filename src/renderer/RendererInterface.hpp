@@ -8,6 +8,8 @@
 
 namespace mesh2splat::renderer {
 
+struct RendererInputEvent;
+
 enum class RenderViewMode : uint32_t {
     Combined = 0,
     MeshOnly = 1,
@@ -22,6 +24,96 @@ enum class GaussianVisualizationMode : uint32_t {
     Overdraw = 4,
     Pbr = 5,
     Final = 6,
+};
+
+enum class RendererSceneKind : uint32_t {
+    Auto = 0,
+    Mesh = 1,
+    GaussianPly = 2,
+};
+
+enum class RendererRuntimeState : uint32_t {
+    Unknown = 0,
+    Ready = 1,
+    Loading = 2,
+    Converting = 3,
+    Rendering = 4,
+    Failed = 5,
+    Exporting = 6,
+};
+
+enum class RendererDiagnosticSeverity : uint32_t {
+    Info = 0,
+    Warning = 1,
+    Error = 2,
+};
+
+struct RendererResizeRequest {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    float backingScale = 1.0f;
+};
+
+struct RendererSceneLoadRequest {
+    std::string filePath;
+    RendererSceneKind kind = RendererSceneKind::Auto;
+    bool replaceCurrentScene = true;
+};
+
+struct RendererSceneLoadResult {
+    bool accepted = false;
+    bool loaded = false;
+    std::string diagnostic;
+};
+
+struct RendererConversionRequest {
+    uint32_t samplesPerTriangle = 0;
+    bool forceRebuild = false;
+};
+
+struct RendererConversionResult {
+    bool accepted = false;
+    bool started = false;
+    uint32_t samplesPerTriangle = 0;
+    uint32_t convertedGaussianCount = 0;
+    std::string diagnostic;
+};
+
+struct RendererExportPlyRequest {
+    std::string filePath;
+    uint32_t format = 0;
+    float scaleMultiplier = 1.0f;
+    bool skipInvalidRecords = true;
+};
+
+struct RendererExportPlyResult {
+    bool accepted = false;
+    bool exported = false;
+    uint64_t requestedCount = 0;
+    uint64_t writtenCount = 0;
+    std::string diagnostic;
+};
+
+struct RendererModeRequest {
+    RenderViewMode viewMode = RenderViewMode::Combined;
+    GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
+    float gaussianScale = 1.0f;
+};
+
+struct RendererModeResult {
+    bool applied = false;
+    RenderViewMode viewMode = RenderViewMode::Combined;
+    GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
+    float gaussianScale = 1.0f;
+    std::string diagnostic;
+};
+
+struct RendererFrameTick {
+    void* renderPassDescriptor = nullptr;
+    void* drawable = nullptr;
+    core::InputState inputState;
+    double deltaTimeSeconds = 0.0;
+    uint64_t frameIndex = 0;
 };
 
 struct RendererStats {
@@ -51,6 +143,30 @@ struct RendererStats {
     bool lastFrameRenderedGaussians = false;
 };
 
+struct RendererFrameResult {
+    bool submitted = false;
+    RendererStats stats;
+    std::string diagnostic;
+};
+
+struct RendererDiagnostics {
+    RendererRuntimeState state = RendererRuntimeState::Unknown;
+    RendererDiagnosticSeverity severity = RendererDiagnosticSeverity::Info;
+    RendererStats stats;
+    std::string message;
+    std::string lastError;
+    std::string loadedScenePath;
+    float progress = 0.0f;
+    uint32_t convertedGaussianCount = 0;
+    uint32_t conversionSamplesPerTriangle = 0;
+    RenderViewMode viewMode = RenderViewMode::Combined;
+    GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
+    float gaussianScale = 1.0f;
+    bool converting = false;
+    bool hasScene = false;
+    bool hasGaussians = false;
+};
+
 class Renderer {
 public:
     virtual ~Renderer() = default;
@@ -76,6 +192,140 @@ public:
         void* drawable,
         const core::InputState& inputState,
         double deltaTimeSeconds) = 0;
+
+    virtual void resize(const RendererResizeRequest& request)
+    {
+        resize(request.width, request.height);
+    }
+
+    virtual RendererSceneLoadResult loadScene(const RendererSceneLoadRequest& request)
+    {
+        RendererSceneLoadResult result;
+        result.accepted = !request.filePath.empty();
+        if (!result.accepted) {
+            result.diagnostic = "Scene file path is empty.";
+            return result;
+        }
+
+        result.loaded = loadMeshFile(request.filePath);
+        result.diagnostic = lastDiagnostic();
+        return result;
+    }
+
+    virtual RendererConversionResult startConversion(const RendererConversionRequest& request = {})
+    {
+        RendererConversionResult result;
+        result.accepted = !isConvertingGaussians();
+        if (!result.accepted) {
+            result.diagnostic = "Renderer is already converting gaussians.";
+            result.samplesPerTriangle = conversionSamplesPerTriangle();
+            return result;
+        }
+
+        const uint32_t currentSamples = conversionSamplesPerTriangle();
+        const uint32_t requestedSamples =
+            request.samplesPerTriangle == 0 ? currentSamples : request.samplesPerTriangle;
+        result.started = requestedSamples != currentSamples;
+        if (result.started) {
+            result.started = setConversionSamplesPerTriangle(requestedSamples);
+        } else if (request.forceRebuild || convertedGaussianCount() == 0) {
+            result.accepted = false;
+            result.diagnostic = "Renderer backend must override startConversion for same-sample rebuilds.";
+        }
+        result.samplesPerTriangle = conversionSamplesPerTriangle();
+        result.convertedGaussianCount = convertedGaussianCount();
+        if (result.diagnostic.empty()) {
+            result.diagnostic = lastDiagnostic();
+        }
+        return result;
+    }
+
+    virtual RendererModeResult setRenderMode(const RendererModeRequest& request)
+    {
+        setViewMode(request.viewMode);
+        setGaussianVisualizationMode(request.gaussianVisualizationMode);
+        setGaussianScale(request.gaussianScale);
+
+        RendererModeResult result;
+        result.applied = true;
+        result.viewMode = viewMode();
+        result.gaussianVisualizationMode = gaussianVisualizationMode();
+        result.gaussianScale = gaussianScale();
+        result.diagnostic = lastDiagnostic();
+        return result;
+    }
+
+    virtual RendererExportPlyResult exportPly(const RendererExportPlyRequest& request)
+    {
+        RendererExportPlyResult result;
+        result.accepted = !request.filePath.empty();
+        result.requestedCount = convertedGaussianCount();
+        if (!result.accepted) {
+            result.diagnostic = "PLY export file path is empty.";
+            return result;
+        }
+
+        result.diagnostic = "PLY export is not implemented by this renderer backend.";
+        return result;
+    }
+
+    virtual bool handleInputEvent(const RendererInputEvent& event)
+    {
+        (void)event;
+        return false;
+    }
+
+    virtual RendererFrameResult tickFrame(const RendererFrameTick& frame)
+    {
+        draw(frame.renderPassDescriptor, frame.drawable, frame.inputState, frame.deltaTimeSeconds);
+
+        RendererFrameResult result;
+        result.submitted = frame.renderPassDescriptor != nullptr && frame.drawable != nullptr;
+        result.stats = rendererStats();
+        result.diagnostic = lastDiagnostic();
+        return result;
+    }
+
+    virtual RendererDiagnostics diagnostics() const
+    {
+        RendererDiagnostics diagnostics;
+        diagnostics.stats = rendererStats();
+        diagnostics.message = lastDiagnostic();
+        diagnostics.lastError = lastDiagnostic();
+        diagnostics.loadedScenePath = loadedMeshPath();
+        diagnostics.progress = conversionProgress();
+        diagnostics.convertedGaussianCount = convertedGaussianCount();
+        diagnostics.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
+        diagnostics.viewMode = viewMode();
+        diagnostics.gaussianVisualizationMode = gaussianVisualizationMode();
+        diagnostics.gaussianScale = gaussianScale();
+        diagnostics.converting = isConvertingGaussians();
+        diagnostics.hasScene = !loadedMeshPath().empty();
+        diagnostics.hasGaussians = diagnostics.convertedGaussianCount > 0;
+        diagnostics.state = diagnostics.converting ? RendererRuntimeState::Converting : RendererRuntimeState::Ready;
+        diagnostics.severity = diagnostics.message.empty() ?
+            RendererDiagnosticSeverity::Info :
+            RendererDiagnosticSeverity::Warning;
+        return diagnostics;
+    }
+
+    virtual RendererRuntimeState runtimeState() const
+    {
+        return diagnostics().state;
+    }
+
+    virtual float conversionProgress() const
+    {
+        if (isConvertingGaussians()) {
+            return 0.0f;
+        }
+        return convertedGaussianCount() == 0 ? 0.0f : 1.0f;
+    }
+
+    virtual std::string lastError() const
+    {
+        return lastDiagnostic();
+    }
 };
 
 std::unique_ptr<Renderer> createMetalRenderer(void* metalDevice);

@@ -2,15 +2,33 @@
 
 using namespace metal;
 
-struct Matrix4 {
+constexpr uint kM2SMeshShaderVertexFloatCount = 17u;
+constexpr uint kM2SMeshShaderPositionOffset = 0u;
+constexpr uint kM2SMeshShaderNormalOffset = 3u;
+constexpr uint kM2SMeshShaderTangentOffset = 6u;
+constexpr uint kM2SMeshShaderUvOffset = 10u;
+constexpr uint kM2SMeshShaderNormalizedUvOffset = 12u;
+
+constexpr uint kM2SMeshShaderRenderModeColor = 0u;
+constexpr uint kM2SMeshShaderRenderModeDepth = 1u;
+constexpr uint kM2SMeshShaderRenderModeNormal = 2u;
+constexpr uint kM2SMeshShaderRenderModeGeometryColor = 3u;
+constexpr uint kM2SMeshShaderRenderModeDensity = 4u;
+constexpr uint kM2SMeshShaderRenderModePbr = 5u;
+constexpr uint kM2SMeshShaderRenderModeLitPreview = 6u;
+
+constexpr float kM2SMeshShaderMinimumLengthSquared = 1.0e-12f;
+constexpr float kM2SMeshShaderAlphaDiscardThreshold = 1.0e-4f;
+
+struct M2SMeshShaderMatrix4 {
     float4 columns[4];
 };
 
-struct FrameUniforms {
-    Matrix4 modelMatrix;
-    Matrix4 viewMatrix;
-    Matrix4 projectionMatrix;
-    Matrix4 modelViewProjectionMatrix;
+struct M2SMeshShaderFrameUniforms {
+    M2SMeshShaderMatrix4 modelMatrix;
+    M2SMeshShaderMatrix4 viewMatrix;
+    M2SMeshShaderMatrix4 projectionMatrix;
+    M2SMeshShaderMatrix4 modelViewProjectionMatrix;
     float4 cameraPosition;
     float4 hfovFocal;
     float4 viewport;
@@ -22,7 +40,7 @@ struct FrameUniforms {
     uint reserved;
 };
 
-struct MeshMaterial {
+struct M2SMeshShaderMaterial {
     float4 baseColorFactor;
     float4 emissiveFactor;
     float metallicFactor;
@@ -31,15 +49,72 @@ struct MeshMaterial {
     float normalScale;
 };
 
-struct MeshVertexOut {
+struct M2SMeshShaderVertexOut {
     float4 position [[position]];
+    float3 worldPosition;
     float3 normal;
     float4 tangent;
     float2 uv;
     float2 normalizedUv;
+    float viewDepth;
+    float2 clippingPlanes;
+    float3 viewDirection;
+    uint renderMode [[flat]];
 };
 
-static float4 transformPoint(Matrix4 matrix, float3 position)
+static_assert(sizeof(M2SMeshShaderMatrix4) == 64, "Mesh matrix ABI must remain four float4 columns.");
+static_assert(sizeof(M2SMeshShaderFrameUniforms) == 352, "Mesh frame uniforms must match FrameUniforms.");
+static_assert(sizeof(M2SMeshShaderMaterial) == 48, "Mesh material must match MetalMeshMaterial.");
+
+static bool m2sMeshShaderFinite(float value)
+{
+    return isfinite(value);
+}
+
+static bool m2sMeshShaderFinite(float2 value)
+{
+    return all(isfinite(value));
+}
+
+static bool m2sMeshShaderFinite(float3 value)
+{
+    return all(isfinite(value));
+}
+
+static bool m2sMeshShaderFinite(float4 value)
+{
+    return all(isfinite(value));
+}
+
+static float m2sMeshShaderFiniteOr(float value, float fallback)
+{
+    return m2sMeshShaderFinite(value) ? value : fallback;
+}
+
+static float2 m2sMeshShaderFiniteOr(float2 value, float2 fallback)
+{
+    return m2sMeshShaderFinite(value) ? value : fallback;
+}
+
+static float3 m2sMeshShaderFiniteOr(float3 value, float3 fallback)
+{
+    return m2sMeshShaderFinite(value) ? value : fallback;
+}
+
+static float4 m2sMeshShaderFiniteOr(float4 value, float4 fallback)
+{
+    return m2sMeshShaderFinite(value) ? value : fallback;
+}
+
+static float3 m2sMeshShaderSafeNormalize(float3 value, float3 fallback)
+{
+    const float lengthSquared = dot(value, value);
+    return m2sMeshShaderFinite(lengthSquared) && lengthSquared > kM2SMeshShaderMinimumLengthSquared ?
+        value * rsqrt(lengthSquared) :
+        fallback;
+}
+
+static float4 m2sMeshShaderTransformPoint(M2SMeshShaderMatrix4 matrix, float3 position)
 {
     return matrix.columns[0] * position.x +
         matrix.columns[1] * position.y +
@@ -47,54 +122,234 @@ static float4 transformPoint(Matrix4 matrix, float3 position)
         matrix.columns[3];
 }
 
-vertex MeshVertexOut meshVertex(
+static float3 m2sMeshShaderTransformVector(M2SMeshShaderMatrix4 matrix, float3 value)
+{
+    return (matrix.columns[0] * value.x +
+        matrix.columns[1] * value.y +
+        matrix.columns[2] * value.z).xyz;
+}
+
+static float3 m2sMeshShaderReadFloat3(const device float* vertices, uint vertexIndex, uint offset)
+{
+    const uint base = vertexIndex * kM2SMeshShaderVertexFloatCount + offset;
+    return float3(vertices[base], vertices[base + 1u], vertices[base + 2u]);
+}
+
+static float2 m2sMeshShaderReadFloat2(const device float* vertices, uint vertexIndex, uint offset)
+{
+    const uint base = vertexIndex * kM2SMeshShaderVertexFloatCount + offset;
+    return float2(vertices[base], vertices[base + 1u]);
+}
+
+static float4 m2sMeshShaderReadFloat4(const device float* vertices, uint vertexIndex, uint offset)
+{
+    const uint base = vertexIndex * kM2SMeshShaderVertexFloatCount + offset;
+    return float4(vertices[base], vertices[base + 1u], vertices[base + 2u], vertices[base + 3u]);
+}
+
+static float3 m2sMeshShaderOrthogonalVector(float3 normal)
+{
+    const float3 reference = abs(normal.y) < 0.999f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
+    return m2sMeshShaderSafeNormalize(cross(reference, normal), float3(1.0f, 0.0f, 0.0f));
+}
+
+static float4 m2sMeshShaderSampleOr(
+    texture2d<float> texture,
+    sampler textureSampler,
+    float2 uv,
+    float4 fallback)
+{
+    if (texture.get_width() == 0u || texture.get_height() == 0u || !m2sMeshShaderFinite(uv)) {
+        return fallback;
+    }
+
+    return m2sMeshShaderFiniteOr(texture.sample(textureSampler, uv), fallback);
+}
+
+static float m2sMeshShaderExponentialDepth(float viewDepth, float2 nearFar)
+{
+    const float2 resolvedNearFar = m2sMeshShaderFiniteOr(nearFar, float2(0.1f, 1000.0f));
+    const float range = max(resolvedNearFar.y - resolvedNearFar.x, 1.0e-5f);
+    const float normalizedDepth = clamp((viewDepth - resolvedNearFar.x) / range, 0.0f, 1.0f);
+    return clamp(exp(-20.0f * normalizedDepth), 0.0f, 1.0f);
+}
+
+static float3 m2sMeshShaderNormalFromTexture(
+    M2SMeshShaderVertexOut in,
+    M2SMeshShaderMaterial material,
+    texture2d<float> normalTexture,
+    sampler textureSampler)
+{
+    const float3 vertexNormal = m2sMeshShaderSafeNormalize(in.normal, float3(0.0f, 1.0f, 0.0f));
+    const float3 tangentCandidate = in.tangent.xyz - vertexNormal * dot(vertexNormal, in.tangent.xyz);
+    const float3 tangent = m2sMeshShaderSafeNormalize(
+        tangentCandidate,
+        m2sMeshShaderOrthogonalVector(vertexNormal));
+    const float tangentHandedness = m2sMeshShaderFinite(in.tangent.w) && in.tangent.w < 0.0f ? -1.0f : 1.0f;
+    const float3 bitangent = m2sMeshShaderSafeNormalize(
+        cross(vertexNormal, tangent) * tangentHandedness,
+        m2sMeshShaderOrthogonalVector(vertexNormal));
+
+    float3 normalSample = m2sMeshShaderSampleOr(
+        normalTexture,
+        textureSampler,
+        in.uv,
+        float4(0.5f, 0.5f, 1.0f, 1.0f)).xyz * 2.0f - 1.0f;
+    normalSample.xy *= clamp(m2sMeshShaderFiniteOr(material.normalScale, 1.0f), 0.0f, 4.0f);
+    normalSample = m2sMeshShaderSafeNormalize(normalSample, float3(0.0f, 0.0f, 1.0f));
+
+    return m2sMeshShaderSafeNormalize(
+        tangent * normalSample.x + bitangent * normalSample.y + vertexNormal * normalSample.z,
+        vertexNormal);
+}
+
+static float3 m2sMeshShaderLitPreviewColor(
+    float3 baseColor,
+    float3 normal,
+    float3 viewDirection,
+    float metallic,
+    float roughness,
+    float occlusion,
+    float3 emissive)
+{
+    const float3 lightDirection = normalize(float3(0.35f, 0.8f, 0.45f));
+    const float3 resolvedViewDirection = m2sMeshShaderSafeNormalize(viewDirection, float3(0.0f, 0.0f, 1.0f));
+    const float3 halfVector = m2sMeshShaderSafeNormalize(lightDirection + resolvedViewDirection, lightDirection);
+    const float diffuse = saturate(dot(normal, lightDirection)) * 0.8f + 0.2f;
+    const float specularPower = mix(96.0f, 4.0f, roughness);
+    const float specular = pow(saturate(dot(normal, halfVector)), specularPower) *
+        mix(0.04f, 0.45f, metallic) *
+        (1.0f - roughness * 0.65f);
+    const float diffuseWeight = mix(1.0f, 0.6f, metallic);
+    return baseColor * ((diffuse * diffuseWeight + 0.08f) * occlusion) + specular + emissive;
+}
+
+vertex M2SMeshShaderVertexOut meshVertex(
     uint vertexID [[vertex_id]],
     const device float* vertices [[buffer(0)]],
-    constant FrameUniforms& frame [[buffer(1)]])
+    constant M2SMeshShaderFrameUniforms& frame [[buffer(1)]])
 {
-    const uint base = vertexID * 17;
+    const float3 localPosition = m2sMeshShaderReadFloat3(vertices, vertexID, kM2SMeshShaderPositionOffset);
+    const float3 localNormal = m2sMeshShaderReadFloat3(vertices, vertexID, kM2SMeshShaderNormalOffset);
+    const float4 localTangent = m2sMeshShaderReadFloat4(vertices, vertexID, kM2SMeshShaderTangentOffset);
+    const float2 uv = m2sMeshShaderReadFloat2(vertices, vertexID, kM2SMeshShaderUvOffset);
+    const float2 normalizedUv = m2sMeshShaderReadFloat2(vertices, vertexID, kM2SMeshShaderNormalizedUvOffset);
+    const float4 worldPosition = m2sMeshShaderTransformPoint(frame.modelMatrix, localPosition);
+    const float4 viewPosition = m2sMeshShaderTransformPoint(frame.viewMatrix, worldPosition.xyz);
 
-    MeshVertexOut out;
-    const float3 position = float3(vertices[base + 0], vertices[base + 1], vertices[base + 2]);
-    out.position = transformPoint(frame.modelViewProjectionMatrix, position);
-    out.normal = normalize(float3(vertices[base + 3], vertices[base + 4], vertices[base + 5]));
+    M2SMeshShaderVertexOut out;
+    out.position = m2sMeshShaderTransformPoint(frame.modelViewProjectionMatrix, localPosition);
+    out.worldPosition = worldPosition.xyz;
+    out.normal = m2sMeshShaderSafeNormalize(
+        m2sMeshShaderTransformVector(frame.modelMatrix, localNormal),
+        float3(0.0f, 1.0f, 0.0f));
     out.tangent = float4(
-        normalize(float3(vertices[base + 6], vertices[base + 7], vertices[base + 8])),
-        vertices[base + 9]);
-    out.uv = float2(vertices[base + 10], vertices[base + 11]);
-    out.normalizedUv = float2(vertices[base + 12], vertices[base + 13]);
+        m2sMeshShaderSafeNormalize(
+            m2sMeshShaderTransformVector(frame.modelMatrix, localTangent.xyz),
+            m2sMeshShaderOrthogonalVector(out.normal)),
+        localTangent.w);
+    out.uv = m2sMeshShaderFiniteOr(uv, float2(0.0f));
+    out.normalizedUv = m2sMeshShaderFiniteOr(normalizedUv, out.uv);
+    out.viewDepth = max(-viewPosition.z, 0.0f);
+    out.clippingPlanes = frame.clippingPlanes.xy;
+    out.viewDirection = m2sMeshShaderSafeNormalize(
+        frame.cameraPosition.xyz - worldPosition.xyz,
+        float3(0.0f, 0.0f, 1.0f));
+    out.renderMode = frame.renderMode;
     return out;
 }
 
 fragment float4 meshFragment(
-    MeshVertexOut in [[stage_in]],
-    constant MeshMaterial* materials [[buffer(0)]],
+    M2SMeshShaderVertexOut in [[stage_in]],
+    constant M2SMeshShaderMaterial* materials [[buffer(0)]],
     constant uint& materialIndex [[buffer(1)]],
     texture2d<float> baseColorTexture [[texture(0)]],
     texture2d<float> metallicRoughnessTexture [[texture(1)]],
     texture2d<float> normalTexture [[texture(2)]],
     texture2d<float> occlusionTexture [[texture(3)]],
     texture2d<float> emissiveTexture [[texture(4)]],
-    sampler baseColorSampler [[sampler(0)]])
+    sampler materialTextureSampler [[sampler(0)]])
 {
-    const MeshMaterial material = materials[materialIndex];
-    const float4 textureColor = baseColorTexture.sample(baseColorSampler, in.uv);
-    const float4 metallicRoughness = metallicRoughnessTexture.sample(baseColorSampler, in.uv);
-    const float occlusion = mix(1.0, occlusionTexture.sample(baseColorSampler, in.uv).r, material.occlusionStrength);
-    const float3 emissive = material.emissiveFactor.rgb * emissiveTexture.sample(baseColorSampler, in.uv).rgb;
-    const float roughness = clamp(material.roughnessFactor * metallicRoughness.g, 0.04, 1.0);
-    const float metallic = clamp(material.metallicFactor * metallicRoughness.b, 0.0, 1.0);
-    const float3 vertexNormal = normalize(in.normal);
-    const float3 tangent = normalize(in.tangent.xyz - vertexNormal * dot(vertexNormal, in.tangent.xyz));
-    const float3 bitangent = normalize(cross(vertexNormal, tangent) * in.tangent.w);
-    float3 normalSample = normalTexture.sample(baseColorSampler, in.uv).xyz * 2.0 - 1.0;
-    normalSample.xy *= material.normalScale;
-    const float3 normal = normalize(tangent * normalSample.x + bitangent * normalSample.y + vertexNormal * normalSample.z);
-    const float3 lightDirection = normalize(float3(0.35, 0.8, 0.45));
-    const float diffuse = saturate(dot(normal, lightDirection)) * 0.75 + 0.25 * occlusion;
-    const float4 baseColor = material.baseColorFactor * textureColor;
-    const float specular = pow(saturate(dot(normal, lightDirection)), mix(32.0, 2.0, roughness)) *
-        mix(0.04, 0.35, metallic) * (1.0 - roughness);
-    const float diffuseWeight = mix(1.0, 0.65, metallic);
-    return float4(baseColor.rgb * diffuse * diffuseWeight + specular + emissive, baseColor.a);
+    const M2SMeshShaderMaterial material = materials[materialIndex];
+    const float4 baseColorFactor = clamp(
+        m2sMeshShaderFiniteOr(material.baseColorFactor, float4(1.0f)),
+        float4(0.0f),
+        float4(1.0f));
+    const float4 baseColorSample = m2sMeshShaderSampleOr(
+        baseColorTexture,
+        materialTextureSampler,
+        in.uv,
+        float4(1.0f));
+    const float4 baseColor = clamp(baseColorFactor * baseColorSample, float4(0.0f), float4(1.0f));
+
+    if (baseColor.a <= kM2SMeshShaderAlphaDiscardThreshold) {
+        discard_fragment();
+    }
+
+    const float4 metallicRoughnessSample = m2sMeshShaderSampleOr(
+        metallicRoughnessTexture,
+        materialTextureSampler,
+        in.uv,
+        float4(1.0f));
+    const float metallic = clamp(
+        m2sMeshShaderFiniteOr(material.metallicFactor, 1.0f) * metallicRoughnessSample.b,
+        0.0f,
+        1.0f);
+    const float roughness = clamp(
+        m2sMeshShaderFiniteOr(material.roughnessFactor, 1.0f) * metallicRoughnessSample.g,
+        0.04f,
+        1.0f);
+    const float occlusionStrength = clamp(m2sMeshShaderFiniteOr(material.occlusionStrength, 1.0f), 0.0f, 1.0f);
+    const float occlusionSample = clamp(
+        m2sMeshShaderSampleOr(occlusionTexture, materialTextureSampler, in.uv, float4(1.0f)).r,
+        0.0f,
+        1.0f);
+    const float occlusion = mix(1.0f, occlusionSample, occlusionStrength);
+    const float3 emissiveFactor = max(
+        m2sMeshShaderFiniteOr(material.emissiveFactor.rgb, float3(0.0f)),
+        float3(0.0f));
+    const float3 emissive = emissiveFactor * max(
+        m2sMeshShaderSampleOr(emissiveTexture, materialTextureSampler, in.uv, float4(0.0f)).rgb,
+        float3(0.0f));
+    const float3 normal = m2sMeshShaderNormalFromTexture(
+        in,
+        material,
+        normalTexture,
+        materialTextureSampler);
+
+    if (in.renderMode == kM2SMeshShaderRenderModeDepth) {
+        const float depth = m2sMeshShaderExponentialDepth(in.viewDepth, in.clippingPlanes);
+        return float4(float3(depth), baseColor.a);
+    }
+
+    if (in.renderMode == kM2SMeshShaderRenderModeNormal) {
+        return float4(normal * 0.5f + 0.5f, baseColor.a);
+    }
+
+    if (in.renderMode == kM2SMeshShaderRenderModeGeometryColor) {
+        const float2 geometryUv = fract(abs(m2sMeshShaderFiniteOr(in.normalizedUv, in.uv)));
+        return float4(float3(geometryUv, 0.5f), baseColor.a);
+    }
+
+    if (in.renderMode == kM2SMeshShaderRenderModeDensity) {
+        return float4(1.0f, 0.45f, 0.08f, baseColor.a);
+    }
+
+    if (in.renderMode == kM2SMeshShaderRenderModePbr) {
+        return float4(float3(metallic, roughness, occlusion), baseColor.a);
+    }
+
+    if (in.renderMode == kM2SMeshShaderRenderModeLitPreview) {
+        const float3 litColor = m2sMeshShaderLitPreviewColor(
+            baseColor.rgb,
+            normal,
+            in.viewDirection,
+            metallic,
+            roughness,
+            occlusion,
+            emissive);
+        return float4(max(litColor, float3(0.0f)), baseColor.a);
+    }
+
+    return float4(baseColor.rgb + emissive, baseColor.a);
 }
