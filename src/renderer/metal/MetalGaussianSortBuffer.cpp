@@ -12,9 +12,43 @@ namespace {
 constexpr std::size_t kRadixBinCount = 16;
 constexpr std::size_t kRadixSortThreadCount = 256;
 
+std::size_t clampedCapacityGrowth(std::size_t currentCapacity, std::size_t requestedCapacity)
+{
+    if (requestedCapacity <= currentCapacity) {
+        return currentCapacity;
+    }
+
+    const std::size_t maxCapacity = static_cast<std::size_t>(std::numeric_limits<uint32_t>::max());
+    const std::size_t growth = currentCapacity / 2;
+    if (growth == 0 || currentCapacity > maxCapacity - growth) {
+        return requestedCapacity;
+    }
+
+    const std::size_t grownCapacity = currentCapacity + growth;
+    if (grownCapacity < requestedCapacity) {
+        return requestedCapacity;
+    }
+
+    return grownCapacity;
+}
+
+std::size_t checkedAddSize(std::size_t total, std::size_t size)
+{
+    if (size > std::numeric_limits<std::size_t>::max() - total) {
+        return std::numeric_limits<std::size_t>::max();
+    }
+
+    return total + size;
+}
+
 std::size_t radixBlockCount(std::size_t capacity)
 {
     return (capacity + kRadixSortThreadCount - 1) / kRadixSortThreadCount;
+}
+
+std::size_t bufferSize(const std::unique_ptr<MetalBuffer>& buffer)
+{
+    return buffer == nullptr ? 0 : buffer->size();
 }
 
 } // namespace
@@ -90,6 +124,30 @@ bool MetalGaussianSortBuffer::create(std::size_t capacity, const char* label)
     return true;
 }
 
+bool MetalGaussianSortBuffer::ensureCapacity(std::size_t capacity, const char* label)
+{
+    if (capacity == 0) {
+        m_impl->count = 0;
+        return true;
+    }
+
+    if (hasCapacityFor(capacity)) {
+        return true;
+    }
+
+    if (capacity > static_cast<std::size_t>(std::numeric_limits<uint32_t>::max())) {
+        return false;
+    }
+
+    const std::size_t targetCapacity =
+        isValid() ? clampedCapacityGrowth(m_impl->capacity, capacity) : capacity;
+    if (create(targetCapacity, label)) {
+        return true;
+    }
+
+    return targetCapacity == capacity ? false : create(capacity, label);
+}
+
 bool MetalGaussianSortBuffer::setCount(uint32_t count)
 {
     if (count > m_impl->capacity) {
@@ -125,6 +183,13 @@ bool MetalGaussianSortBuffer::isValid() const
         m_impl->capacity > 0;
 }
 
+bool MetalGaussianSortBuffer::hasCapacityFor(std::size_t count) const
+{
+    return isValid() &&
+        count <= static_cast<std::size_t>(std::numeric_limits<uint32_t>::max()) &&
+        count <= m_impl->capacity;
+}
+
 std::size_t MetalGaussianSortBuffer::capacity() const
 {
     return m_impl->capacity;
@@ -139,13 +204,7 @@ std::size_t MetalGaussianSortBuffer::sizeBytes() const
 {
     std::size_t total = 0;
     const auto addBufferSize = [&total](const std::unique_ptr<MetalBuffer>& buffer) {
-        const std::size_t size = buffer == nullptr ? 0 : buffer->size();
-        if (size > std::numeric_limits<std::size_t>::max() - total) {
-            total = std::numeric_limits<std::size_t>::max();
-            return;
-        }
-
-        total += size;
+        total = checkedAddSize(total, bufferSize(buffer));
     };
 
     addBufferSize(m_impl->keyBuffer);
@@ -155,6 +214,27 @@ std::size_t MetalGaussianSortBuffer::sizeBytes() const
     addBufferSize(m_impl->blockCountBuffer);
     addBufferSize(m_impl->globalOffsetBuffer);
     return total;
+}
+
+MetalGaussianSortBuffer::ResourceStats MetalGaussianSortBuffer::resourceStats() const
+{
+    ResourceStats stats;
+    stats.capacity = m_impl->capacity;
+    stats.blockCount = m_impl->blockCount;
+    stats.count = m_impl->count;
+    stats.keyBytes = bufferSize(m_impl->keyBuffer);
+    stats.indexBytes = bufferSize(m_impl->indexBuffer);
+    stats.scratchKeyBytes = bufferSize(m_impl->scratchKeyBuffer);
+    stats.scratchIndexBytes = bufferSize(m_impl->scratchIndexBuffer);
+    stats.blockCountBytes = bufferSize(m_impl->blockCountBuffer);
+    stats.globalOffsetBytes = bufferSize(m_impl->globalOffsetBuffer);
+    stats.totalBytes = checkedAddSize(stats.totalBytes, stats.keyBytes);
+    stats.totalBytes = checkedAddSize(stats.totalBytes, stats.indexBytes);
+    stats.totalBytes = checkedAddSize(stats.totalBytes, stats.scratchKeyBytes);
+    stats.totalBytes = checkedAddSize(stats.totalBytes, stats.scratchIndexBytes);
+    stats.totalBytes = checkedAddSize(stats.totalBytes, stats.blockCountBytes);
+    stats.totalBytes = checkedAddSize(stats.totalBytes, stats.globalOffsetBytes);
+    return stats;
 }
 
 uint32_t MetalGaussianSortBuffer::count() const

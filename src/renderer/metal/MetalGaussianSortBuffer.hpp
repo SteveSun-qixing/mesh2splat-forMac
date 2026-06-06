@@ -10,6 +10,19 @@ class MetalDeviceContext;
 
 class MetalGaussianSortBuffer {
 public:
+    struct ResourceStats {
+        std::size_t capacity = 0;
+        std::size_t blockCount = 0;
+        uint32_t count = 0;
+        std::size_t keyBytes = 0;
+        std::size_t indexBytes = 0;
+        std::size_t scratchKeyBytes = 0;
+        std::size_t scratchIndexBytes = 0;
+        std::size_t blockCountBytes = 0;
+        std::size_t globalOffsetBytes = 0;
+        std::size_t totalBytes = 0;
+    };
+
     explicit MetalGaussianSortBuffer(MetalDeviceContext& deviceContext);
     ~MetalGaussianSortBuffer();
 
@@ -20,13 +33,16 @@ public:
     MetalGaussianSortBuffer& operator=(MetalGaussianSortBuffer&&) noexcept;
 
     bool create(std::size_t capacity, const char* label = nullptr);
+    bool ensureCapacity(std::size_t capacity, const char* label = nullptr);
     bool setCount(uint32_t count);
     void reset();
 
     bool isValid() const;
+    bool hasCapacityFor(std::size_t count) const;
     std::size_t capacity() const;
     std::size_t blockCount() const;
     std::size_t sizeBytes() const;
+    ResourceStats resourceStats() const;
     uint32_t count() const;
     void* nativeKeyBuffer() const;
     void* nativeIndexBuffer() const;

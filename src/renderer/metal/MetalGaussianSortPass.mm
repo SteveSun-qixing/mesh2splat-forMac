@@ -11,22 +11,25 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <string>
+#include <utility>
 
 namespace mesh2splat::metal {
 namespace {
 
 struct GaussianSortParams {
     uint32_t gaussianCount = 0;
-    uint32_t reserved0 = 0;
-    uint32_t reserved1 = 0;
-    uint32_t reserved2 = 0;
+    uint32_t keyCapacity = 0;
+    uint32_t indexCapacity = 0;
+    uint32_t reserved = 0;
 };
 
 struct RadixSortParams {
     uint32_t itemCount = 0;
     uint32_t blockCount = 0;
     uint32_t radixShift = 0;
-    uint32_t reserved = 0;
+    uint32_t outputCapacity = 0;
 };
 
 static_assert(sizeof(GaussianSortParams) == 16, "GaussianSortParams must match the Metal shader layout.");
@@ -35,6 +38,28 @@ static_assert(sizeof(RadixSortParams) == 16, "RadixSortParams must match the Met
 constexpr uint32_t kRadixBinCount = 16;
 constexpr uint32_t kRadixPassCount = 8;
 constexpr uint32_t kRadixSortThreadCount = 256;
+constexpr const char* kSortBufferLabel = "Mesh2Splat Gaussian Sort";
+
+uint32_t radixBlockCount(uint32_t itemCount)
+{
+    const std::size_t count = itemCount;
+    return static_cast<uint32_t>((count + kRadixSortThreadCount - 1) / kRadixSortThreadCount);
+}
+
+std::string sortBufferStatsDescription(const MetalGaussianSortBuffer& sortBuffer)
+{
+    const MetalGaussianSortBuffer::ResourceStats stats = sortBuffer.resourceStats();
+    return "sort capacity=" + std::to_string(stats.capacity) +
+        ", active count=" + std::to_string(stats.count) +
+        ", radix blocks=" + std::to_string(stats.blockCount) +
+        ", resources bytes={keys=" + std::to_string(stats.keyBytes) +
+        ", indices=" + std::to_string(stats.indexBytes) +
+        ", scratchKeys=" + std::to_string(stats.scratchKeyBytes) +
+        ", scratchIndices=" + std::to_string(stats.scratchIndexBytes) +
+        ", blockCounts=" + std::to_string(stats.blockCountBytes) +
+        ", globalOffsets=" + std::to_string(stats.globalOffsetBytes) +
+        ", total=" + std::to_string(stats.totalBytes) + "}";
+}
 
 } // namespace
 
@@ -43,6 +68,7 @@ struct MetalGaussianSortPass::Impl {
     void* radixCountPipelineState = nullptr;
     void* radixPrefixPipelineState = nullptr;
     void* radixReorderPipelineState = nullptr;
+    std::string lastDiagnostic;
 };
 
 MetalGaussianSortPass::MetalGaussianSortPass()
@@ -121,16 +147,63 @@ bool MetalGaussianSortPass::isReady() const
         m_impl->radixReorderPipelineState != nullptr;
 }
 
+const std::string& MetalGaussianSortPass::lastDiagnostic() const
+{
+    return m_impl->lastDiagnostic;
+}
+
 bool MetalGaussianSortPass::encodeDepthKeys(
     void* commandBuffer,
     const MetalGaussianBuffer& gaussianBuffer,
     MetalGaussianSortBuffer& sortBuffer,
     void* frameUniformBuffer) const
 {
-    if (!isReady() || commandBuffer == nullptr || frameUniformBuffer == nullptr ||
-        !gaussianBuffer.isValid() || !sortBuffer.isValid() ||
-        gaussianBuffer.count() == 0 || gaussianBuffer.count() > sortBuffer.capacity()) {
+    m_impl->lastDiagnostic.clear();
+    const auto fail = [this](std::string message) {
+        m_impl->lastDiagnostic = std::move(message);
         return false;
+    };
+
+    if (!isReady()) {
+        return fail("Gaussian sort pass is not initialized.");
+    }
+
+    if (commandBuffer == nullptr) {
+        return fail("Gaussian sort pass cannot encode without a command buffer.");
+    }
+
+    if (frameUniformBuffer == nullptr) {
+        return fail("Gaussian sort pass cannot encode depth keys without frame uniforms.");
+    }
+
+    if (!gaussianBuffer.isValid()) {
+        return fail("Gaussian sort pass received an invalid gaussian buffer.");
+    }
+
+    const uint32_t gaussianCount = gaussianBuffer.count();
+    if (gaussianCount == 0) {
+        sortBuffer.setCount(0);
+        return true;
+    }
+
+    if (!sortBuffer.ensureCapacity(gaussianCount, kSortBufferLabel)) {
+        sortBuffer.setCount(0);
+        return fail("Gaussian sort buffer could not grow for " +
+            std::to_string(gaussianCount) + " gaussians: " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    if (!sortBuffer.isValid()) {
+        sortBuffer.setCount(0);
+        return fail("Gaussian sort pass received an invalid sort buffer after capacity check: " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    if (!sortBuffer.hasCapacityFor(gaussianCount)) {
+        sortBuffer.setCount(0);
+        return fail("Gaussian sort buffer capacity is too small for " +
+            std::to_string(gaussianCount) + " gaussians: " +
+            sortBufferStatsDescription(sortBuffer));
     }
 
     id<MTLCommandBuffer> nativeCommandBuffer = (__bridge id<MTLCommandBuffer>)commandBuffer;
@@ -150,29 +223,43 @@ bool MetalGaussianSortPass::encodeDepthKeys(
     id<MTLBuffer> scratchIndexBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeScratchIndexBuffer();
     id<MTLBuffer> blockCountBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeBlockCountBuffer();
     id<MTLBuffer> globalOffsetBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeGlobalOffsetBuffer();
-    if (nativeCommandBuffer == nil || pipelineState == nil || radixCountPipelineState == nil ||
-        radixPrefixPipelineState == nil || radixReorderPipelineState == nil ||
-        gaussianBufferHandle == nil || frameBuffer == nil || keyBuffer == nil || indexBuffer == nil ||
-        scratchKeyBuffer == nil || scratchIndexBuffer == nil || blockCountBuffer == nil ||
-        globalOffsetBuffer == nil) {
-        return false;
+    if (nativeCommandBuffer == nil) {
+        return fail("Gaussian sort pass command buffer bridge returned nil.");
     }
 
-    if (sortBuffer.capacity() > static_cast<std::size_t>(UINT32_MAX) ||
-        sortBuffer.blockCount() > static_cast<std::size_t>(UINT32_MAX) ||
-        !sortBuffer.setCount(gaussianBuffer.count())) {
-        return false;
+    if (pipelineState == nil || radixCountPipelineState == nil || radixPrefixPipelineState == nil ||
+        radixReorderPipelineState == nil) {
+        return fail("Gaussian sort pass has a nil Metal pipeline state.");
+    }
+
+    if (gaussianBufferHandle == nil || frameBuffer == nil || keyBuffer == nil || indexBuffer == nil ||
+        scratchKeyBuffer == nil || scratchIndexBuffer == nil || blockCountBuffer == nil ||
+        globalOffsetBuffer == nil) {
+        return fail("Gaussian sort pass has a nil Metal buffer binding: " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    if (sortBuffer.capacity() > static_cast<std::size_t>(std::numeric_limits<uint32_t>::max()) ||
+        sortBuffer.blockCount() > static_cast<std::size_t>(std::numeric_limits<uint32_t>::max())) {
+        return fail("Gaussian sort buffer exceeds 32-bit Metal sort parameters: " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    if (!sortBuffer.setCount(gaussianCount)) {
+        return fail("Gaussian sort buffer rejected active count " +
+            std::to_string(gaussianCount) + ": " +
+            sortBufferStatsDescription(sortBuffer));
     }
 
     if (radixCountPipelineState.maxTotalThreadsPerThreadgroup < kRadixSortThreadCount ||
         radixReorderPipelineState.maxTotalThreadsPerThreadgroup < kRadixSortThreadCount ||
         radixPrefixPipelineState.maxTotalThreadsPerThreadgroup < kRadixBinCount) {
-        return false;
+        return fail("Gaussian radix sort pipeline threadgroup limit is smaller than the shader contract.");
     }
 
     id<MTLComputeCommandEncoder> encoder = [nativeCommandBuffer computeCommandEncoder];
     if (encoder == nil) {
-        return false;
+        return fail("Failed to create gaussian depth key compute encoder.");
     }
 
     encoder.label = @"Mesh2Splat Gaussian Depth Keys";
@@ -183,25 +270,28 @@ bool MetalGaussianSortPass::encodeDepthKeys(
     [encoder setBuffer:indexBuffer offset:0 atIndex:3];
 
     GaussianSortParams params;
-    params.gaussianCount = gaussianBuffer.count();
+    params.gaussianCount = gaussianCount;
+    params.keyCapacity = static_cast<uint32_t>(sortBuffer.capacity());
+    params.indexCapacity = static_cast<uint32_t>(sortBuffer.capacity());
     [encoder setBytes:&params length:sizeof(params) atIndex:4];
 
     const NSUInteger threadsPerGroup =
         static_cast<NSUInteger>(computeThreadgroupSize1D((__bridge void*)pipelineState));
-    [encoder dispatchThreads:MTLSizeMake(gaussianBuffer.count(), 1, 1)
+    [encoder dispatchThreads:MTLSizeMake(gaussianCount, 1, 1)
        threadsPerThreadgroup:MTLSizeMake(threadsPerGroup, 1, 1)];
     [encoder endEncoding];
 
-    if (gaussianBuffer.count() <= 1) {
+    if (gaussianCount <= 1) {
         return true;
     }
 
     RadixSortParams sortParams;
-    sortParams.itemCount = gaussianBuffer.count();
-    const uint32_t activeBlockCount =
-        (gaussianBuffer.count() + kRadixSortThreadCount - 1) / kRadixSortThreadCount;
+    sortParams.itemCount = gaussianCount;
+    sortParams.outputCapacity = static_cast<uint32_t>(sortBuffer.capacity());
+    const uint32_t activeBlockCount = radixBlockCount(gaussianCount);
     if (activeBlockCount == 0 || activeBlockCount > sortBuffer.blockCount()) {
-        return false;
+        return fail("Gaussian radix active block count is outside sort buffer capacity: active blocks=" +
+            std::to_string(activeBlockCount) + ", " + sortBufferStatsDescription(sortBuffer));
     }
     sortParams.blockCount = activeBlockCount;
 
@@ -221,18 +311,20 @@ bool MetalGaussianSortPass::encodeDepthKeys(
 
         id<MTLBlitCommandEncoder> blitEncoder = [nativeCommandBuffer blitCommandEncoder];
         if (blitEncoder == nil) {
-            return false;
+            return fail("Failed to create gaussian radix clear blit encoder for pass " +
+                std::to_string(passIndex) + ".");
         }
-        blitEncoder.label = @"Mesh2Splat Gaussian Radix Clear";
+        blitEncoder.label = [NSString stringWithFormat:@"Mesh2Splat Gaussian Radix Clear Pass %u", passIndex];
         [blitEncoder fillBuffer:blockCountBuffer range:blockCountRange value:0];
         [blitEncoder fillBuffer:globalOffsetBuffer range:globalOffsetRange value:0];
         [blitEncoder endEncoding];
 
         id<MTLComputeCommandEncoder> countEncoder = [nativeCommandBuffer computeCommandEncoder];
         if (countEncoder == nil) {
-            return false;
+            return fail("Failed to create gaussian radix count encoder for pass " +
+                std::to_string(passIndex) + ".");
         }
-        countEncoder.label = @"Mesh2Splat Gaussian Radix Count";
+        countEncoder.label = [NSString stringWithFormat:@"Mesh2Splat Gaussian Radix Count Pass %u", passIndex];
         [countEncoder setComputePipelineState:radixCountPipelineState];
         [countEncoder setBuffer:sourceKeyBuffer offset:0 atIndex:0];
         [countEncoder setBuffer:blockCountBuffer offset:0 atIndex:1];
@@ -243,9 +335,10 @@ bool MetalGaussianSortPass::encodeDepthKeys(
 
         id<MTLComputeCommandEncoder> prefixEncoder = [nativeCommandBuffer computeCommandEncoder];
         if (prefixEncoder == nil) {
-            return false;
+            return fail("Failed to create gaussian radix prefix encoder for pass " +
+                std::to_string(passIndex) + ".");
         }
-        prefixEncoder.label = @"Mesh2Splat Gaussian Radix Prefix";
+        prefixEncoder.label = [NSString stringWithFormat:@"Mesh2Splat Gaussian Radix Prefix Pass %u", passIndex];
         [prefixEncoder setComputePipelineState:radixPrefixPipelineState];
         [prefixEncoder setBuffer:blockCountBuffer offset:0 atIndex:0];
         [prefixEncoder setBuffer:globalOffsetBuffer offset:0 atIndex:1];
@@ -255,9 +348,10 @@ bool MetalGaussianSortPass::encodeDepthKeys(
 
         id<MTLComputeCommandEncoder> reorderEncoder = [nativeCommandBuffer computeCommandEncoder];
         if (reorderEncoder == nil) {
-            return false;
+            return fail("Failed to create gaussian radix reorder encoder for pass " +
+                std::to_string(passIndex) + ".");
         }
-        reorderEncoder.label = @"Mesh2Splat Gaussian Radix Reorder";
+        reorderEncoder.label = [NSString stringWithFormat:@"Mesh2Splat Gaussian Radix Reorder Pass %u", passIndex];
         [reorderEncoder setComputePipelineState:radixReorderPipelineState];
         [reorderEncoder setBuffer:sourceKeyBuffer offset:0 atIndex:0];
         [reorderEncoder setBuffer:sourceIndexBuffer offset:0 atIndex:1];

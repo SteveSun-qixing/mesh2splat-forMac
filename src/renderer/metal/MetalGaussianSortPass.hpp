@@ -31,6 +31,7 @@ public:
         const MetalGaussianBuffer& gaussianBuffer,
         MetalGaussianSortBuffer& sortBuffer,
         void* frameUniformBuffer) const;
+    const std::string& lastDiagnostic() const;
 
 private:
     struct Impl;
