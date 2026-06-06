@@ -206,6 +206,48 @@ struct MacBridgeRendererStatusSummary {
     bool lastFrameSortedGaussians = false;
 };
 
+inline void normalizeMacBridgeRendererStatusSummary(MacBridgeRendererStatusSummary& summary)
+{
+    summary.backend.runtimeState = summary.runtimeState;
+    summary.frameTiming.submittedFrameCount = summary.submittedFrameCount;
+    summary.frameTiming.completedFrameCount = summary.completedFrameCount;
+    summary.frameTiming.failedFrameCount = summary.failedFrameCount;
+    summary.frameTiming.lastCpuEncodeMs = summary.lastFrameCpuEncodeMs;
+    summary.frameTiming.averageCpuEncodeMs = summary.averageFrameCpuEncodeMs;
+    summary.frameTiming.lastGpuMs = summary.lastFrameGpuMs;
+    summary.frameTiming.averageGpuMs = summary.averageFrameGpuMs;
+    summary.frameTiming.lastRenderedMesh = summary.lastFrameRenderedMesh;
+    summary.frameTiming.lastRenderedGaussians = summary.lastFrameRenderedGaussians;
+    summary.frameTiming.lastSortedGaussians = summary.lastFrameSortedGaussians;
+
+    summary.resources.frameUniformBytes = summary.frameUniformResourceBytes;
+    summary.resources.sceneBytes = summary.sceneResourceBytes;
+    summary.resources.gaussianBytes = summary.gaussianResourceBytes;
+    summary.resources.gaussianSortBytes = summary.gaussianSortResourceBytes;
+    summary.resources.pendingConversionBytes = summary.pendingConversionResourceBytes;
+    summary.resources.trackedBytes = summary.trackedResourceBytes;
+    summary.resources.meshCount = summary.meshCount;
+    summary.resources.materialCount = summary.materialCount;
+    summary.resources.textureCount = summary.textureCount;
+    summary.resources.gaussianCount = summary.convertedGaussianCount;
+
+    summary.conversion.active = summary.isConverting;
+    summary.conversion.progress = summary.conversionProgress;
+    summary.conversion.samplesPerTriangle = summary.conversionSamplesPerTriangle;
+    summary.conversion.convertedGaussianCount = summary.convertedGaussianCount;
+    summary.conversion.submittedConversionCount = summary.submittedConversionCount;
+    summary.conversion.completedConversionCount = summary.completedConversionCount;
+    summary.conversion.failedConversionCount = summary.failedConversionCount;
+    summary.conversion.lastCpuSubmitMs = summary.lastConversionCpuSubmitMs;
+    summary.conversion.averageCpuSubmitMs = summary.averageConversionCpuSubmitMs;
+    summary.conversion.lastGpuMs = summary.lastConversionGpuMs;
+    summary.conversion.averageGpuMs = summary.averageConversionGpuMs;
+
+    summary.diagnostics.severity = summary.diagnosticSeverity;
+    summary.diagnostics.message = summary.diagnosticMessage;
+    summary.diagnostics.lastError = summary.lastError;
+}
+
 struct MacBridgeActionResult {
     bool accepted = false;
     bool completed = false;
