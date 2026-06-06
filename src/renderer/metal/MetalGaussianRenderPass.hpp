@@ -69,10 +69,20 @@ public:
     void encode(
         void* renderCommandEncoder,
         const MetalGaussianBuffer& gaussianBuffer,
+        void* frameUniformBuffer) const;
+    void encode(
+        void* renderCommandEncoder,
+        const MetalGaussianBuffer& gaussianBuffer,
         const MetalGaussianSortBuffer& sortBuffer,
         void* frameUniformBuffer) const;
 
 private:
+    void encodeImpl(
+        void* renderCommandEncoder,
+        const MetalGaussianBuffer& gaussianBuffer,
+        const MetalGaussianSortBuffer* sortBuffer,
+        void* frameUniformBuffer) const;
+
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };

@@ -17,8 +17,10 @@
 #include "MetalMeshRenderPass.hpp"
 #include "MetalPipelineCache.hpp"
 #include "MetalRenderStateCache.hpp"
+#include "MetalRenderTarget.hpp"
 #include "MetalSceneResources.hpp"
 #include "MetalShaderLibrary.hpp"
+#include "renderer/event.hpp"
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
@@ -32,6 +34,7 @@
 #include <limits>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -41,6 +44,93 @@ namespace {
 using Clock = std::chrono::steady_clock;
 
 constexpr uint32_t kDefaultMetalConversionSamplesPerTriangle = 4;
+constexpr float kCompletedProgress = 1.0f;
+
+const char* rendererStateName(mesh2splat::renderer::RendererRuntimeState state)
+{
+    using mesh2splat::renderer::RendererRuntimeState;
+    switch (state) {
+    case RendererRuntimeState::Unknown:
+        return "unknown";
+    case RendererRuntimeState::Ready:
+        return "ready";
+    case RendererRuntimeState::Loading:
+        return "loading";
+    case RendererRuntimeState::Converting:
+        return "converting";
+    case RendererRuntimeState::Rendering:
+        return "rendering";
+    case RendererRuntimeState::Failed:
+        return "failed";
+    case RendererRuntimeState::Exporting:
+        return "exporting";
+    }
+    return "unknown";
+}
+
+mesh2splat::renderer::RendererDiagnosticSeverity severityForState(
+    mesh2splat::renderer::RendererRuntimeState state,
+    const std::string& diagnostic)
+{
+    if (state == mesh2splat::renderer::RendererRuntimeState::Failed) {
+        return mesh2splat::renderer::RendererDiagnosticSeverity::Error;
+    }
+    return diagnostic.empty()
+        ? mesh2splat::renderer::RendererDiagnosticSeverity::Info
+        : mesh2splat::renderer::RendererDiagnosticSeverity::Warning;
+}
+
+bool sceneKindCanLoadAsMesh(mesh2splat::renderer::RendererSceneKind requestedKind, const std::string& filePath)
+{
+    if (requestedKind == mesh2splat::renderer::RendererSceneKind::Mesh) {
+        return true;
+    }
+    if (requestedKind == mesh2splat::renderer::RendererSceneKind::GaussianPly) {
+        return false;
+    }
+
+    const std::string::size_type separator = filePath.find_last_of("/\\");
+    const std::string::size_type filenameStart =
+        separator == std::string::npos ? 0 : separator + 1;
+    const std::string::size_type dot = filePath.find_last_of('.');
+    if (dot == std::string::npos || dot < filenameStart || dot + 1 >= filePath.size()) {
+        return false;
+    }
+
+    const std::string_view extension(filePath.data() + dot + 1, filePath.size() - dot - 1);
+    if (extension.size() != 3 && extension.size() != 4) {
+        return false;
+    }
+    auto equalsIgnoreCase = [](std::string_view lhs, std::string_view rhs) {
+        if (lhs.size() != rhs.size()) {
+            return false;
+        }
+        for (std::size_t index = 0; index < lhs.size(); ++index) {
+            const char lhsChar = lhs[index] >= 'A' && lhs[index] <= 'Z'
+                ? static_cast<char>(lhs[index] - 'A' + 'a')
+                : lhs[index];
+            if (lhsChar != rhs[index]) {
+                return false;
+            }
+        }
+        return true;
+    };
+    return equalsIgnoreCase(extension, "glb") || equalsIgnoreCase(extension, "gltf");
+}
+
+MetalRenderTargetDesc makeDrawableDepthTargetDesc(uint32_t width, uint32_t height)
+{
+    MetalRenderTargetDesc desc;
+    desc.width = width;
+    desc.height = height;
+    desc.colorEnabled = false;
+    desc.depthEnabled = true;
+    desc.depthFormat = MetalTextureFormat::Depth32Float;
+    desc.clearDepth = 1.0;
+    desc.role = MetalRenderTargetRole::Depth;
+    desc.label = "Mesh2Splat Drawable Depth Target";
+    return desc;
+}
 
 std::string bundledMetallibPath()
 {
@@ -254,6 +344,28 @@ void addResourceBytes(uint64_t& total, uint64_t size)
     total += size;
 }
 
+uint32_t textureWidth(id<MTLTexture> texture)
+{
+    if (texture == nil) {
+        return 0;
+    }
+    if (texture.width > std::numeric_limits<uint32_t>::max()) {
+        return std::numeric_limits<uint32_t>::max();
+    }
+    return static_cast<uint32_t>(texture.width);
+}
+
+uint32_t textureHeight(id<MTLTexture> texture)
+{
+    if (texture == nil) {
+        return 0;
+    }
+    if (texture.height > std::numeric_limits<uint32_t>::max()) {
+        return std::numeric_limits<uint32_t>::max();
+    }
+    return static_cast<uint32_t>(texture.height);
+}
+
 } // namespace
 
 struct MetalRendererTimingState {
@@ -321,6 +433,23 @@ struct MetalRendererTimingState {
             stats.averageConversionGpuMs = exponentialAverage(stats.averageConversionGpuMs, gpuMs);
         }
     }
+
+    void recordFrameEncodeFailed(
+        double cpuEncodeMs,
+        uint32_t gaussianCount,
+        bool sortedGaussians,
+        bool renderedMesh,
+        bool renderedGaussians)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++stats.failedFrameCount;
+        stats.lastFrameCpuEncodeMs = cpuEncodeMs;
+        stats.averageFrameCpuEncodeMs = exponentialAverage(stats.averageFrameCpuEncodeMs, cpuEncodeMs);
+        stats.lastFrameGaussianCount = gaussianCount;
+        stats.lastFrameSortedGaussians = sortedGaussians;
+        stats.lastFrameRenderedMesh = renderedMesh;
+        stats.lastFrameRenderedGaussians = renderedGaussians;
+    }
 };
 
 struct PendingGaussianConversion {
@@ -341,19 +470,39 @@ struct PendingGaussianConversion {
 struct MetalRenderer::Impl {
     bool submitSceneConversion(
         const MetalSceneResources& conversionSceneResources,
-        std::unique_ptr<MetalSceneResources>&& nextSceneResources,
+        std::unique_ptr<MetalSceneResources>* nextSceneResources,
         const core::MeshBounds& nextMeshBounds,
         std::string nextLoadedMeshPath,
         bool revertsSamplesOnFailure = false,
         uint32_t previousSamplesPerTriangle = kDefaultMetalConversionSamplesPerTriangle);
     bool submitCurrentSceneConversion(bool revertsSamplesOnFailure = false, uint32_t previousSamplesPerTriangle = 0);
     void finalizePendingConversion();
+    void updateDrawableSize(uint32_t width, uint32_t height);
+    bool attachDrawableColorTarget(MTLRenderPassDescriptor* descriptor, id<MTLTexture> colorTexture);
+    bool ensureDrawableDepthTarget(uint32_t width, uint32_t height);
+    bool attachDrawableDepthTarget(MTLRenderPassDescriptor* descriptor, uint32_t width, uint32_t height);
+    bool prepareDrawableRenderPassDescriptor(
+        MTLRenderPassDescriptor* descriptor,
+        id<MTLTexture> colorTexture,
+        uint32_t width,
+        uint32_t height);
+    void markFrameSubmitted(uint32_t frameIndex);
+    uint32_t currentGaussianCount() const;
+    void recordFrameEncodeFailure(
+        Clock::time_point frameCpuStart,
+        bool sortedGaussians,
+        bool renderedMesh,
+        bool renderedGaussians);
     void recordDiagnostic(const std::string& message);
+    void transitionTo(mesh2splat::renderer::RendererRuntimeState nextState);
+    void markFailed(const std::string& message);
+    mesh2splat::renderer::RendererRuntimeState effectiveRuntimeState() const;
+    float currentConversionProgress() const;
 
     std::unique_ptr<MetalDeviceContext> deviceContext;
-    MetalFrameResources frameResources;
+    std::shared_ptr<MetalFrameResources> frameResources = std::make_shared<MetalFrameResources>();
     dispatch_semaphore_t frameSemaphore = nil;
-    std::unique_ptr<MetalFrameUniformBuffer> frameUniformBuffer;
+    std::shared_ptr<MetalFrameUniformBuffer> frameUniformBuffer;
     std::unique_ptr<MetalShaderLibrary> shaderLibrary;
     std::unique_ptr<MetalPipelineCache> pipelineCache;
     std::unique_ptr<MetalRenderStateCache> renderStateCache;
@@ -365,25 +514,85 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalGaussianRenderPass> gaussianRenderPass;
     std::unique_ptr<MetalGaussianSortPass> gaussianSortPass;
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
+    std::unique_ptr<MetalRenderTarget> drawableDepthTarget;
     core::FrameUniforms frameUniforms;
     core::Matrix4 lastSortedViewMatrix;
     core::CameraController camera;
     std::string loadedMeshPath;
     std::string lastDiagnostic;
+    std::string lastErrorMessage;
+    std::string pendingExportPath;
     RenderViewMode viewMode = RenderViewMode::Combined;
     GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
+    mesh2splat::renderer::RendererRuntimeState runtimeState =
+        mesh2splat::renderer::RendererRuntimeState::Unknown;
     bool hasSortedGaussianDepths = false;
+    bool initialized = false;
+    bool renderingFrame = false;
+    bool exportPending = false;
     float gaussianScale = 1.0f;
     uint32_t conversionSamplesPerTriangle = kDefaultMetalConversionSamplesPerTriangle;
     uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
     uint32_t height = 0;
+    float backingScale = 1.0f;
     std::shared_ptr<MetalRendererTimingState> timingState = std::make_shared<MetalRendererTimingState>();
 };
+
+void MetalRenderer::Impl::transitionTo(mesh2splat::renderer::RendererRuntimeState nextState)
+{
+    runtimeState = nextState;
+    if (nextState != mesh2splat::renderer::RendererRuntimeState::Failed) {
+        lastErrorMessage.clear();
+    }
+}
+
+void MetalRenderer::Impl::markFailed(const std::string& message)
+{
+    runtimeState = mesh2splat::renderer::RendererRuntimeState::Failed;
+    lastErrorMessage = message;
+    recordDiagnostic(message);
+}
+
+mesh2splat::renderer::RendererRuntimeState MetalRenderer::Impl::effectiveRuntimeState() const
+{
+    if (runtimeState == mesh2splat::renderer::RendererRuntimeState::Failed ||
+        runtimeState == mesh2splat::renderer::RendererRuntimeState::Loading ||
+        runtimeState == mesh2splat::renderer::RendererRuntimeState::Exporting) {
+        return runtimeState;
+    }
+    if (pendingConversion != nullptr) {
+        return mesh2splat::renderer::RendererRuntimeState::Converting;
+    }
+    if (renderingFrame) {
+        return mesh2splat::renderer::RendererRuntimeState::Rendering;
+    }
+    return initialized
+        ? mesh2splat::renderer::RendererRuntimeState::Ready
+        : mesh2splat::renderer::RendererRuntimeState::Unknown;
+}
+
+float MetalRenderer::Impl::currentConversionProgress() const
+{
+    std::shared_ptr<PendingGaussianConversion> conversion = pendingConversion;
+    if (conversion == nullptr) {
+        return convertedGaussianCount == 0 ? 0.0f : kCompletedProgress;
+    }
+    return conversion->completed.load(std::memory_order_acquire) ? kCompletedProgress : 0.0f;
+}
 
 void MetalRenderer::Impl::recordDiagnostic(const std::string& message)
 {
     if (message.empty()) {
+        return;
+    }
+
+    if (lastDiagnostic == message) {
+        return;
+    }
+    if (lastDiagnostic.size() > message.size() &&
+        lastDiagnostic.compare(lastDiagnostic.size() - message.size(), message.size(), message) == 0 &&
+        lastDiagnostic[lastDiagnostic.size() - message.size() - 1] == '\n') {
         return;
     }
 
@@ -394,16 +603,162 @@ void MetalRenderer::Impl::recordDiagnostic(const std::string& message)
     NSLog(@"%s", message.c_str());
 }
 
+void MetalRenderer::Impl::updateDrawableSize(uint32_t nextWidth, uint32_t nextHeight)
+{
+    width = nextWidth;
+    height = nextHeight;
+    camera.resize(nextWidth, nextHeight);
+    frameUniforms.viewport[0] = static_cast<float>(nextWidth);
+    frameUniforms.viewport[1] = static_cast<float>(nextHeight);
+    frameUniforms.viewport[2] = nextWidth == 0 ? 1.0f : 1.0f / static_cast<float>(nextWidth);
+    frameUniforms.viewport[3] = nextHeight == 0 ? 1.0f : 1.0f / static_cast<float>(nextHeight);
+}
+
+bool MetalRenderer::Impl::attachDrawableColorTarget(MTLRenderPassDescriptor* descriptor, id<MTLTexture> colorTexture)
+{
+    if (descriptor == nil) {
+        recordDiagnostic("Cannot attach Metal drawable color target: render pass descriptor is nil.");
+        return false;
+    }
+    if (colorTexture == nil) {
+        recordDiagnostic("Cannot attach Metal drawable color target: drawable texture is nil.");
+        return false;
+    }
+
+    MTLRenderPassColorAttachmentDescriptor* colorAttachment = descriptor.colorAttachments[0];
+    if (colorAttachment == nil) {
+        recordDiagnostic("Cannot attach Metal drawable color target: descriptor has no color attachment.");
+        return false;
+    }
+
+    colorAttachment.texture = colorTexture;
+    if (colorAttachment.loadAction == MTLLoadActionDontCare) {
+        colorAttachment.loadAction = MTLLoadActionClear;
+    }
+    colorAttachment.storeAction = MTLStoreActionStore;
+    return true;
+}
+
+bool MetalRenderer::Impl::ensureDrawableDepthTarget(uint32_t targetWidth, uint32_t targetHeight)
+{
+    if (targetWidth == 0 || targetHeight == 0) {
+        recordDiagnostic("Cannot prepare Metal drawable depth target: drawable size is zero.");
+        return false;
+    }
+    if (deviceContext == nullptr || !deviceContext->isValid()) {
+        recordDiagnostic("Cannot prepare Metal drawable depth target: device context is invalid.");
+        return false;
+    }
+
+    const MetalRenderTargetDesc desc = makeDrawableDepthTargetDesc(targetWidth, targetHeight);
+    if (drawableDepthTarget == nullptr) {
+        drawableDepthTarget = std::make_unique<MetalRenderTarget>(*deviceContext);
+        if (!drawableDepthTarget->create(desc)) {
+            recordDiagnostic(drawableDepthTarget->lastErrorMessage());
+            drawableDepthTarget.reset();
+            return false;
+        }
+        return true;
+    }
+
+    if (drawableDepthTarget->width() == targetWidth &&
+        drawableDepthTarget->height() == targetHeight &&
+        drawableDepthTarget->isValid()) {
+        return true;
+    }
+
+    if (!drawableDepthTarget->resize(desc)) {
+        recordDiagnostic(drawableDepthTarget->lastErrorMessage());
+        return false;
+    }
+    return true;
+}
+
+bool MetalRenderer::Impl::attachDrawableDepthTarget(
+    MTLRenderPassDescriptor* descriptor,
+    uint32_t targetWidth,
+    uint32_t targetHeight)
+{
+    if (descriptor == nil) {
+        recordDiagnostic("Cannot attach Metal drawable depth target: render pass descriptor is nil.");
+        return false;
+    }
+    if (!ensureDrawableDepthTarget(targetWidth, targetHeight) || drawableDepthTarget == nullptr) {
+        return false;
+    }
+
+    id<MTLTexture> depthTexture = (__bridge id<MTLTexture>)drawableDepthTarget->depthTexture();
+    if (depthTexture == nil) {
+        recordDiagnostic("Cannot attach Metal drawable depth target: depth texture is nil.");
+        return false;
+    }
+
+    MTLRenderPassDepthAttachmentDescriptor* depthAttachment = descriptor.depthAttachment;
+    if (depthAttachment == nil) {
+        recordDiagnostic("Cannot attach Metal drawable depth target: descriptor has no depth attachment.");
+        return false;
+    }
+
+    depthAttachment.texture = depthTexture;
+    depthAttachment.loadAction = MTLLoadActionClear;
+    depthAttachment.storeAction = MTLStoreActionDontCare;
+    depthAttachment.clearDepth = drawableDepthTarget->clearDepthValue();
+    return true;
+}
+
+bool MetalRenderer::Impl::prepareDrawableRenderPassDescriptor(
+    MTLRenderPassDescriptor* descriptor,
+    id<MTLTexture> colorTexture,
+    uint32_t targetWidth,
+    uint32_t targetHeight)
+{
+    return attachDrawableColorTarget(descriptor, colorTexture) &&
+        attachDrawableDepthTarget(descriptor, targetWidth, targetHeight);
+}
+
+void MetalRenderer::Impl::markFrameSubmitted(uint32_t frameIndex)
+{
+    if (frameResources != nullptr) {
+        frameResources->markFrameSubmitted(frameIndex);
+    }
+    if (frameUniformBuffer != nullptr) {
+        frameUniformBuffer->markFrameSubmitted(frameIndex);
+    }
+}
+
+uint32_t MetalRenderer::Impl::currentGaussianCount() const
+{
+    return gaussianBuffer == nullptr ? 0 : gaussianBuffer->count();
+}
+
+void MetalRenderer::Impl::recordFrameEncodeFailure(
+    Clock::time_point frameCpuStart,
+    bool sortedGaussians,
+    bool renderedMesh,
+    bool renderedGaussians)
+{
+    if (timingState == nullptr) {
+        return;
+    }
+
+    timingState->recordFrameEncodeFailed(
+        elapsedMilliseconds(frameCpuStart, Clock::now()),
+        currentGaussianCount(),
+        sortedGaussians,
+        renderedMesh,
+        renderedGaussians);
+}
+
 bool MetalRenderer::Impl::submitSceneConversion(
     const MetalSceneResources& conversionSceneResources,
-    std::unique_ptr<MetalSceneResources>&& nextSceneResources,
+    std::unique_ptr<MetalSceneResources>* nextSceneResources,
     const core::MeshBounds& nextMeshBounds,
     std::string nextLoadedMeshPath,
     bool revertsSamplesOnFailure,
     uint32_t previousSamplesPerTriangle)
 {
     if (deviceContext == nullptr || !deviceContext->isValid()) {
-        recordDiagnostic("Cannot submit Metal mesh conversion: device context is invalid.");
+        markFailed("Cannot submit Metal mesh conversion: device context is invalid.");
         return false;
     }
     if (conversionPass == nullptr || !conversionPass->isReady()) {
@@ -435,7 +790,7 @@ bool MetalRenderer::Impl::submitSceneConversion(
     auto nextConversion = std::make_shared<PendingGaussianConversion>();
     nextConversion->nextMeshBounds = nextMeshBounds;
     nextConversion->nextLoadedMeshPath = std::move(nextLoadedMeshPath);
-    nextConversion->updatesScene = nextSceneResources != nullptr;
+    nextConversion->updatesScene = nextSceneResources != nullptr && *nextSceneResources != nullptr;
     nextConversion->revertsSamplesOnFailure = revertsSamplesOnFailure;
     nextConversion->previousSamplesPerTriangle = previousSamplesPerTriangle;
     nextConversion->gaussianBuffer = std::make_unique<MetalGaussianBuffer>(*deviceContext);
@@ -458,16 +813,23 @@ bool MetalRenderer::Impl::submitSceneConversion(
         return false;
     }
 
+    std::string conversionError;
     if (!conversionPass->encode(
             (__bridge void*)commandBuffer,
             conversionSceneResources,
             *nextConversion->gaussianBuffer,
-            conversionSamplesPerTriangle)) {
-        recordDiagnostic("Cannot submit Metal mesh conversion: failed to encode conversion pass.");
+            conversionSamplesPerTriangle,
+            &conversionError)) {
+        recordDiagnostic(
+            conversionError.empty()
+                ? "Cannot submit Metal mesh conversion: failed to encode conversion pass."
+                : "Cannot submit Metal mesh conversion: " + conversionError);
         return false;
     }
 
-    nextConversion->nextSceneResources = std::move(nextSceneResources);
+    if (nextConversion->updatesScene) {
+        nextConversion->nextSceneResources = std::move(*nextSceneResources);
+    }
     std::shared_ptr<MetalRendererTimingState> conversionTimingState = timingState;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
         bool didSucceed = true;
@@ -517,6 +879,9 @@ bool MetalRenderer::Impl::submitSceneConversion(
     }];
 
     if (!commandScheduler.commit((__bridge void*)commandBuffer)) {
+        if (nextConversion->updatesScene && nextSceneResources != nullptr) {
+            *nextSceneResources = std::move(nextConversion->nextSceneResources);
+        }
         recordDiagnostic("Cannot submit Metal mesh conversion: failed to commit command buffer.");
         return false;
     }
@@ -525,6 +890,7 @@ bool MetalRenderer::Impl::submitSceneConversion(
         timingState->recordConversionSubmitted(elapsedMilliseconds(conversionCpuStart, Clock::now()));
     }
     pendingConversion = nextConversion;
+    transitionTo(mesh2splat::renderer::RendererRuntimeState::Converting);
     return true;
 }
 
@@ -536,7 +902,7 @@ bool MetalRenderer::Impl::submitCurrentSceneConversion(bool revertsSamplesOnFail
 
     return submitSceneConversion(
         *sceneResources,
-        std::unique_ptr<MetalSceneResources>{},
+        nullptr,
         core::MeshBounds{},
         std::string{},
         revertsSamplesOnFailure,
@@ -555,7 +921,7 @@ void MetalRenderer::Impl::finalizePendingConversion()
         if (conversion->revertsSamplesOnFailure) {
             conversionSamplesPerTriangle = conversion->previousSamplesPerTriangle;
         }
-        recordDiagnostic(
+        markFailed(
             conversion->completionDiagnostic.empty()
                 ? "Metal mesh conversion command did not produce gaussians."
                 : conversion->completionDiagnostic);
@@ -572,6 +938,7 @@ void MetalRenderer::Impl::finalizePendingConversion()
     gaussianBuffer = std::move(conversion->gaussianBuffer);
     gaussianSortBuffer = std::move(conversion->sortBuffer);
     hasSortedGaussianDepths = false;
+    transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
 }
 
 MetalRenderer::MetalRenderer(void* metalDevice)
@@ -586,10 +953,14 @@ bool MetalRenderer::initialize()
 {
     if (m_impl->deviceContext == nullptr) {
         m_impl->lastDiagnostic = "Metal renderer has no device context.";
+        m_impl->lastErrorMessage = m_impl->lastDiagnostic;
+        m_impl->runtimeState = mesh2splat::renderer::RendererRuntimeState::Failed;
         return false;
     }
 
     m_impl->lastDiagnostic.clear();
+    m_impl->lastErrorMessage.clear();
+    m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Loading);
     auto appendRendererDiagnostic = [this](const std::string& message) {
         if (message.empty()) {
             return;
@@ -604,25 +975,30 @@ bool MetalRenderer::initialize()
 
     if (!m_impl->deviceContext->initialize()) {
         appendRendererDiagnostic("Failed to initialize Metal device context.");
+        m_impl->markFailed("Failed to initialize Metal device context.");
         return false;
     }
 
-    m_impl->frameSemaphore = dispatch_semaphore_create(m_impl->frameResources.frameCount());
+    m_impl->frameSemaphore = dispatch_semaphore_create(m_impl->frameResources->frameCount());
     if (m_impl->frameSemaphore == nil) {
         appendRendererDiagnostic("Failed to create Metal frame semaphore.");
+        m_impl->markFailed("Failed to create Metal frame semaphore.");
         return false;
     }
 
-    m_impl->frameUniformBuffer = std::make_unique<MetalFrameUniformBuffer>(*m_impl->deviceContext);
+    m_impl->frameUniformBuffer = std::make_shared<MetalFrameUniformBuffer>(*m_impl->deviceContext);
     if (!m_impl->frameUniformBuffer->initialize("Mesh2Splat Frame Uniforms")) {
         appendRendererDiagnostic("Failed to initialize Metal frame uniform buffers.");
+        m_impl->markFailed("Failed to initialize Metal frame uniform buffers.");
         return false;
     }
 
+    m_impl->frameResources->setDebugLabel("Mesh2Splat Frame Resources");
     m_impl->renderStateCache = std::make_unique<MetalRenderStateCache>(*m_impl->deviceContext);
     m_impl->pipelineCache = std::make_unique<MetalPipelineCache>(*m_impl->deviceContext);
     m_impl->shaderLibrary = std::make_unique<MetalShaderLibrary>(*m_impl->deviceContext);
     m_impl->sceneResources = std::make_unique<MetalSceneResources>(*m_impl->deviceContext);
+    m_impl->drawableDepthTarget = std::make_unique<MetalRenderTarget>(*m_impl->deviceContext);
 
     std::vector<core::MeshData> previewMeshes;
     previewMeshes.push_back(core::createPreviewTriangleMesh());
@@ -683,35 +1059,51 @@ bool MetalRenderer::initialize()
     }
 
     m_impl->frameUniforms = core::makeDefaultFrameUniforms(m_impl->width, m_impl->height);
+    m_impl->updateDrawableSize(m_impl->width, m_impl->height);
+    m_impl->initialized = true;
+    if (m_impl->runtimeState != mesh2splat::renderer::RendererRuntimeState::Failed) {
+        m_impl->transitionTo(
+            m_impl->pendingConversion == nullptr
+                ? mesh2splat::renderer::RendererRuntimeState::Ready
+                : mesh2splat::renderer::RendererRuntimeState::Converting);
+    }
     return true;
 }
 
 bool MetalRenderer::loadMeshFile(const std::string& filePath)
 {
     if (m_impl->deviceContext == nullptr || !m_impl->deviceContext->isValid() || filePath.empty()) {
+        m_impl->markFailed(
+            filePath.empty()
+                ? "Cannot load Metal scene: mesh file path is empty."
+                : "Cannot load Metal scene: device context is invalid.");
         return false;
     }
 
+    m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Loading);
     io::GltfSceneLoadResult loadResult;
     if (!io::loadGltfScene(filePath, loadResult)) {
-        NSLog(@"Failed to load mesh: %s", loadResult.error.c_str());
+        m_impl->markFailed(
+            loadResult.error.empty()
+                ? "Failed to load mesh: " + filePath
+                : "Failed to load mesh: " + loadResult.error);
         return false;
     }
 
     auto nextSceneResources = std::make_unique<MetalSceneResources>(*m_impl->deviceContext);
     if (!nextSceneResources->uploadMeshes(loadResult.scene.meshes)) {
-        NSLog(@"Failed to upload mesh resources: %s", filePath.c_str());
+        m_impl->markFailed("Failed to upload mesh resources: " + filePath);
         return false;
     }
 
     if (!loadResult.warning.empty()) {
-        NSLog(@"glTF load warning: %s", loadResult.warning.c_str());
+        m_impl->recordDiagnostic("glTF load warning: " + loadResult.warning);
     }
 
     const core::MeshBounds meshBounds = loadResult.scene.bounds;
     if (!m_impl->submitSceneConversion(
             *nextSceneResources,
-            std::move(nextSceneResources),
+            &nextSceneResources,
             meshBounds,
             filePath)) {
         NSLog(@"Metal mesh conversion could not be submitted: %s", filePath.c_str());
@@ -723,19 +1115,23 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
         m_impl->gaussianSortBuffer.reset();
         m_impl->convertedGaussianCount = 0;
         m_impl->hasSortedGaussianDepths = false;
+        m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
     }
     return true;
 }
 
+void MetalRenderer::resize(const mesh2splat::renderer::RendererResizeRequest& request)
+{
+    m_impl->backingScale = request.backingScale > 0.0f ? request.backingScale : 1.0f;
+    resize(request.width, request.height);
+}
+
 void MetalRenderer::resize(uint32_t width, uint32_t height)
 {
-    m_impl->width = width;
-    m_impl->height = height;
-    m_impl->camera.resize(width, height);
-    m_impl->frameUniforms.viewport[0] = static_cast<float>(width);
-    m_impl->frameUniforms.viewport[1] = static_cast<float>(height);
-    m_impl->frameUniforms.viewport[2] = width == 0 ? 1.0f : 1.0f / static_cast<float>(width);
-    m_impl->frameUniforms.viewport[3] = height == 0 ? 1.0f : 1.0f / static_cast<float>(height);
+    m_impl->updateDrawableSize(width, height);
+    if (m_impl->deviceContext != nullptr && m_impl->deviceContext->isValid() && width > 0 && height > 0) {
+        m_impl->ensureDrawableDepthTarget(width, height);
+    }
 }
 
 void MetalRenderer::setViewMode(RenderViewMode mode)
@@ -814,6 +1210,8 @@ MetalRendererStats MetalRenderer::rendererStats() const
         toResourceBytes(m_impl->gaussianBuffer == nullptr ? 0 : m_impl->gaussianBuffer->totalSizeBytes());
     stats.gaussianSortResourceBytes =
         toResourceBytes(m_impl->gaussianSortBuffer == nullptr ? 0 : m_impl->gaussianSortBuffer->sizeBytes());
+    const uint64_t renderTargetResourceBytes =
+        toResourceBytes(m_impl->drawableDepthTarget == nullptr ? 0 : m_impl->drawableDepthTarget->sizeBytes());
 
     uint64_t pendingResourceBytes = 0;
     std::shared_ptr<PendingGaussianConversion> pendingConversion = m_impl->pendingConversion;
@@ -844,6 +1242,7 @@ MetalRendererStats MetalRenderer::rendererStats() const
     addResourceBytes(totalResourceBytes, stats.sceneResourceBytes);
     addResourceBytes(totalResourceBytes, stats.gaussianResourceBytes);
     addResourceBytes(totalResourceBytes, stats.gaussianSortResourceBytes);
+    addResourceBytes(totalResourceBytes, renderTargetResourceBytes);
     addResourceBytes(totalResourceBytes, stats.pendingConversionResourceBytes);
     stats.trackedResourceBytes = totalResourceBytes;
     return stats;
@@ -857,6 +1256,195 @@ const std::string& MetalRenderer::lastDiagnostic() const
 const std::string& MetalRenderer::loadedMeshPath() const
 {
     return m_impl->loadedMeshPath;
+}
+
+mesh2splat::renderer::RendererSceneLoadResult MetalRenderer::loadScene(
+    const mesh2splat::renderer::RendererSceneLoadRequest& request)
+{
+    mesh2splat::renderer::RendererSceneLoadResult result;
+    result.accepted = !request.filePath.empty();
+    if (!result.accepted) {
+        result.diagnostic = "Scene file path is empty.";
+        m_impl->markFailed(result.diagnostic);
+        return result;
+    }
+    if (!request.replaceCurrentScene) {
+        result.diagnostic = "Metal renderer only supports replacing the current scene.";
+        m_impl->recordDiagnostic(result.diagnostic);
+        return result;
+    }
+    if (!sceneKindCanLoadAsMesh(request.kind, request.filePath)) {
+        result.accepted = false;
+        result.diagnostic = "Metal renderer scene loading currently supports .glb/.gltf meshes only.";
+        m_impl->recordDiagnostic(result.diagnostic);
+        return result;
+    }
+
+    result.loaded = loadMeshFile(request.filePath);
+    result.diagnostic = lastDiagnostic();
+    return result;
+}
+
+mesh2splat::renderer::RendererConversionResult MetalRenderer::startConversion(
+    const mesh2splat::renderer::RendererConversionRequest& request)
+{
+    mesh2splat::renderer::RendererConversionResult result;
+    result.samplesPerTriangle = conversionSamplesPerTriangle();
+    result.convertedGaussianCount = convertedGaussianCount();
+    if (isConvertingGaussians()) {
+        result.diagnostic = "Renderer is already converting gaussians.";
+        return result;
+    }
+    if (m_impl->sceneResources == nullptr || !m_impl->sceneResources->isValid()) {
+        result.diagnostic = "Cannot start Metal mesh conversion: no valid scene resources are loaded.";
+        m_impl->recordDiagnostic(result.diagnostic);
+        return result;
+    }
+
+    const uint32_t previousSamples = m_impl->conversionSamplesPerTriangle;
+    const uint32_t requestedSamples =
+        request.samplesPerTriangle == 0
+            ? previousSamples
+            : normalizedConversionSamples(request.samplesPerTriangle);
+    result.accepted = true;
+    if (requestedSamples != previousSamples) {
+        m_impl->conversionSamplesPerTriangle = requestedSamples;
+    }
+
+    result.started = m_impl->submitCurrentSceneConversion(requestedSamples != previousSamples, previousSamples);
+    if (!result.started && requestedSamples != previousSamples) {
+        m_impl->conversionSamplesPerTriangle = previousSamples;
+    }
+    if (!result.started && request.forceRebuild) {
+        m_impl->recordDiagnostic("Metal mesh conversion rebuild could not be submitted.");
+    }
+    result.samplesPerTriangle = conversionSamplesPerTriangle();
+    result.convertedGaussianCount = convertedGaussianCount();
+    result.diagnostic = lastDiagnostic();
+    return result;
+}
+
+mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
+    const mesh2splat::renderer::RendererModeRequest& request)
+{
+    setViewMode(request.viewMode);
+    setGaussianVisualizationMode(request.gaussianVisualizationMode);
+    setGaussianScale(request.gaussianScale);
+
+    mesh2splat::renderer::RendererModeResult result;
+    result.applied = true;
+    result.viewMode = viewMode();
+    result.gaussianVisualizationMode = gaussianVisualizationMode();
+    result.gaussianScale = gaussianScale();
+    result.diagnostic = lastDiagnostic();
+    return result;
+}
+
+mesh2splat::renderer::RendererExportPlyResult MetalRenderer::exportPly(
+    const mesh2splat::renderer::RendererExportPlyRequest& request)
+{
+    mesh2splat::renderer::RendererExportPlyResult result;
+    result.accepted = !request.filePath.empty();
+    result.requestedCount = convertedGaussianCount();
+    if (!result.accepted) {
+        result.diagnostic = "PLY export file path is empty.";
+        m_impl->recordDiagnostic(result.diagnostic);
+        return result;
+    }
+    if (isConvertingGaussians()) {
+        result.diagnostic = "PLY export is waiting for Metal mesh conversion to finish.";
+        m_impl->pendingExportPath = request.filePath;
+        m_impl->exportPending = true;
+        m_impl->recordDiagnostic(result.diagnostic);
+        return result;
+    }
+    if (m_impl->gaussianBuffer == nullptr || m_impl->gaussianBuffer->count() == 0) {
+        result.diagnostic = "PLY export requires converted gaussians.";
+        m_impl->recordDiagnostic(result.diagnostic);
+        return result;
+    }
+
+    m_impl->pendingExportPath = request.filePath;
+    m_impl->exportPending = true;
+    m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Exporting);
+    result.diagnostic = "PLY export hook is connected, but Metal gaussian readback/writeback is not implemented yet.";
+    m_impl->recordDiagnostic(result.diagnostic);
+    m_impl->exportPending = false;
+    m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
+    return result;
+}
+
+bool MetalRenderer::handleInputEvent(const mesh2splat::renderer::RendererInputEvent& event)
+{
+    switch (event.type) {
+    case mesh2splat::renderer::RendererInputEventType::Resize:
+        m_impl->backingScale = event.backingScale > 0.0f ? event.backingScale : 1.0f;
+        resize(event.width, event.height);
+        return true;
+    case mesh2splat::renderer::RendererInputEventType::FrameTick:
+        return true;
+    case mesh2splat::renderer::RendererInputEventType::Unknown:
+    case mesh2splat::renderer::RendererInputEventType::Key:
+    case mesh2splat::renderer::RendererInputEventType::MouseButton:
+    case mesh2splat::renderer::RendererInputEventType::MouseMove:
+    case mesh2splat::renderer::RendererInputEventType::MouseScroll:
+    case mesh2splat::renderer::RendererInputEventType::Text:
+    case mesh2splat::renderer::RendererInputEventType::Modifiers:
+        break;
+    }
+    return false;
+}
+
+mesh2splat::renderer::RendererFrameResult MetalRenderer::tickFrame(
+    const mesh2splat::renderer::RendererFrameTick& frame)
+{
+    const uint64_t submittedBefore = rendererStats().submittedFrameCount;
+    draw(frame.renderPassDescriptor, frame.drawable, frame.inputState, frame.deltaTimeSeconds);
+
+    mesh2splat::renderer::RendererFrameResult result;
+    result.stats = rendererStats();
+    result.submitted = result.stats.submittedFrameCount > submittedBefore;
+    result.diagnostic = lastDiagnostic();
+    return result;
+}
+
+mesh2splat::renderer::RendererDiagnostics MetalRenderer::diagnostics() const
+{
+    mesh2splat::renderer::RendererDiagnostics diagnostics;
+    diagnostics.state = runtimeState();
+    diagnostics.severity = severityForState(diagnostics.state, m_impl->lastDiagnostic);
+    diagnostics.stats = rendererStats();
+    diagnostics.message = m_impl->lastDiagnostic;
+    diagnostics.lastError = m_impl->lastErrorMessage;
+    diagnostics.loadedScenePath = loadedMeshPath();
+    diagnostics.progress = conversionProgress();
+    diagnostics.convertedGaussianCount = convertedGaussianCount();
+    diagnostics.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
+    diagnostics.viewMode = viewMode();
+    diagnostics.gaussianVisualizationMode = gaussianVisualizationMode();
+    diagnostics.gaussianScale = gaussianScale();
+    diagnostics.converting = isConvertingGaussians();
+    diagnostics.hasScene = m_impl->sceneResources != nullptr && m_impl->sceneResources->isValid();
+    diagnostics.hasGaussians = convertedGaussianCount() > 0;
+    if (diagnostics.message.empty()) {
+        diagnostics.message = std::string("Metal renderer is ") + rendererStateName(diagnostics.state) + ".";
+    }
+    return diagnostics;
+}
+
+mesh2splat::renderer::RendererRuntimeState MetalRenderer::runtimeState() const
+{
+    return m_impl->effectiveRuntimeState();
+}
+
+float MetalRenderer::conversionProgress() const
+{
+    return m_impl->currentConversionProgress();
+}
+
+std::string MetalRenderer::lastError() const
+{
+    return m_impl->lastErrorMessage;
 }
 
 void MetalRenderer::draw(
@@ -876,35 +1464,65 @@ void MetalRenderer::draw(
     }
 
     const Clock::time_point frameCpuStart = Clock::now();
-    m_impl->frameResources.beginFrame();
+    auto* descriptor = (__bridge MTLRenderPassDescriptor*)renderPassDescriptor;
+    id<CAMetalDrawable> metalDrawable = (__bridge id<CAMetalDrawable>)drawable;
+    if (descriptor == nil || metalDrawable == nil || metalDrawable.texture == nil) {
+        m_impl->recordDiagnostic("Cannot draw Metal frame: render pass descriptor or drawable texture is unavailable.");
+        m_impl->recordFrameEncodeFailure(frameCpuStart, false, false, false);
+        dispatch_semaphore_signal(m_impl->frameSemaphore);
+        return;
+    }
+
+    const uint32_t drawableWidth = textureWidth(metalDrawable.texture);
+    const uint32_t drawableHeight = textureHeight(metalDrawable.texture);
+    if (drawableWidth == 0 || drawableHeight == 0) {
+        m_impl->recordDiagnostic("Cannot draw Metal frame: drawable texture size is zero.");
+        m_impl->recordFrameEncodeFailure(frameCpuStart, false, false, false);
+        dispatch_semaphore_signal(m_impl->frameSemaphore);
+        return;
+    }
+
+    if (drawableWidth != m_impl->width || drawableHeight != m_impl->height) {
+        m_impl->updateDrawableSize(drawableWidth, drawableHeight);
+    }
+
+    m_impl->renderingFrame = true;
+    m_impl->frameResources->beginFrame("Mesh2Splat Metal Frame");
     m_impl->finalizePendingConversion();
     m_impl->camera.update(inputState, deltaTimeSeconds);
     m_impl->camera.writeFrameUniforms(m_impl->frameUniforms);
-    m_impl->frameUniforms.frameIndex = m_impl->frameResources.currentFrameIndex();
+    const uint32_t frameResourceIndex = m_impl->frameResources->currentFrameIndex();
+    m_impl->frameUniforms.frameIndex = frameResourceIndex;
     m_impl->frameUniforms.renderMode = static_cast<uint32_t>(m_impl->gaussianVisualizationMode);
     m_impl->frameUniforms.gaussianParams[0] = m_impl->gaussianScale;
     if (m_impl->frameUniformBuffer != nullptr) {
         m_impl->frameUniformBuffer->update(
-            m_impl->frameResources.currentFrameIndex(),
+            frameResourceIndex,
             m_impl->frameUniforms);
     }
 
-    auto* descriptor = (__bridge MTLRenderPassDescriptor*)renderPassDescriptor;
-    id<CAMetalDrawable> metalDrawable = (__bridge id<CAMetalDrawable>)drawable;
+    m_impl->attachDrawableDepthTarget(descriptor, drawableWidth, drawableHeight);
     MetalCommandScheduler commandScheduler(m_impl->deviceContext->nativeCommandQueue());
     id<MTLCommandBuffer> commandBuffer =
         (__bridge id<MTLCommandBuffer>)commandScheduler.createCommandBuffer("Mesh2Splat Metal Frame");
     if (commandBuffer == nil) {
+        m_impl->recordDiagnostic("Cannot draw Metal frame: failed to create command buffer.");
+        m_impl->recordFrameEncodeFailure(frameCpuStart, false, false, false);
+        m_impl->renderingFrame = false;
         dispatch_semaphore_signal(m_impl->frameSemaphore);
         return;
     }
     dispatch_semaphore_t frameSemaphore = m_impl->frameSemaphore;
     std::shared_ptr<MetalRendererTimingState> frameTimingState = m_impl->timingState;
+    std::shared_ptr<MetalFrameResources> frameResources = m_impl->frameResources;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completedCommandBuffer) {
         if (frameTimingState != nullptr) {
             frameTimingState->recordFrameCompleted(
                 completedCommandBuffer.status == MTLCommandBufferStatusCompleted,
                 commandBufferGpuMilliseconds(completedCommandBuffer));
+        }
+        if (frameResources != nullptr) {
+            frameResources->markFrameCompleted(frameResourceIndex);
         }
         dispatch_semaphore_signal(frameSemaphore);
     }];
@@ -922,10 +1540,12 @@ void MetalRenderer::draw(
                 (__bridge void*)commandBuffer,
                 *m_impl->gaussianBuffer,
                 *m_impl->gaussianSortBuffer,
-                m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
+                m_impl->frameUniformBuffer->buffer(frameResourceIndex));
             if (m_impl->hasSortedGaussianDepths) {
                 sortedGaussiansThisFrame = true;
                 m_impl->lastSortedViewMatrix = m_impl->frameUniforms.viewMatrix;
+            } else {
+                m_impl->recordDiagnostic(m_impl->gaussianSortPass->lastDiagnostic());
             }
         }
     }
@@ -942,7 +1562,16 @@ void MetalRenderer::draw(
                 false,
                 false);
         }
-        commandScheduler.commit((__bridge void*)commandBuffer);
+        m_impl->recordDiagnostic("Cannot draw Metal frame: failed to create render command encoder.");
+        const bool didCommit = commandScheduler.commit((__bridge void*)commandBuffer);
+        if (didCommit) {
+            m_impl->frameResources->markFrameSubmitted(frameResourceIndex);
+            m_impl->renderingFrame = false;
+        } else {
+            m_impl->recordFrameEncodeFailure(frameCpuStart, sortedGaussiansThisFrame, false, false);
+            m_impl->renderingFrame = false;
+            dispatch_semaphore_signal(m_impl->frameSemaphore);
+        }
         return;
     }
     encoder.label = @"Mesh2Splat Drawable Render";
@@ -954,7 +1583,8 @@ void MetalRenderer::draw(
         m_impl->meshRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->sceneResources,
-            m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
+            m_impl->frameUniformBuffer->buffer(frameResourceIndex));
+        m_impl->recordDiagnostic(m_impl->meshRenderPass->lastDiagnostic());
     }
     const bool renderGaussiansThisFrame =
         showGaussians && m_impl->hasSortedGaussianDepths &&
@@ -965,7 +1595,8 @@ void MetalRenderer::draw(
             (__bridge void*)encoder,
             *m_impl->gaussianBuffer,
             *m_impl->gaussianSortBuffer,
-            m_impl->frameUniformBuffer->buffer(m_impl->frameResources.currentFrameIndex()));
+            m_impl->frameUniformBuffer->buffer(frameResourceIndex));
+        m_impl->recordDiagnostic(m_impl->gaussianRenderPass->lastDiagnostic());
     }
     [encoder endEncoding];
 
@@ -979,8 +1610,31 @@ void MetalRenderer::draw(
             renderMeshThisFrame,
             renderGaussiansThisFrame);
     }
-    [commandBuffer presentDrawable:metalDrawable];
-    commandScheduler.commit((__bridge void*)commandBuffer);
+    if (!MetalCommandScheduler::presentDrawable((__bridge void*)commandBuffer, (__bridge void*)metalDrawable)) {
+        m_impl->recordDiagnostic("Cannot draw Metal frame: failed to schedule drawable presentation.");
+        m_impl->recordFrameEncodeFailure(
+            frameCpuStart,
+            sortedGaussiansThisFrame,
+            renderMeshThisFrame,
+            renderGaussiansThisFrame);
+        m_impl->renderingFrame = false;
+        dispatch_semaphore_signal(m_impl->frameSemaphore);
+        return;
+    }
+
+    if (commandScheduler.commit((__bridge void*)commandBuffer)) {
+        m_impl->frameResources->markFrameSubmitted(frameResourceIndex);
+        m_impl->renderingFrame = false;
+    } else {
+        m_impl->recordDiagnostic("Cannot draw Metal frame: failed to commit command buffer.");
+        m_impl->recordFrameEncodeFailure(
+            frameCpuStart,
+            sortedGaussiansThisFrame,
+            renderMeshThisFrame,
+            renderGaussiansThisFrame);
+        m_impl->renderingFrame = false;
+        dispatch_semaphore_signal(m_impl->frameSemaphore);
+    }
 }
 
 } // namespace mesh2splat::metal

@@ -22,6 +22,7 @@ public:
 
     bool initialize() override;
     bool loadMeshFile(const std::string& filePath) override;
+    void resize(const mesh2splat::renderer::RendererResizeRequest& request) override;
     void resize(uint32_t width, uint32_t height) override;
     void setViewMode(RenderViewMode mode) override;
     RenderViewMode viewMode() const override;
@@ -36,6 +37,21 @@ public:
     MetalRendererStats rendererStats() const override;
     const std::string& lastDiagnostic() const override;
     const std::string& loadedMeshPath() const override;
+    mesh2splat::renderer::RendererSceneLoadResult loadScene(
+        const mesh2splat::renderer::RendererSceneLoadRequest& request) override;
+    mesh2splat::renderer::RendererConversionResult startConversion(
+        const mesh2splat::renderer::RendererConversionRequest& request = {}) override;
+    mesh2splat::renderer::RendererModeResult setRenderMode(
+        const mesh2splat::renderer::RendererModeRequest& request) override;
+    mesh2splat::renderer::RendererExportPlyResult exportPly(
+        const mesh2splat::renderer::RendererExportPlyRequest& request) override;
+    bool handleInputEvent(const mesh2splat::renderer::RendererInputEvent& event) override;
+    mesh2splat::renderer::RendererFrameResult tickFrame(
+        const mesh2splat::renderer::RendererFrameTick& frame) override;
+    mesh2splat::renderer::RendererDiagnostics diagnostics() const override;
+    mesh2splat::renderer::RendererRuntimeState runtimeState() const override;
+    float conversionProgress() const override;
+    std::string lastError() const override;
     void draw(
         void* renderPassDescriptor,
         void* drawable,

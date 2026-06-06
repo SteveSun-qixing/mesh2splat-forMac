@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 
 namespace mesh2splat::metal {
 
@@ -20,6 +21,9 @@ struct MetalMeshMaterial {
     float normalScale = 1.0f;
 };
 
+static_assert(std::is_standard_layout<MetalMeshMaterial>::value, "MetalMeshMaterial must remain a plain GPU upload record.");
+static_assert(sizeof(MetalMeshMaterial) == 48, "MetalMeshMaterial must match the Metal mesh material shader layout.");
+
 struct MetalMeshDrawRange {
     uint32_t vertexOffset = 0;
     uint32_t vertexCount = 0;
@@ -27,6 +31,7 @@ struct MetalMeshDrawRange {
     float surfaceArea = 0.0f;
 };
 
+static_assert(std::is_standard_layout<MetalMeshDrawRange>::value, "MetalMeshDrawRange must remain a plain GPU upload record.");
 static_assert(sizeof(MetalMeshDrawRange) == 16, "MetalMeshDrawRange must stay a compact 16-byte metadata record.");
 
 struct MetalMeshTextureDiagnostics {

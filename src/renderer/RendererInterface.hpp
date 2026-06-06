@@ -1,14 +1,13 @@
 #pragma once
 
 #include "core/InputState.hpp"
+#include "renderer/event.hpp"
 
 #include <cstdint>
 #include <memory>
 #include <string>
 
 namespace mesh2splat::renderer {
-
-struct RendererInputEvent;
 
 enum class RenderViewMode : uint32_t {
     Combined = 0,
@@ -48,27 +47,165 @@ enum class RendererDiagnosticSeverity : uint32_t {
     Error = 2,
 };
 
+enum class RendererConversionPhase : uint32_t {
+    Idle = 0,
+    Queued = 1,
+    Preparing = 2,
+    Running = 3,
+    Completed = 4,
+    Failed = 5,
+    Cancelled = 6,
+};
+
+enum class RendererStateDirtyFlag : uint32_t {
+    None = 0,
+    LoadedScene = 1u << 0,
+    SceneCounts = 1u << 1,
+    RenderSettings = 1u << 2,
+    ConversionState = 1u << 3,
+    FrameStats = 1u << 4,
+    Diagnostics = 1u << 5,
+    RuntimeState = 1u << 6,
+    All = 0x7Fu,
+};
+
+using RendererStateDirtyFlags = uint32_t;
+
 struct RendererResizeRequest {
     uint32_t width = 0;
     uint32_t height = 0;
     float backingScale = 1.0f;
+    uint64_t requestId = 0;
+    bool minimized = false;
 };
 
 struct RendererSceneLoadRequest {
     std::string filePath;
     RendererSceneKind kind = RendererSceneKind::Auto;
     bool replaceCurrentScene = true;
+    uint64_t requestId = 0;
+};
+
+struct RendererLoadedSceneSnapshot {
+    bool loaded = false;
+    RendererSceneKind kind = RendererSceneKind::Auto;
+    std::string filePath;
+    std::string displayName;
+    uint64_t revision = 0;
+
+    bool empty() const
+    {
+        return !loaded && filePath.empty() && displayName.empty();
+    }
+
+    std::string label() const
+    {
+        if (!displayName.empty()) {
+            return displayName;
+        }
+        return filePath;
+    }
+};
+
+struct RendererSceneCounts {
+    uint64_t nodeCount = 0;
+    uint64_t meshCount = 0;
+    uint64_t visibleMeshCount = 0;
+    uint64_t primitiveCount = 0;
+    uint64_t materialCount = 0;
+    uint64_t textureCount = 0;
+    uint64_t vertexCount = 0;
+    uint64_t triangleCount = 0;
+    uint64_t gaussianCount = 0;
+    uint64_t visibleGaussianCount = 0;
+
+    bool empty() const
+    {
+        return nodeCount == 0 &&
+            meshCount == 0 &&
+            visibleMeshCount == 0 &&
+            primitiveCount == 0 &&
+            materialCount == 0 &&
+            textureCount == 0 &&
+            vertexCount == 0 &&
+            triangleCount == 0 &&
+            gaussianCount == 0 &&
+            visibleGaussianCount == 0;
+    }
+
+    bool hasRenderableContent() const
+    {
+        return meshCount > 0 || gaussianCount > 0;
+    }
+
+    bool hasVisibleMesh() const
+    {
+        return visibleMeshCount > 0;
+    }
+};
+
+struct RendererRenderSettingsSummary {
+    uint32_t drawableWidth = 0;
+    uint32_t drawableHeight = 0;
+    float backingScale = 1.0f;
+    RenderViewMode viewMode = RenderViewMode::Combined;
+    GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
+    float gaussianScale = 1.0f;
+    uint32_t conversionSamplesPerTriangle = 1;
+    bool meshRenderingEnabled = true;
+    bool gaussianRenderingEnabled = true;
+    bool depthTestEnabled = true;
+    bool lightingEnabled = true;
+    bool splitScreenEnabled = false;
+    float splitScreenPosition = 0.5f;
+
+    bool emptyDrawable() const
+    {
+        return drawableWidth == 0 || drawableHeight == 0;
+    }
+};
+
+struct RendererConversionState {
+    RendererConversionPhase phase = RendererConversionPhase::Idle;
+    bool active = false;
+    bool progressKnown = false;
+    float progress = 0.0f;
+    uint32_t samplesPerTriangle = 1;
+    uint64_t sourceTriangleCount = 0;
+    uint64_t targetGaussianCount = 0;
+    uint64_t convertedGaussianCount = 0;
+    double lastCpuSubmitMs = 0.0;
+    double averageCpuSubmitMs = 0.0;
+    double lastGpuMs = 0.0;
+    double averageGpuMs = 0.0;
+    std::string diagnostic;
+
+    bool completed() const
+    {
+        return phase == RendererConversionPhase::Completed;
+    }
+
+    bool failed() const
+    {
+        return phase == RendererConversionPhase::Failed;
+    }
 };
 
 struct RendererSceneLoadResult {
     bool accepted = false;
     bool loaded = false;
     std::string diagnostic;
+    uint64_t requestId = 0;
+    RendererSceneKind kind = RendererSceneKind::Auto;
+    std::string filePath;
+    std::string displayName;
+    RendererSceneCounts sceneCounts;
 };
 
 struct RendererConversionRequest {
     uint32_t samplesPerTriangle = 0;
     bool forceRebuild = false;
+    uint64_t requestId = 0;
 };
 
 struct RendererConversionResult {
@@ -77,6 +214,8 @@ struct RendererConversionResult {
     uint32_t samplesPerTriangle = 0;
     uint32_t convertedGaussianCount = 0;
     std::string diagnostic;
+    uint64_t requestId = 0;
+    RendererConversionState state;
 };
 
 struct RendererExportPlyRequest {
@@ -84,6 +223,7 @@ struct RendererExportPlyRequest {
     uint32_t format = 0;
     float scaleMultiplier = 1.0f;
     bool skipInvalidRecords = true;
+    uint64_t requestId = 0;
 };
 
 struct RendererExportPlyResult {
@@ -92,12 +232,14 @@ struct RendererExportPlyResult {
     uint64_t requestedCount = 0;
     uint64_t writtenCount = 0;
     std::string diagnostic;
+    uint64_t requestId = 0;
 };
 
 struct RendererModeRequest {
     RenderViewMode viewMode = RenderViewMode::Combined;
     GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
     float gaussianScale = 1.0f;
+    uint64_t requestId = 0;
 };
 
 struct RendererModeResult {
@@ -106,6 +248,7 @@ struct RendererModeResult {
     GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
     float gaussianScale = 1.0f;
     std::string diagnostic;
+    uint64_t requestId = 0;
 };
 
 struct RendererFrameTick {
@@ -114,6 +257,9 @@ struct RendererFrameTick {
     core::InputState inputState;
     double deltaTimeSeconds = 0.0;
     uint64_t frameIndex = 0;
+    RendererResizeRequest resize;
+    uint64_t frameNumber = 0;
+    bool resizeRequested = false;
 };
 
 struct RendererStats {
@@ -141,12 +287,25 @@ struct RendererStats {
     bool lastFrameSortedGaussians = false;
     bool lastFrameRenderedMesh = false;
     bool lastFrameRenderedGaussians = false;
+    uint64_t frameNumber = 0;
+    uint32_t lastFrameMeshCount = 0;
+    uint32_t lastFrameVisibleMeshCount = 0;
+    uint64_t lastFrameTriangleCount = 0;
+    uint64_t lastFrameDrawCallCount = 0;
 };
 
 struct RendererFrameResult {
     bool submitted = false;
     RendererStats stats;
     std::string diagnostic;
+    bool drawableAvailable = false;
+    uint64_t frameIndex = 0;
+    uint64_t frameNumber = 0;
+    RendererRuntimeState state = RendererRuntimeState::Unknown;
+    RendererSceneCounts sceneCounts;
+    RendererConversionState conversion;
+    bool renderedMesh = false;
+    bool renderedGaussians = false;
 };
 
 struct RendererDiagnostics {
@@ -165,7 +324,53 @@ struct RendererDiagnostics {
     bool converting = false;
     bool hasScene = false;
     bool hasGaussians = false;
+    uint64_t revision = 0;
+    RendererLoadedSceneSnapshot loadedScene;
+    RendererSceneCounts sceneCounts;
+    RendererRenderSettingsSummary renderSettings;
+    RendererConversionState conversion;
+    std::string statusText;
+    bool hasVisibleMesh = false;
 };
+
+struct RendererStateSnapshot {
+    uint64_t revision = 0;
+    RendererRuntimeState runtimeState = RendererRuntimeState::Unknown;
+    RendererDiagnosticSeverity diagnosticSeverity = RendererDiagnosticSeverity::Info;
+    RendererLoadedSceneSnapshot loadedScene;
+    RendererSceneCounts sceneCounts;
+    RendererRenderSettingsSummary renderSettings;
+    RendererConversionState conversion;
+    RendererStats stats;
+    std::string diagnostic;
+    std::string lastError;
+    std::string statusText;
+    RendererStateDirtyFlags dirtyFlags = 0;
+
+    bool dirty() const
+    {
+        return dirtyFlags != 0;
+    }
+
+    bool hasDirtyFlag(RendererStateDirtyFlag flag) const
+    {
+        return (dirtyFlags & static_cast<RendererStateDirtyFlags>(flag)) != 0;
+    }
+};
+
+inline void rendererStateSetDirtyFlag(
+    RendererStateDirtyFlags& flags,
+    RendererStateDirtyFlag flag)
+{
+    flags |= static_cast<RendererStateDirtyFlags>(flag);
+}
+
+inline void rendererStateClearDirtyFlag(
+    RendererStateDirtyFlags& flags,
+    RendererStateDirtyFlag flag)
+{
+    flags &= ~static_cast<RendererStateDirtyFlags>(flag);
+}
 
 class Renderer {
 public:

@@ -1,5 +1,6 @@
 #include "MetalGaussianRenderPass.hpp"
 
+#include "MetalBindings.hpp"
 #include "MetalDeviceContext.hpp"
 #include "MetalGaussianBuffer.hpp"
 #include "MetalGaussianSortBuffer.hpp"
@@ -16,7 +17,6 @@
 #include <limits>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace mesh2splat::metal {
 namespace {
@@ -104,21 +104,22 @@ struct MetalGaussianRenderPass::Impl {
 
     void beginEncodeDiagnostics(
         const MetalGaussianBuffer& gaussianBuffer,
-        const MetalGaussianSortBuffer& sortBuffer,
+        const MetalGaussianSortBuffer* sortBuffer,
         bool ready) const
     {
         lastEncodeDiagnostics = {};
         lastEncodeDiagnostics.ready = ready;
         lastEncodeDiagnostics.gaussianBufferValid = gaussianBuffer.isValid();
-        lastEncodeDiagnostics.sortBufferValid = sortBuffer.isValid();
+        lastEncodeDiagnostics.sortBufferValid = sortBuffer != nullptr && sortBuffer->isValid();
         lastEncodeDiagnostics.depthTestEnabled = true;
         lastEncodeDiagnostics.depthWriteEnabled = false;
         lastEncodeDiagnostics.gaussianCapacity = gaussianBuffer.capacity();
         lastEncodeDiagnostics.gaussianCount = gaussianBuffer.count();
-        lastEncodeDiagnostics.sortCapacity = sortBuffer.capacity();
-        lastEncodeDiagnostics.sortCount = sortBuffer.count();
+        lastEncodeDiagnostics.sortCapacity = sortBuffer == nullptr ? 0 : sortBuffer->capacity();
+        lastEncodeDiagnostics.sortCount = sortBuffer == nullptr ? 0 : sortBuffer->count();
         lastEncodeDiagnostics.gaussianResourceBytes = gaussianBuffer.totalSizeBytes();
-        lastEncodeDiagnostics.sortResourceBytes = sortBuffer.resourceStats().totalBytes;
+        lastEncodeDiagnostics.sortResourceBytes =
+            sortBuffer == nullptr ? 0 : sortBuffer->resourceStats().totalBytes;
         lastEncodeDiagnostics.identityIndexCapacity = identityIndexCapacity;
         lastEncodeDiagnostics.identityIndexBytes = identityIndexCapacity * sizeof(uint32_t);
         lastEncodeDiagnostics.colorFormat = textureFormatName(colorFormat);
@@ -142,24 +143,31 @@ struct MetalGaussianRenderPass::Impl {
             return false;
         }
 
+        const std::size_t grownCapacity =
+            identityIndexCapacity > static_cast<std::size_t>(std::numeric_limits<uint32_t>::max()) / 2
+                ? static_cast<std::size_t>(std::numeric_limits<uint32_t>::max())
+                : identityIndexCapacity * 2;
         const std::size_t newCapacity =
-            std::max<std::size_t>(count, std::max<std::size_t>(identityIndexCapacity * 2, 256));
+            std::max<std::size_t>(count, std::max<std::size_t>(grownCapacity, 256));
         if (newCapacity > (std::numeric_limits<NSUInteger>::max() / sizeof(uint32_t))) {
             setErrorMessage(diagnostic, "Metal gaussian render pass cannot create identity indices: size overflow.");
             return false;
         }
 
-        std::vector<uint32_t> indices(newCapacity);
-        for (std::size_t index = 0; index < newCapacity; ++index) {
-            indices[index] = static_cast<uint32_t>(index);
-        }
-
-        id<MTLBuffer> newBuffer = [device newBufferWithBytes:indices.data()
-                                                      length:newCapacity * sizeof(uint32_t)
-                                                     options:MTLResourceStorageModeShared];
+        const MTLResourceOptions options = MTLResourceStorageModeShared | MTLResourceCPUCacheModeWriteCombined;
+        id<MTLBuffer> newBuffer = [device newBufferWithLength:newCapacity * sizeof(uint32_t) options:options];
         if (newBuffer == nil) {
             setErrorMessage(diagnostic, "Metal gaussian render pass cannot create identity index buffer.");
             return false;
+        }
+        if (newBuffer.contents == nullptr) {
+            setErrorMessage(diagnostic, "Metal gaussian render pass cannot fill identity index buffer.");
+            return false;
+        }
+
+        uint32_t* indices = static_cast<uint32_t*>(newBuffer.contents);
+        for (std::size_t index = 0; index < newCapacity; ++index) {
+            indices[index] = static_cast<uint32_t>(index);
         }
 
         newBuffer.label = @"Mesh2Splat Gaussian Identity Indices";
@@ -205,8 +213,8 @@ bool MetalGaussianRenderPass::initialize(
 
     MetalRenderPipelineDesc pipelineDesc;
     pipelineDesc.label = "Gaussian Preview Pipeline";
-    pipelineDesc.vertexFunction = "gaussianPreviewVertex";
-    pipelineDesc.fragmentFunction = "gaussianPreviewFragment";
+    pipelineDesc.vertexFunction = std::string(bindings::functions::kGaussianPreviewVertex);
+    pipelineDesc.fragmentFunction = std::string(bindings::functions::kGaussianPreviewFragment);
     pipelineDesc.colorFormat = colorFormat;
     pipelineDesc.depthFormat = depthFormat;
     pipelineDesc.depthEnabled = true;
@@ -302,7 +310,24 @@ MetalGaussianRenderPassDiagnostics MetalGaussianRenderPass::lastEncodeDiagnostic
 void MetalGaussianRenderPass::encode(
     void* renderCommandEncoder,
     const MetalGaussianBuffer& gaussianBuffer,
+    void* frameUniformBuffer) const
+{
+    encodeImpl(renderCommandEncoder, gaussianBuffer, nullptr, frameUniformBuffer);
+}
+
+void MetalGaussianRenderPass::encode(
+    void* renderCommandEncoder,
+    const MetalGaussianBuffer& gaussianBuffer,
     const MetalGaussianSortBuffer& sortBuffer,
+    void* frameUniformBuffer) const
+{
+    encodeImpl(renderCommandEncoder, gaussianBuffer, &sortBuffer, frameUniformBuffer);
+}
+
+void MetalGaussianRenderPass::encodeImpl(
+    void* renderCommandEncoder,
+    const MetalGaussianBuffer& gaussianBuffer,
+    const MetalGaussianSortBuffer* sortBuffer,
     void* frameUniformBuffer) const
 {
     if (m_impl == nullptr) {
@@ -342,16 +367,19 @@ void MetalGaussianRenderPass::encode(
 
     uint32_t instanceCount = gaussianBuffer.count();
     id<MTLBuffer> indexBuffer = nil;
-    if (sortBuffer.isValid() &&
-        sortBuffer.count() == gaussianBuffer.count() &&
-        static_cast<std::size_t>(sortBuffer.count()) <= sortBuffer.capacity()) {
-        indexBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeIndexBuffer();
+    if (sortBuffer != nullptr &&
+        sortBuffer->isValid() &&
+        sortBuffer->count() == gaussianBuffer.count() &&
+        static_cast<std::size_t>(sortBuffer->count()) <= sortBuffer->capacity()) {
+        indexBuffer = (__bridge id<MTLBuffer>)sortBuffer->nativeIndexBuffer();
         m_impl->lastEncodeDiagnostics.usedSortedIndices = true;
         m_impl->lastEncodeDiagnostics.indexSource = "sorted";
     } else {
-        if (!sortBuffer.isValid()) {
+        if (sortBuffer == nullptr) {
+            m_impl->lastEncodeDiagnostics.indexFallbackReason = "sort buffer unavailable";
+        } else if (!sortBuffer->isValid()) {
             m_impl->lastEncodeDiagnostics.indexFallbackReason = "sort buffer invalid";
-        } else if (sortBuffer.count() != gaussianBuffer.count()) {
+        } else if (sortBuffer->count() != gaussianBuffer.count()) {
             m_impl->lastEncodeDiagnostics.indexFallbackReason = "gaussian/sort counts out of sync";
         } else {
             m_impl->lastEncodeDiagnostics.indexFallbackReason = "sort count exceeds sort capacity";
@@ -392,10 +420,18 @@ void MetalGaussianRenderPass::encode(
     [encoder pushDebugGroup:stringFromUtf8(m_impl->debugLabel.c_str())];
     [encoder setRenderPipelineState:pipelineState];
     [encoder setDepthStencilState:depthStencilState];
-    [encoder setVertexBuffer:gaussianBufferHandle offset:0 atIndex:0];
-    [encoder setVertexBuffer:frameBuffer offset:0 atIndex:1];
-    [encoder setVertexBuffer:indexBuffer offset:0 atIndex:2];
-    [encoder setFragmentBuffer:frameBuffer offset:0 atIndex:0];
+    [encoder setVertexBuffer:gaussianBufferHandle
+                       offset:0
+                      atIndex:bindings::gaussian_preview::vertex_buffers::kGaussians];
+    [encoder setVertexBuffer:frameBuffer
+                       offset:0
+                      atIndex:bindings::gaussian_preview::vertex_buffers::kFrameUniforms];
+    [encoder setVertexBuffer:indexBuffer
+                       offset:0
+                      atIndex:bindings::gaussian_preview::vertex_buffers::kGaussianIndices];
+    [encoder setFragmentBuffer:frameBuffer
+                         offset:0
+                        atIndex:bindings::gaussian_preview::fragment_buffers::kFrameUniforms];
     [encoder setFragmentSamplerState:samplerState atIndex:0];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                 vertexStart:0
