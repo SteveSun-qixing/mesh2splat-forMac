@@ -19,10 +19,12 @@ public:
     MetalBuffer& operator=(MetalBuffer&&) noexcept;
 
     bool createShared(std::size_t size, const void* initialData = nullptr, const char* label = nullptr);
+    bool createPrivate(std::size_t size, const char* label = nullptr);
     bool update(const void* data, std::size_t size, std::size_t offset = 0);
     bool read(void* destination, std::size_t size, std::size_t offset = 0) const;
 
     bool isValid() const;
+    bool isCpuAccessible() const;
     std::size_t size() const;
     void* nativeBuffer() const;
 

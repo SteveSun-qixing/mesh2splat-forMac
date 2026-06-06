@@ -37,7 +37,7 @@ bool MetalGaussianBuffer::create(std::size_t capacity, const char* label)
     auto buffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto counterBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     const uint32_t initialCount = 0;
-    if (!buffer->createShared(core::gaussianBufferByteSize(capacity), nullptr, baseLabel.c_str()) ||
+    if (!buffer->createPrivate(core::gaussianBufferByteSize(capacity), baseLabel.c_str()) ||
         !counterBuffer->createShared(
             sizeof(initialCount),
             &initialCount,

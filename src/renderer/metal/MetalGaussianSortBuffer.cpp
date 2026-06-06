@@ -40,8 +40,8 @@ bool MetalGaussianSortBuffer::create(std::size_t capacity, const char* label)
     auto keyBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     auto indexBuffer = std::make_unique<MetalBuffer>(*m_impl->deviceContext);
     const std::size_t bufferSize = capacity * sizeof(uint32_t);
-    if (!keyBuffer->createShared(bufferSize, nullptr, (baseLabel + " Keys").c_str()) ||
-        !indexBuffer->createShared(bufferSize, nullptr, (baseLabel + " Indices").c_str())) {
+    if (!keyBuffer->createPrivate(bufferSize, (baseLabel + " Keys").c_str()) ||
+        !indexBuffer->createPrivate(bufferSize, (baseLabel + " Indices").c_str())) {
         return false;
     }
 
