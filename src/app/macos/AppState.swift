@@ -50,6 +50,9 @@ enum ConversionQuality: Int, CaseIterable, Identifiable {
 
 @MainActor
 final class Mesh2SplatAppState: ObservableObject {
+    private let environment = Mesh2SplatAppEnvironment.production
+    private let renderPresetStore = RenderPresetStore()
+
     @Published var selectedSection: SidebarSection = .scene
     @Published var statusText = "Ready"
     @Published var importedFileName: String?
@@ -65,8 +68,26 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var gaussianCountText = "0"
     @Published var conversionProgress = 0.0
     @Published var conversionProgressText = "0%"
+    @Published var conversionTimingText = "Submit 0.0 ms / GPU 0.0 ms"
+    @Published var conversionCounterText = "0 / 0"
+    @Published var conversionSamplesText = "4 samples"
     @Published var frameTimingText = "CPU 0.0 ms / GPU 0.0 ms"
     @Published var frameCounterText = "0 / 0"
+    @Published var frameFailureText = "0 failed"
+    @Published var backendName = "Metal"
+    @Published var backendDeviceName = "Unknown GPU"
+    @Published var backendSupportStatus = "Unknown"
+    @Published var backendShaderStatus = "Shader library unknown"
+    @Published var backendPipelineStatus = "Pipeline cache unknown"
+    @Published var frameUniformBytesText = "0 B"
+    @Published var sceneBytesText = "0 B"
+    @Published var gaussianBytesText = "0 B"
+    @Published var gaussianSortBytesText = "0 B"
+    @Published var pendingConversionBytesText = "0 B"
+    @Published var trackedBytesText = "0 B"
+    @Published var meshCountText = "0"
+    @Published var materialCountText = "0"
+    @Published var textureCountText = "0"
     @Published var renderMode: RenderMode = .final { didSet { submitRenderSettings() } }
     @Published var splatSize = 1.0 { didSet { submitRenderSettings() } }
     @Published var exposure = 1.0 { didSet { submitRenderSettings() } }
@@ -91,8 +112,22 @@ final class Mesh2SplatAppState: ObservableObject {
         case scene = "Scene"
         case render = "Render"
         case export = "Export"
+        case diagnostics = "Diagnostics"
 
         var id: String { rawValue }
+
+        var systemImage: String {
+            switch self {
+            case .scene: return "folder"
+            case .render: return "slider.horizontal.3"
+            case .export: return "square.and.arrow.up"
+            case .diagnostics: return "waveform.path.ecg"
+            }
+        }
+    }
+
+    init() {
+        applyRenderPreset(renderPresetStore.loadOrDefault(), submit: false)
     }
 
     func bindMetalView(_ view: NSView) {
@@ -181,18 +216,8 @@ final class Mesh2SplatAppState: ObservableObject {
     }
 
     func resetRenderSettings() {
-        isResettingRenderSettings = true
-        renderMode = .final
-        splatSize = 1.0
-        exposure = 1.0
-        gamma = 2.2
-        backgroundBrightness = 0.04
-        conversionQuality = .balanced
-        sortingEnabled = true
-        meshRenderingEnabled = true
-        gaussianRenderingEnabled = true
-        conversionEnabled = true
-        isResettingRenderSettings = false
+        applyRenderPreset(.defaults, submit: false)
+        try? renderPresetStore.save(currentRenderPreset)
         submitRenderSettings()
     }
 
@@ -214,6 +239,7 @@ final class Mesh2SplatAppState: ObservableObject {
         )
         Mesh2SplatRefreshMetalViewStatus(metalView)
         refreshRendererStatusFromBridge()
+        try? renderPresetStore.save(currentRenderPreset)
     }
 
     func refreshRendererStatusFromBridge() {
@@ -221,6 +247,77 @@ final class Mesh2SplatAppState: ObservableObject {
 
         let status = rendererBridge.rendererStatus()
         applyRendererStatus(status)
+    }
+
+    var canImportMesh: Bool {
+        metalView != nil &&
+            !importStatus.localizedCaseInsensitiveContains("choosing") &&
+            !isExporting
+    }
+
+    var canExportGaussians: Bool {
+        metalView != nil &&
+            importedFileName != nil &&
+            gaussianCount > 0 &&
+            !isConverting &&
+            !isExporting
+    }
+
+    var gaussianCount: Int {
+        Int(gaussianCountText.replacingOccurrences(of: ",", with: "")) ?? 0
+    }
+
+    var resourceTelemetryBridgeResources: [ResourceTelemetryBridgeResource] {
+        [
+            ResourceTelemetryBridgeResource(
+                id: "frame-uniforms",
+                title: "Frame Uniforms",
+                value: frameUniformBytesText,
+                detail: "Per-frame constants",
+                systemImage: "rectangle.stack",
+                tint: .blue
+            ),
+            ResourceTelemetryBridgeResource(
+                id: "scene",
+                title: "Scene",
+                value: sceneBytesText,
+                detail: "\(meshCountText) meshes, \(materialCountText) materials",
+                systemImage: "cube",
+                tint: .green
+            ),
+            ResourceTelemetryBridgeResource(
+                id: "gaussians",
+                title: "Gaussians",
+                value: gaussianBytesText,
+                detail: "\(gaussianCountText) splats",
+                systemImage: "circle.grid.cross",
+                tint: .purple
+            ),
+            ResourceTelemetryBridgeResource(
+                id: "sort",
+                title: "Sort",
+                value: gaussianSortBytesText,
+                detail: sortingEnabled ? "Depth sorting enabled" : "Depth sorting off",
+                systemImage: "arrow.up.arrow.down",
+                tint: .orange
+            ),
+            ResourceTelemetryBridgeResource(
+                id: "pending-conversion",
+                title: "Pending",
+                value: pendingConversionBytesText,
+                detail: conversionStatus,
+                systemImage: "arrow.triangle.2.circlepath",
+                tint: isConverting ? .accentColor : .secondary
+            ),
+            ResourceTelemetryBridgeResource(
+                id: "tracked-total",
+                title: "Tracked Total",
+                value: trackedBytesText,
+                detail: "\(textureCountText) textures",
+                systemImage: "memorychip",
+                tint: .teal
+            )
+        ]
     }
 
     private var documentActions: Mesh2SplatDocumentActions {
@@ -232,12 +329,7 @@ final class Mesh2SplatAppState: ObservableObject {
     }
 
     private var defaultExportFileName: String {
-        guard let importedFileName, !importedFileName.isEmpty else {
-            return "mesh2splat-gaussians.ply"
-        }
-
-        let stem = URL(fileURLWithPath: importedFileName).deletingPathExtension().lastPathComponent
-        return "\(stem)-gaussians.ply"
+        environment.exportFileName(forImportedFileName: importedFileName)
     }
 
     private func startRendererStatusLoop() {
@@ -245,32 +337,34 @@ final class Mesh2SplatAppState: ObservableObject {
         rendererStatusTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 self?.refreshRendererStatusFromBridge()
-                try? await Task.sleep(nanoseconds: 250_000_000)
+                try? await Task.sleep(nanoseconds: Mesh2SplatAppEnvironment.production.polling.rendererStatusNanoseconds)
             }
         }
     }
 
     private func applyRendererStatus(_ status: M2SRendererStatus) {
-        rendererRuntimeStatus = runtimeStateTitle(status.runtimeState)
-        diagnosticStatus = diagnosticSeverityTitle(status.diagnosticSeverity)
-        drawableStatus = "\(status.drawableWidth)x\(status.drawableHeight) @\(String(format: "%.1f", status.backingScale))x"
-        gaussianCountText = "\(status.convertedGaussianCount)"
-        conversionProgress = Double(status.conversionProgress).clamped(to: 0.0...1.0)
-        conversionProgressText = "\(Int((conversionProgress * 100.0).rounded()))%"
+        rendererRuntimeStatus = RendererStatusFormatting.runtimeStateTitle(status.runtimeState)
+        diagnosticStatus = RendererStatusFormatting.diagnosticSeverityTitle(status.diagnosticSeverity)
+        drawableStatus = RendererStatusFormatting.drawableStatus(
+            width: status.drawableWidth,
+            height: status.drawableHeight,
+            backingScale: status.backingScale
+        )
+        gaussianCountText = RendererStatusFormatting.gaussianCount(UInt64(status.convertedGaussianCount))
+        conversionProgress = RendererStatusFormatting.normalizedProgress(status.conversionProgress)
+        conversionProgressText = RendererStatusFormatting.progressPercent(conversionProgress)
 
-        if !status.statusText.isEmpty {
-            statusText = status.statusText
-        } else {
-            statusText = rendererRuntimeStatus
-        }
+        statusText = RendererStatusFormatting.rendererStatusText(status.statusText, fallbackRuntimeTitle: rendererRuntimeStatus)
 
         if !status.loadedScenePath.isEmpty {
             importedFileName = URL(fileURLWithPath: status.loadedScenePath).lastPathComponent
         }
 
-        conversionStatus = status.isConverting ?
-            "Conversion: \(conversionProgressText)" :
-            "Conversion: \(status.convertedGaussianCount) gaussians"
+        conversionStatus = RendererStatusFormatting.conversionStatus(
+            isConverting: status.isConverting,
+            progress: conversionProgress,
+            gaussianCountValue: UInt64(status.convertedGaussianCount)
+        )
         if status.hasGaussians && !status.isConverting && exportStatus == "Export: waiting" {
             exportStatus = "Export: ready"
         }
@@ -282,27 +376,93 @@ final class Mesh2SplatAppState: ObservableObject {
         }
 
         let frameStats = status.frameStats
-        frameTimingText = "CPU \(String(format: "%.1f", frameStats.lastCpuEncodeMs)) ms / GPU \(String(format: "%.1f", frameStats.lastGpuMs)) ms"
-        frameCounterText = "\(frameStats.completedFrameCount) / \(frameStats.submittedFrameCount)"
+        frameTimingText = RendererStatusFormatting.frameTiming(
+            cpuMs: frameStats.lastCpuEncodeMs,
+            gpuMs: frameStats.lastGpuMs
+        )
+        frameCounterText = RendererStatusFormatting.frameCounter(
+            completed: frameStats.completedFrameCount,
+            submitted: frameStats.submittedFrameCount
+        )
+        frameFailureText = "\(frameStats.failedFrameCount) failed"
+
+        let backendStatus = status.backendStatus
+        backendName = backendStatus.backendName.isEmpty ? "Metal" : backendStatus.backendName
+        backendDeviceName = backendStatus.deviceName.isEmpty ? "Unknown GPU" : backendStatus.deviceName
+        backendSupportStatus = backendStatus.supported ? "Supported" : "Unsupported"
+        backendShaderStatus = backendStatus.shaderLibraryReady ? "Shader library ready" : "Shader library unavailable"
+        backendPipelineStatus = backendStatus.pipelineCacheReady ? "Pipeline cache ready" : "Pipeline cache unavailable"
+
+        let resourceStats = status.resourceStats
+        frameUniformBytesText = RendererStatusFormatting.bytes(resourceStats.frameUniformBytes)
+        sceneBytesText = RendererStatusFormatting.bytes(resourceStats.sceneBytes)
+        gaussianBytesText = RendererStatusFormatting.bytes(resourceStats.gaussianBytes)
+        gaussianSortBytesText = RendererStatusFormatting.bytes(resourceStats.gaussianSortBytes)
+        pendingConversionBytesText = RendererStatusFormatting.bytes(resourceStats.pendingConversionBytes)
+        trackedBytesText = RendererStatusFormatting.bytes(resourceStats.trackedBytes)
+        meshCountText = "\(resourceStats.meshCount)"
+        materialCountText = "\(resourceStats.materialCount)"
+        textureCountText = "\(resourceStats.textureCount)"
+
+        let conversionStats = status.conversionStats
+        conversionSamplesText = "\(conversionStats.samplesPerTriangle) samples"
+        conversionCounterText = RendererStatusFormatting.frameCounter(
+            completed: conversionStats.completedConversionCount,
+            submitted: conversionStats.submittedConversionCount,
+            failed: conversionStats.failedConversionCount
+        )
+        conversionTimingText = RendererStatusFormatting.conversionTiming(
+            cpuSubmitMs: conversionStats.lastCpuSubmitMs,
+            gpuMs: conversionStats.lastGpuMs
+        )
     }
 
-    private func runtimeStateTitle(_ state: M2SRendererRuntimeState) -> String {
-        switch state.rawValue {
-        case M2SRendererRuntimeState.ready.rawValue: return "Ready"
-        case M2SRendererRuntimeState.loading.rawValue: return "Loading"
-        case M2SRendererRuntimeState.converting.rawValue: return "Converting"
-        case M2SRendererRuntimeState.rendering.rawValue: return "Rendering"
-        case M2SRendererRuntimeState.failed.rawValue: return "Failed"
-        case M2SRendererRuntimeState.exporting.rawValue: return "Exporting"
-        default: return "Unknown"
-        }
+    private var isConverting: Bool {
+        rendererRuntimeStatus == "Converting" ||
+            conversionStatus.localizedCaseInsensitiveContains("running") ||
+            conversionStatus.localizedCaseInsensitiveContains("converting") ||
+            conversionStatus.contains("%")
     }
 
-    private func diagnosticSeverityTitle(_ severity: M2SRendererDiagnosticSeverity) -> String {
-        switch severity.rawValue {
-        case M2SRendererDiagnosticSeverity.warning.rawValue: return "Warning"
-        case M2SRendererDiagnosticSeverity.error.rawValue: return "Error"
-        default: return "Info"
+    private var isExporting: Bool {
+        rendererRuntimeStatus == "Exporting" ||
+            exportStatus.localizedCaseInsensitiveContains("choosing") ||
+            exportStatus.localizedCaseInsensitiveContains("writing")
+    }
+
+    private var currentRenderPreset: RenderPreset {
+        RenderPreset(
+            renderMode: renderMode,
+            splatSize: splatSize,
+            exposure: exposure,
+            gamma: gamma,
+            backgroundBrightness: backgroundBrightness,
+            quality: conversionQuality,
+            toggles: RenderPreset.Toggles(
+                sortingEnabled: sortingEnabled,
+                meshRenderingEnabled: meshRenderingEnabled,
+                gaussianRenderingEnabled: gaussianRenderingEnabled,
+                conversionEnabled: conversionEnabled
+            )
+        )
+    }
+
+    private func applyRenderPreset(_ preset: RenderPreset, submit: Bool) {
+        isResettingRenderSettings = true
+        renderMode = preset.renderMode
+        splatSize = preset.splatSize
+        exposure = preset.exposure
+        gamma = preset.gamma
+        backgroundBrightness = preset.backgroundBrightness
+        conversionQuality = preset.quality
+        sortingEnabled = preset.toggles.sortingEnabled
+        meshRenderingEnabled = preset.toggles.meshRenderingEnabled
+        gaussianRenderingEnabled = preset.toggles.gaussianRenderingEnabled
+        conversionEnabled = preset.toggles.conversionEnabled
+        isResettingRenderSettings = false
+
+        if submit {
+            submitRenderSettings()
         }
     }
 }

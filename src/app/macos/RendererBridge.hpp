@@ -35,6 +35,49 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 
 @end
 
+@interface M2SRendererBackendStatus : NSObject
+
+@property (nonatomic, assign) M2SRendererRuntimeState runtimeState;
+@property (nonatomic, copy) NSString* backendName;
+@property (nonatomic, copy) NSString* deviceName;
+@property (nonatomic, assign) BOOL supported;
+@property (nonatomic, assign) BOOL initialized;
+@property (nonatomic, assign) BOOL shaderLibraryReady;
+@property (nonatomic, assign) BOOL pipelineCacheReady;
+
+@end
+
+@interface M2SRendererResourceStats : NSObject
+
+@property (nonatomic, assign) uint64_t frameUniformBytes;
+@property (nonatomic, assign) uint64_t sceneBytes;
+@property (nonatomic, assign) uint64_t gaussianBytes;
+@property (nonatomic, assign) uint64_t gaussianSortBytes;
+@property (nonatomic, assign) uint64_t pendingConversionBytes;
+@property (nonatomic, assign) uint64_t trackedBytes;
+@property (nonatomic, assign) uint32_t meshCount;
+@property (nonatomic, assign) uint32_t materialCount;
+@property (nonatomic, assign) uint32_t textureCount;
+@property (nonatomic, assign) uint32_t gaussianCount;
+
+@end
+
+@interface M2SRendererConversionStats : NSObject
+
+@property (nonatomic, assign) BOOL active;
+@property (nonatomic, assign) float progress;
+@property (nonatomic, assign) uint32_t samplesPerTriangle;
+@property (nonatomic, assign) uint32_t convertedGaussianCount;
+@property (nonatomic, assign) uint64_t submittedConversionCount;
+@property (nonatomic, assign) uint64_t completedConversionCount;
+@property (nonatomic, assign) uint64_t failedConversionCount;
+@property (nonatomic, assign) double lastCpuSubmitMs;
+@property (nonatomic, assign) double averageCpuSubmitMs;
+@property (nonatomic, assign) double lastGpuMs;
+@property (nonatomic, assign) double averageGpuMs;
+
+@end
+
 @interface M2SRendererStatus : NSObject
 
 @property (nonatomic, assign) M2SRendererRuntimeState runtimeState;
@@ -53,6 +96,9 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) BOOL hasScene;
 @property (nonatomic, assign) BOOL hasGaussians;
 @property (nonatomic, strong) M2SRendererFrameStats* frameStats;
+@property (nonatomic, strong) M2SRendererBackendStatus* backendStatus;
+@property (nonatomic, strong) M2SRendererResourceStats* resourceStats;
+@property (nonatomic, strong) M2SRendererConversionStats* conversionStats;
 
 @end
 

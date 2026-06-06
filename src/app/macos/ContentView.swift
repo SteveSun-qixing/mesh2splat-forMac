@@ -7,14 +7,20 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                MetalViewport()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .black))
-                StatusBar()
+                HSplitView {
+                    ViewportSurface()
+                        .frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+
+                    ActiveInspectorPanel(appState: appState)
+                        .frame(minWidth: 300, idealWidth: 340, maxWidth: 420, maxHeight: .infinity)
+                }
+
+                StatusBarView(appState: appState)
             }
+            .background(Color(nsColor: .windowBackgroundColor))
         }
     }
 }
@@ -23,55 +29,186 @@ private struct SidebarView: View {
     @EnvironmentObject private var appState: Mesh2SplatAppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Button {
-                appState.openImportPanel()
-            } label: {
-                Label("Import Mesh", systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Mesh2Splat")
+                .font(.headline)
+
+            VStack(spacing: 8) {
+                Button {
+                    appState.openImportPanel()
+                } label: {
+                    Label("Import Mesh", systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!appState.canImportMesh)
+
+                Button {
+                    appState.openExportPanel()
+                } label: {
+                    Label("Export PLY", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!appState.canExportGaussians)
             }
-            .buttonStyle(.borderedProminent)
             .controlSize(.large)
 
-            Button {
-                appState.openExportPanel()
-            } label: {
-                Label("Export PLY", systemImage: "square.and.arrow.up")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-
-            Picker("Workspace", selection: $appState.selectedSection) {
+            VStack(spacing: 4) {
                 ForEach(Mesh2SplatAppState.SidebarSection.allCases) { section in
-                    Text(section.rawValue).tag(section)
+                    Button {
+                        appState.selectedSection = section
+                    } label: {
+                        HStack(spacing: 8) {
+                            Label(section.rawValue, systemImage: section.systemImage)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 8)
+                        .frame(height: 30)
+                        .background {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(section == appState.selectedSection ? Color.accentColor.opacity(0.16) : Color.clear)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .pickerStyle(.segmented)
+            .frame(minHeight: 150, idealHeight: 190)
 
             Divider()
 
-            GroupBox("Asset") {
-                LabeledContent("Input", value: appState.importedFileName ?? "None")
-                LabeledContent("Output", value: appState.exportedFileName ?? "None")
-                LabeledContent("State", value: appState.statusText)
-            }
-
-            GroupBox("Render") {
-                LabeledContent("Viewport", value: "Metal")
-                LabeledContent("Mode", value: appState.renderMode.title)
-                LabeledContent("Quality", value: "\(appState.conversionQuality.rawValue)x")
-                LabeledContent("Runtime", value: appState.rendererRuntimeStatus)
-                LabeledContent("Drawable", value: appState.drawableStatus)
-                LabeledContent("Gaussians", value: appState.gaussianCountText)
-            }
-
-            InspectorPanel(appState: appState)
+            SidebarSummary(appState: appState)
 
             Spacer(minLength: 0)
         }
         .padding(16)
         .frame(minWidth: 220)
+    }
+}
+
+private struct SidebarSummary: View {
+    @ObservedObject var appState: Mesh2SplatAppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            MetricBadge("Runtime", value: appState.rendererRuntimeStatus, tone: runtimeTone)
+            MetricBadge("Gaussians", value: appState.gaussianCountText, tone: .accent)
+            MetricBadge("Memory", value: appState.trackedBytesText, tone: .neutral)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("Conversion")
+                    Spacer()
+                    Text(appState.conversionProgressText)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+
+                ProgressView(value: appState.conversionProgress)
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private var runtimeTone: MetricTone {
+        switch appState.rendererRuntimeStatus.lowercased() {
+        case "failed":
+            return .danger
+        case "loading", "converting", "exporting":
+            return .warning
+        case "ready", "rendering":
+            return .success
+        default:
+            return .neutral
+        }
+    }
+}
+
+private struct ViewportSurface: View {
+    var body: some View {
+        ZStack {
+            MetalViewport()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .black))
+
+            VStack(spacing: 0) {
+                ViewportToolbarHost()
+                Spacer(minLength: 0)
+            }
+
+            ViewportOverlayHost()
+        }
+    }
+}
+
+private struct ViewportToolbarHost: View {
+    @EnvironmentObject private var appState: Mesh2SplatAppState
+
+    var body: some View {
+        ViewportToolbar(appState: appState)
+    }
+}
+
+private struct ViewportOverlayHost: View {
+    @EnvironmentObject private var appState: Mesh2SplatAppState
+
+    var body: some View {
+        ViewportOverlay(appState: appState)
+    }
+}
+
+private struct ActiveInspectorPanel: View {
+    @ObservedObject var appState: Mesh2SplatAppState
+
+    var body: some View {
+        ScrollView {
+            switch appState.selectedSection {
+            case .scene:
+                VStack(alignment: .leading, spacing: 14) {
+                    SceneDropZone(appState: appState)
+                    SceneWorkflowPanel(appState: appState)
+                }
+            case .render:
+                VStack(alignment: .leading, spacing: 14) {
+                    RenderControlsPanel(appState: appState)
+                    ConversionProgressPanel(appState: appState)
+                    TelemetryPanel(appState: appState)
+                }
+            case .export:
+                ExportWorkflowPanel(appState: appState)
+            case .diagnostics:
+                VStack(alignment: .leading, spacing: 14) {
+                    DiagnosticsPanel(appState: appState)
+                    ResourceTelemetryPanel(
+                        appState: appState,
+                        bridgeResources: appState.resourceTelemetryBridgeResources
+                    )
+                    BackendStatusPanel(appState: appState)
+                }
+            }
+        }
+        .background(.bar)
+    }
+}
+
+private struct BackendStatusPanel: View {
+    @ObservedObject var appState: Mesh2SplatAppState
+
+    var body: some View {
+        GroupBox("Backend") {
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Name", value: appState.backendName)
+                LabeledContent("Device", value: appState.backendDeviceName)
+                LabeledContent("Support", value: appState.backendSupportStatus)
+                LabeledContent("Shaders", value: appState.backendShaderStatus)
+                LabeledContent("Pipelines", value: appState.backendPipelineStatus)
+            }
+            .padding(.vertical, 4)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
     }
 }
 
@@ -89,40 +226,5 @@ private struct MetalViewport: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         Mesh2SplatRefreshMetalViewStatus(nsView)
-    }
-}
-
-private struct StatusBar: View {
-    @EnvironmentObject private var appState: Mesh2SplatAppState
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(appState.statusText)
-                .lineLimit(1)
-
-            if let error = appState.lastError {
-                Divider()
-                Text(error)
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-            Text(appState.importStatus)
-                .foregroundStyle(.secondary)
-            Divider()
-            Text(appState.conversionStatus)
-                .foregroundStyle(.secondary)
-            Divider()
-            Text(appState.exportStatus)
-                .foregroundStyle(.secondary)
-            Divider()
-            Text(appState.frameTimingText)
-                .foregroundStyle(.secondary)
-        }
-        .font(.caption)
-        .padding(.horizontal, 12)
-        .frame(height: 28)
-        .background(.bar)
     }
 }

@@ -46,6 +46,22 @@ M2SRendererDiagnosticSeverity bridgeSeverity(mesh2splat::macos::MacBridgeDiagnos
     return M2SRendererDiagnosticSeverityInfo;
 }
 
+M2SRendererBackendStatus* bridgeBackendStatus(const mesh2splat::macos::MacBridgeRendererStatusSummary& summary)
+{
+    M2SRendererBackendStatus* backendStatus = [[M2SRendererBackendStatus alloc] init];
+    backendStatus.runtimeState =
+        summary.backend.runtimeState == mesh2splat::macos::MacBridgeRendererRuntimeState::Unknown ?
+        bridgeRuntimeState(summary.runtimeState) :
+        bridgeRuntimeState(summary.backend.runtimeState);
+    backendStatus.backendName = bridgeString(summary.backend.backendName);
+    backendStatus.deviceName = bridgeString(summary.backend.deviceName);
+    backendStatus.supported = summary.backend.supported;
+    backendStatus.initialized = summary.backend.initialized;
+    backendStatus.shaderLibraryReady = summary.backend.shaderLibraryReady;
+    backendStatus.pipelineCacheReady = summary.backend.pipelineCacheReady;
+    return backendStatus;
+}
+
 M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatusSummary& summary)
 {
     M2SRendererFrameStats* frameStats = [[M2SRendererFrameStats alloc] init];
@@ -74,6 +90,71 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     frameStats.lastRenderedGaussians = summary.frameTiming.lastRenderedGaussians || summary.lastFrameRenderedGaussians;
     frameStats.lastSortedGaussians = summary.frameTiming.lastSortedGaussians || summary.lastFrameSortedGaussians;
 
+    M2SRendererResourceStats* resourceStats = [[M2SRendererResourceStats alloc] init];
+    resourceStats.frameUniformBytes = summary.resources.frameUniformBytes != 0 ?
+        summary.resources.frameUniformBytes :
+        summary.frameUniformResourceBytes;
+    resourceStats.sceneBytes = summary.resources.sceneBytes != 0 ?
+        summary.resources.sceneBytes :
+        summary.sceneResourceBytes;
+    resourceStats.gaussianBytes = summary.resources.gaussianBytes != 0 ?
+        summary.resources.gaussianBytes :
+        summary.gaussianResourceBytes;
+    resourceStats.gaussianSortBytes = summary.resources.gaussianSortBytes != 0 ?
+        summary.resources.gaussianSortBytes :
+        summary.gaussianSortResourceBytes;
+    resourceStats.pendingConversionBytes = summary.resources.pendingConversionBytes != 0 ?
+        summary.resources.pendingConversionBytes :
+        summary.pendingConversionResourceBytes;
+    resourceStats.trackedBytes = summary.resources.trackedBytes != 0 ?
+        summary.resources.trackedBytes :
+        summary.trackedResourceBytes;
+    resourceStats.meshCount = summary.resources.meshCount != 0 ?
+        summary.resources.meshCount :
+        summary.meshCount;
+    resourceStats.materialCount = summary.resources.materialCount != 0 ?
+        summary.resources.materialCount :
+        summary.materialCount;
+    resourceStats.textureCount = summary.resources.textureCount != 0 ?
+        summary.resources.textureCount :
+        summary.textureCount;
+    resourceStats.gaussianCount = summary.resources.gaussianCount != 0 ?
+        summary.resources.gaussianCount :
+        summary.convertedGaussianCount;
+
+    M2SRendererConversionStats* conversionStats = [[M2SRendererConversionStats alloc] init];
+    conversionStats.active = summary.conversion.active || summary.isConverting;
+    conversionStats.progress = summary.conversion.progress != 0.0f ?
+        summary.conversion.progress :
+        summary.conversionProgress;
+    conversionStats.samplesPerTriangle = summary.conversion.samplesPerTriangle != 0 ?
+        summary.conversion.samplesPerTriangle :
+        summary.conversionSamplesPerTriangle;
+    conversionStats.convertedGaussianCount = summary.conversion.convertedGaussianCount != 0 ?
+        summary.conversion.convertedGaussianCount :
+        summary.convertedGaussianCount;
+    conversionStats.submittedConversionCount = summary.conversion.submittedConversionCount != 0 ?
+        summary.conversion.submittedConversionCount :
+        summary.submittedConversionCount;
+    conversionStats.completedConversionCount = summary.conversion.completedConversionCount != 0 ?
+        summary.conversion.completedConversionCount :
+        summary.completedConversionCount;
+    conversionStats.failedConversionCount = summary.conversion.failedConversionCount != 0 ?
+        summary.conversion.failedConversionCount :
+        summary.failedConversionCount;
+    conversionStats.lastCpuSubmitMs = summary.conversion.lastCpuSubmitMs != 0.0 ?
+        summary.conversion.lastCpuSubmitMs :
+        summary.lastConversionCpuSubmitMs;
+    conversionStats.averageCpuSubmitMs = summary.conversion.averageCpuSubmitMs != 0.0 ?
+        summary.conversion.averageCpuSubmitMs :
+        summary.averageConversionCpuSubmitMs;
+    conversionStats.lastGpuMs = summary.conversion.lastGpuMs != 0.0 ?
+        summary.conversion.lastGpuMs :
+        summary.lastConversionGpuMs;
+    conversionStats.averageGpuMs = summary.conversion.averageGpuMs != 0.0 ?
+        summary.conversion.averageGpuMs :
+        summary.averageConversionGpuMs;
+
     M2SRendererStatus* status = [[M2SRendererStatus alloc] init];
     status.runtimeState = bridgeRuntimeState(summary.runtimeState);
     status.diagnosticSeverity = bridgeSeverity(summary.diagnosticSeverity);
@@ -83,20 +164,17 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.drawableWidth = summary.drawableWidth;
     status.drawableHeight = summary.drawableHeight;
     status.backingScale = summary.backingScale;
-    status.convertedGaussianCount = summary.conversion.convertedGaussianCount != 0 ?
-        summary.conversion.convertedGaussianCount :
-        summary.convertedGaussianCount;
-    status.conversionSamplesPerTriangle = summary.conversion.samplesPerTriangle != 0 ?
-        summary.conversion.samplesPerTriangle :
-        summary.conversionSamplesPerTriangle;
-    status.conversionProgress = summary.conversion.progress != 0.0f ?
-        summary.conversion.progress :
-        summary.conversionProgress;
+    status.convertedGaussianCount = conversionStats.convertedGaussianCount;
+    status.conversionSamplesPerTriangle = conversionStats.samplesPerTriangle;
+    status.conversionProgress = conversionStats.progress;
     status.gaussianScale = summary.gaussianScale;
-    status.converting = summary.conversion.active || summary.isConverting;
+    status.converting = conversionStats.active;
     status.hasScene = summary.hasScene;
     status.hasGaussians = summary.hasGaussians || status.convertedGaussianCount > 0;
     status.frameStats = frameStats;
+    status.backendStatus = bridgeBackendStatus(summary);
+    status.resourceStats = resourceStats;
+    status.conversionStats = conversionStats;
     return status;
 }
 
@@ -113,6 +191,15 @@ M2SRendererActionResult* bridgeActionResult(const mesh2splat::macos::MacBridgeAc
 } // namespace
 
 @implementation M2SRendererFrameStats
+@end
+
+@implementation M2SRendererBackendStatus
+@end
+
+@implementation M2SRendererResourceStats
+@end
+
+@implementation M2SRendererConversionStats
 @end
 
 @implementation M2SRendererStatus

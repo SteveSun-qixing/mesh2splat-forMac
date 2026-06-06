@@ -12,17 +12,7 @@ struct Mesh2SplatSwiftUIApp: App {
         }
         .windowStyle(.titleBar)
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("Import Mesh...") {
-                    appState.openImportPanel()
-                }
-                .keyboardShortcut("o", modifiers: .command)
-
-                Button("Export Gaussian PLY...") {
-                    appState.openExportPanel()
-                }
-                .keyboardShortcut("e", modifiers: .command)
-            }
+            Mesh2SplatCommands(appState: appState)
         }
     }
 }

@@ -307,8 +307,25 @@ if(APPLE)
         )
 
         set(MACOS_APP_OPTIONAL_SWIFTUI_SOURCES
+            ${CMAKE_SOURCE_DIR}/src/app/macos/AppCommands.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/AppEnvironment.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/ConversionProgressPanel.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/DiagnosticsPanel.swift
             ${CMAKE_SOURCE_DIR}/src/app/macos/DocumentActions.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/ExportWorkflowPanel.swift
             ${CMAKE_SOURCE_DIR}/src/app/macos/InspectorPanel.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/MetricViews.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/RendererStatusFormatting.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/RenderControlsPanel.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/RenderPresetStore.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/ResourceTelemetryPanel.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/SceneDropZone.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/SceneWorkflowPanel.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/SidebarPanels.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/StatusBarView.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/TelemetryPanel.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/ViewportOverlay.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/ViewportToolbar.swift
         )
         foreach(MACOS_APP_OPTIONAL_SOURCE IN LISTS MACOS_APP_OPTIONAL_SWIFTUI_SOURCES)
             if(EXISTS ${MACOS_APP_OPTIONAL_SOURCE})
