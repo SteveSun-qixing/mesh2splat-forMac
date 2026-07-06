@@ -341,6 +341,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 - (instancetype)initWithView:(Mesh2SplatMetalView*)view;
 - (BOOL)loadMeshAtPath:(NSString*)path;
 - (mesh2splat::renderer::RendererExportPlyResult)exportPlyAtPath:(NSString*)path;
+- (mesh2splat::renderer::RendererExportPlyResult)exportPlyAtPath:(NSString*)path format:(uint32_t)format;
 - (void)setViewMode:(mesh2splat::renderer::RenderViewMode)mode;
 - (void)setGaussianVisualizationMode:(mesh2splat::renderer::GaussianVisualizationMode)mode;
 - (void)setGaussianScale:(float)scale;
@@ -471,6 +472,11 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 
 - (mesh2splat::renderer::RendererExportPlyResult)exportPlyAtPath:(NSString*)path
 {
+    return [self exportPlyAtPath:path format:0];
+}
+
+- (mesh2splat::renderer::RendererExportPlyResult)exportPlyAtPath:(NSString*)path format:(uint32_t)format
+{
     mesh2splat::renderer::RendererExportPlyResult result;
     if (_renderer == nullptr) {
         result.diagnostic = "Renderer is not initialized.";
@@ -483,6 +489,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 
     mesh2splat::renderer::RendererExportPlyRequest request;
     request.filePath = std::string(path.UTF8String);
+    request.format = format;
     return _renderer->exportPly(request);
 }
 
@@ -1185,6 +1192,11 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 
 - (BOOL)exportGaussianPlyAtURL:(NSURL*)url
 {
+    return [self exportGaussianPlyAtURL:url format:0];
+}
+
+- (BOOL)exportGaussianPlyAtURL:(NSURL*)url format:(uint32_t)format
+{
     if (url == nil || !url.isFileURL) {
         self.lastExportStatus = @"Export: failed";
         self.lastDiagnosticMessage = @"Choose a valid .ply export path.";
@@ -1196,7 +1208,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     [self refreshRendererStatus];
 
     const BOOL hasSecurityScope = [url startAccessingSecurityScopedResource];
-    mesh2splat::renderer::RendererExportPlyResult result = [self.meshDelegate exportPlyAtPath:url.path];
+    mesh2splat::renderer::RendererExportPlyResult result = [self.meshDelegate exportPlyAtPath:url.path format:format];
     if (hasSecurityScope) {
         [url stopAccessingSecurityScopedResource];
     }

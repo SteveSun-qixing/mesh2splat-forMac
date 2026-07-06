@@ -27,20 +27,20 @@ BOOL Mesh2SplatOpenMeshInView(NSView* view, NSURL* url)
     return message(view, selector, url);
 }
 
-BOOL Mesh2SplatExportGaussianPlyFromView(NSView* view, NSURL* url)
+BOOL Mesh2SplatExportGaussianPlyFromView(NSView* view, NSURL* url, uint32_t format)
 {
     if (![view isKindOfClass:Mesh2SplatMetalView.class]) {
         return NO;
     }
 
-    SEL selector = NSSelectorFromString(@"exportGaussianPlyAtURL:");
+    SEL selector = NSSelectorFromString(@"exportGaussianPlyAtURL:format:");
     if (![view respondsToSelector:selector]) {
         return NO;
     }
 
-    using ExportPlyMessage = BOOL (*)(id, SEL, NSURL*);
+    using ExportPlyMessage = BOOL (*)(id, SEL, NSURL*, uint32_t);
     ExportPlyMessage message = reinterpret_cast<ExportPlyMessage>(objc_msgSend);
-    return message(view, selector, url);
+    return message(view, selector, url, format);
 }
 
 void Mesh2SplatRefreshMetalViewStatus(NSView* view)

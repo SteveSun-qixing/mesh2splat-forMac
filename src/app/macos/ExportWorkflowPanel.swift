@@ -12,6 +12,16 @@ struct ExportWorkflowPanel: View {
             GroupBox("Output") {
                 VStack(alignment: .leading, spacing: 8) {
                     LabeledContent("Source", value: appState.importedFileName ?? "None")
+                    Picker("Format", selection: $appState.exportFormat) {
+                        ForEach(ExportFormat.allCases) { format in
+                            Text(format.title).tag(format)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    Text(appState.exportFormat.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                     LabeledContent("Gaussians", value: gaussiansOutputSummary)
                     LabeledContent("Gaussian buffers", value: appState.gaussianBytesText)
                     LabeledContent("Sort workspace", value: appState.gaussianSortBytesText)
@@ -222,7 +232,7 @@ struct ExportWorkflowPanel: View {
         }
 
         if canExport {
-            return "Ready to write a Gaussian PLY."
+            return "Ready to write \(appState.exportFormat.title)."
         }
 
         return appState.exportStatus
@@ -271,7 +281,7 @@ struct ExportWorkflowPanel: View {
 
     private var exportButtonHelp: String {
         guard let firstBlockingItem = preflightItems.first(where: { !$0.isSatisfied }) else {
-            return "Choose a destination for the converted gaussian PLY."
+            return "Choose a destination for \(appState.exportFormat.title)."
         }
         return firstBlockingItem.detail
     }

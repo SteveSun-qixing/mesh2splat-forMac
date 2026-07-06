@@ -48,6 +48,33 @@ enum ConversionQuality: Int, CaseIterable, Identifiable {
     }
 }
 
+enum ExportFormat: Int, CaseIterable, Identifiable {
+    case standard3DGS = 0
+    case pbr3DGS = 1
+    case compactPBR = 2
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .standard3DGS: return "Standard 3DGS"
+        case .pbr3DGS: return "PBR 3DGS"
+        case .compactPBR: return "Compact PBR"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .standard3DGS:
+            return "Compatible 3D Gaussian PLY"
+        case .pbr3DGS:
+            return "Keeps metallic and roughness fields"
+        case .compactPBR:
+            return "Smaller PBR-oriented PLY"
+        }
+    }
+}
+
 @MainActor
 final class Mesh2SplatAppState: ObservableObject {
     private let environment = Mesh2SplatAppEnvironment.production
@@ -121,6 +148,7 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var showMeshWireframe = false { didSet { submitRenderSettings() } }
     @Published var showGaussianCenters = false { didSet { submitRenderSettings() } }
     @Published var showSortOrder = false { didSet { submitRenderSettings() } }
+    @Published var exportFormat: ExportFormat = .standard3DGS
 
     private var isResettingRenderSettings = false
     private var rendererBridge: M2SRendererBridge?
@@ -259,7 +287,7 @@ final class Mesh2SplatAppState: ObservableObject {
 
         exportStatus = "Export: writing \(url.lastPathComponent)"
         statusText = exportStatus
-        let exported = Mesh2SplatExportGaussianPlyFromView(metalView, url)
+        let exported = Mesh2SplatExportGaussianPlyFromView(metalView, url, UInt32(exportFormat.rawValue))
         if exported {
             exportedFileName = url.lastPathComponent
             lastError = nil
