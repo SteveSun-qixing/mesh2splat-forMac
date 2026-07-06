@@ -166,6 +166,7 @@ struct RendererRenderSettingsSummary {
     bool meshToGaussianConversionEnabled = true;
     bool depthTestEnabled = true;
     bool lightingEnabled = true;
+    bool shadowsEnabled = false;
     bool splitScreenEnabled = false;
     float splitScreenPosition = 0.5f;
 
@@ -254,6 +255,7 @@ struct RendererModeRequest {
     float backgroundBrightness = 0.04f;
     bool depthTestEnabled = true;
     bool lightingEnabled = true;
+    bool shadowsEnabled = false;
     bool splitScreenEnabled = false;
     float splitScreenPosition = 0.5f;
     float lightPosition[3] = {3.0f, 4.0f, 2.5f};
@@ -275,6 +277,7 @@ struct RendererModeResult {
     float backgroundBrightness = 0.04f;
     bool depthTestEnabled = true;
     bool lightingEnabled = true;
+    bool shadowsEnabled = false;
     bool splitScreenEnabled = false;
     float splitScreenPosition = 0.5f;
     float lightPosition[3] = {3.0f, 4.0f, 2.5f};
@@ -318,6 +321,7 @@ struct RendererStats {
     uint64_t sceneResourceBytes = 0;
     uint64_t gaussianResourceBytes = 0;
     uint64_t gaussianSortResourceBytes = 0;
+    uint64_t shadowResourceBytes = 0;
     uint64_t pendingConversionResourceBytes = 0;
     uint64_t trackedResourceBytes = 0;
     bool lastFrameSortedGaussians = false;
@@ -520,6 +524,11 @@ public:
         result.exposure = request.exposure;
         result.gamma = request.gamma;
         result.backgroundBrightness = request.backgroundBrightness;
+        result.depthTestEnabled = request.depthTestEnabled;
+        result.lightingEnabled = request.lightingEnabled;
+        result.shadowsEnabled = request.shadowsEnabled;
+        result.splitScreenEnabled = request.splitScreenEnabled;
+        result.splitScreenPosition = request.splitScreenPosition;
         result.debugFlags = request.debugFlags;
         result.gaussianSortingEnabled = request.gaussianSortingEnabled;
         result.meshToGaussianConversionEnabled = request.meshToGaussianConversionEnabled;

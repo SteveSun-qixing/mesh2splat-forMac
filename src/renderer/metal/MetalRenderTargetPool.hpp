@@ -921,6 +921,8 @@ public:
             return "RGBA8UnormSrgb";
         case MetalTextureFormat::R8Unorm:
             return "R8Unorm";
+        case MetalTextureFormat::R32Float:
+            return "R32Float";
         case MetalTextureFormat::Depth32Float:
             return "Depth32Float";
         }
@@ -1307,6 +1309,8 @@ private:
         switch (format) {
         case MetalTextureFormat::R8Unorm:
             return 1;
+        case MetalTextureFormat::R32Float:
+            return 4;
         case MetalTextureFormat::BGRA8Unorm:
         case MetalTextureFormat::BGRA8UnormSrgb:
         case MetalTextureFormat::RGBA8Unorm:

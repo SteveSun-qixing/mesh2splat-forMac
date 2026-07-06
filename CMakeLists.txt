@@ -218,6 +218,8 @@ if(APPLE)
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianRenderPass.mm
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianRenderPass.hpp
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianShadowPass.mm
+        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianShadowPass.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortBuffer.cpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortBuffer.hpp
         ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortPass.mm

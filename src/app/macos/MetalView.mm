@@ -108,6 +108,7 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     BOOL splitScreenEnabled,
     double splitScreenPosition,
     BOOL lightingEnabled,
+    BOOL shadowsEnabled,
     double lightPositionX,
     double lightPositionY,
     double lightPositionZ,
@@ -131,6 +132,7 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     settings.gamma = static_cast<float>(gamma);
     settings.backgroundBrightness = static_cast<float>(backgroundBrightness);
     settings.enableLighting = lightingEnabled;
+    settings.enableShadows = shadowsEnabled;
     settings.lightPosition[0] = static_cast<float>(lightPositionX);
     settings.lightPosition[1] = static_cast<float>(lightPositionY);
     settings.lightPosition[2] = static_cast<float>(lightPositionZ);
@@ -517,6 +519,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     request.gamma = settings.gamma;
     request.backgroundBrightness = settings.backgroundBrightness;
     request.lightingEnabled = settings.lightingEnabled;
+    request.shadowsEnabled = settings.shadowsEnabled;
     request.lightPosition[0] = settings.lightPosition[0];
     request.lightPosition[1] = settings.lightPosition[1];
     request.lightPosition[2] = settings.lightPosition[2];
@@ -703,6 +706,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.gamma = renderSettings.gamma;
     summary.backgroundBrightness = renderSettings.backgroundBrightness;
     summary.lightingEnabled = renderSettings.lightingEnabled;
+    summary.shadowsEnabled = renderSettings.shadowsEnabled;
     summary.lightPositionX = renderSettings.lightPosition[0];
     summary.lightPositionY = renderSettings.lightPosition[1];
     summary.lightPositionZ = renderSettings.lightPosition[2];
@@ -734,6 +738,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.sceneResourceBytes = stats.sceneResourceBytes;
     summary.gaussianResourceBytes = stats.gaussianResourceBytes;
     summary.gaussianSortResourceBytes = stats.gaussianSortResourceBytes;
+    summary.shadowResourceBytes = stats.shadowResourceBytes;
     summary.pendingConversionResourceBytes = stats.pendingConversionResourceBytes;
     summary.trackedResourceBytes = stats.trackedResourceBytes;
     summary.meshCount = static_cast<std::uint32_t>(std::min<std::uint64_t>(
@@ -792,6 +797,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.resources.sceneBytes = stats.sceneResourceBytes;
     summary.resources.gaussianBytes = stats.gaussianResourceBytes;
     summary.resources.gaussianSortBytes = stats.gaussianSortResourceBytes;
+    summary.resources.shadowBytes = stats.shadowResourceBytes;
     summary.resources.pendingConversionBytes = stats.pendingConversionResourceBytes;
     summary.resources.trackedBytes = stats.trackedResourceBytes;
     summary.resources.meshCount = summary.meshCount;
@@ -1237,6 +1243,7 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
      splitScreenEnabled:(BOOL)splitScreenEnabled
     splitScreenPosition:(double)splitScreenPosition
         lightingEnabled:(BOOL)lightingEnabled
+         shadowsEnabled:(BOOL)shadowsEnabled
          lightPositionX:(double)lightPositionX
          lightPositionY:(double)lightPositionY
          lightPositionZ:(double)lightPositionZ
@@ -1262,6 +1269,7 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
             splitScreenEnabled,
             splitScreenPosition,
             lightingEnabled,
+            shadowsEnabled,
             lightPositionX,
             lightPositionY,
             lightPositionZ,
@@ -1683,6 +1691,7 @@ conversionSamplesPerTriangle:static_cast<NSInteger>(command.conversionSamplesPer
          splitScreenEnabled:command.splitScreenEnabled
         splitScreenPosition:command.splitScreenPosition
              lightingEnabled:command.lightingEnabled
+              shadowsEnabled:command.shadowsEnabled
               lightPositionX:command.lightPositionX
               lightPositionY:command.lightPositionY
               lightPositionZ:command.lightPositionZ

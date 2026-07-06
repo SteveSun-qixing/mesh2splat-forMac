@@ -53,6 +53,7 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) uint64_t sceneBytes;
 @property (nonatomic, assign) uint64_t gaussianBytes;
 @property (nonatomic, assign) uint64_t gaussianSortBytes;
+@property (nonatomic, assign) uint64_t shadowBytes;
 @property (nonatomic, assign) uint64_t pendingConversionBytes;
 @property (nonatomic, assign) uint64_t trackedBytes;
 @property (nonatomic, assign) uint32_t meshCount;
@@ -123,6 +124,7 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) BOOL depthTestEnabled;
 @property (nonatomic, assign) BOOL splitScreenEnabled;
 @property (nonatomic, assign) float splitScreenPosition;
+@property (nonatomic, assign) BOOL shadowsEnabled;
 @property (nonatomic, strong) M2SRendererFrameStats* frameStats;
 @property (nonatomic, strong) M2SRendererBackendStatus* backendStatus;
 @property (nonatomic, strong) M2SRendererResourceStats* resourceStats;

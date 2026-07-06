@@ -28,6 +28,7 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
      splitScreenEnabled:(BOOL)splitScreenEnabled
     splitScreenPosition:(double)splitScreenPosition
         lightingEnabled:(BOOL)lightingEnabled
+         shadowsEnabled:(BOOL)shadowsEnabled
          lightPositionX:(double)lightPositionX
          lightPositionY:(double)lightPositionY
          lightPositionZ:(double)lightPositionZ

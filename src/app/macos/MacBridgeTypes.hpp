@@ -51,6 +51,7 @@ struct MacBridgeUiCommand {
     bool depthTestEnabled = true;
     bool splitScreenEnabled = false;
     float splitScreenPosition = 0.5f;
+    bool shadowsEnabled = false;
     std::uint64_t commandId = 0;
 };
 
@@ -145,6 +146,7 @@ struct MacBridgeResourceStatus {
     std::uint64_t sceneBytes = 0;
     std::uint64_t gaussianBytes = 0;
     std::uint64_t gaussianSortBytes = 0;
+    std::uint64_t shadowBytes = 0;
     std::uint64_t pendingConversionBytes = 0;
     std::uint64_t trackedBytes = 0;
     std::uint32_t meshCount = 0;
@@ -229,6 +231,7 @@ struct MacBridgeRendererStatusSummary {
     std::uint64_t sceneResourceBytes = 0;
     std::uint64_t gaussianResourceBytes = 0;
     std::uint64_t gaussianSortResourceBytes = 0;
+    std::uint64_t shadowResourceBytes = 0;
     std::uint64_t pendingConversionResourceBytes = 0;
     std::uint64_t trackedResourceBytes = 0;
     std::uint32_t meshCount = 0;
@@ -249,6 +252,7 @@ struct MacBridgeRendererStatusSummary {
     bool depthTestEnabled = true;
     bool splitScreenEnabled = false;
     float splitScreenPosition = 0.5f;
+    bool shadowsEnabled = false;
     bool lastFrameRenderedMesh = false;
     bool lastFrameRenderedGaussians = false;
     bool lastFrameSortedGaussians = false;
@@ -272,6 +276,7 @@ inline void normalizeMacBridgeRendererStatusSummary(MacBridgeRendererStatusSumma
     summary.resources.sceneBytes = summary.sceneResourceBytes;
     summary.resources.gaussianBytes = summary.gaussianResourceBytes;
     summary.resources.gaussianSortBytes = summary.gaussianSortResourceBytes;
+    summary.resources.shadowBytes = summary.shadowResourceBytes;
     summary.resources.pendingConversionBytes = summary.pendingConversionResourceBytes;
     summary.resources.trackedBytes = summary.trackedResourceBytes;
     summary.resources.meshCount = summary.meshCount;

@@ -81,6 +81,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           BOOL splitScreenEnabled,
                                           double splitScreenPosition,
                                           BOOL lightingEnabled,
+                                          BOOL shadowsEnabled,
                                           double lightPositionX,
                                           double lightPositionY,
                                           double lightPositionZ,
@@ -94,7 +95,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
         return;
     }
 
-    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:depthTestEnabled:splitScreenEnabled:splitScreenPosition:lightingEnabled:lightPositionX:lightPositionY:lightPositionZ:lightIntensity:lightColorRed:lightColorGreen:lightColorBlue:debugFlags:");
+    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:depthTestEnabled:splitScreenEnabled:splitScreenPosition:lightingEnabled:shadowsEnabled:lightPositionX:lightPositionY:lightPositionZ:lightIntensity:lightColorRed:lightColorGreen:lightColorBlue:debugFlags:");
     if (![view respondsToSelector:selector]) {
         return;
     }
@@ -115,6 +116,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
         BOOL,
         BOOL,
         double,
+        BOOL,
         BOOL,
         double,
         double,
@@ -141,6 +143,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
             splitScreenEnabled,
             splitScreenPosition,
             lightingEnabled,
+            shadowsEnabled,
             lightPositionX,
             lightPositionY,
             lightPositionZ,

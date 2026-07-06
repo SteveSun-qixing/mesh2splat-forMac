@@ -30,6 +30,8 @@ MTLPixelFormat toPixelFormat(MetalTextureFormat format)
         return MTLPixelFormatRGBA8Unorm_sRGB;
     case MetalTextureFormat::R8Unorm:
         return MTLPixelFormatR8Unorm;
+    case MetalTextureFormat::R32Float:
+        return MTLPixelFormatR32Float;
     case MetalTextureFormat::Depth32Float:
         return MTLPixelFormatDepth32Float;
     }
@@ -50,6 +52,8 @@ std::string textureFormatName(MetalTextureFormat format)
         return "RGBA8UnormSrgb";
     case MetalTextureFormat::R8Unorm:
         return "R8Unorm";
+    case MetalTextureFormat::R32Float:
+        return "R32Float";
     case MetalTextureFormat::Depth32Float:
         return "Depth32Float";
     }
@@ -399,6 +403,24 @@ MetalRenderPipelineDesc MetalPipelineCache::gaussianPipelineDesc(
     desc.depthEnabled = true;
     desc.blendMode = MetalBlendMode::PremultipliedAlpha;
     desc.variantKey = targetVariantKey(colorFormat, depthFormat, desc.depthEnabled, rasterSampleCount);
+    desc.rasterSampleCount = rasterSampleCount;
+    return desc;
+}
+
+MetalRenderPipelineDesc MetalPipelineCache::gaussianShadowPipelineDesc(
+    MetalTextureFormat colorFormat,
+    MetalTextureFormat depthFormat,
+    uint32_t rasterSampleCount)
+{
+    MetalRenderPipelineDesc desc;
+    desc.label = "Gaussian Shadow Map Pipeline";
+    desc.vertexFunction = "gaussianShadowVertex";
+    desc.fragmentFunction = "gaussianShadowFragment";
+    desc.colorFormat = colorFormat;
+    desc.depthFormat = depthFormat;
+    desc.depthEnabled = true;
+    desc.blendMode = MetalBlendMode::Disabled;
+    desc.variantKey = "shadow:" + targetVariantKey(colorFormat, depthFormat, desc.depthEnabled, rasterSampleCount);
     desc.rasterSampleCount = rasterSampleCount;
     return desc;
 }

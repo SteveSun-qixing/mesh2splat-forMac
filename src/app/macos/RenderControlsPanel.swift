@@ -70,6 +70,8 @@ struct RenderControlsPanel: View {
 
             RenderControlSection("Lighting") {
                 Toggle("Enabled", isOn: $appState.lightingEnabled)
+                Toggle("Shadows", isOn: $appState.shadowsEnabled)
+                    .disabled(!appState.lightingEnabled)
 
                 Group {
                     RenderControlSlider(

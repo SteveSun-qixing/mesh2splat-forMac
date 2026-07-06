@@ -28,6 +28,8 @@ MTLPixelFormat toPixelFormat(MetalTextureFormat format)
         return MTLPixelFormatRGBA8Unorm_sRGB;
     case MetalTextureFormat::R8Unorm:
         return MTLPixelFormatR8Unorm;
+    case MetalTextureFormat::R32Float:
+        return MTLPixelFormatR32Float;
     case MetalTextureFormat::Depth32Float:
         return MTLPixelFormatDepth32Float;
     }
@@ -102,6 +104,8 @@ std::size_t bytesPerPixel(MetalTextureFormat format)
     switch (format) {
     case MetalTextureFormat::R8Unorm:
         return 1;
+    case MetalTextureFormat::R32Float:
+        return 4;
     case MetalTextureFormat::BGRA8Unorm:
     case MetalTextureFormat::BGRA8UnormSrgb:
     case MetalTextureFormat::RGBA8Unorm:
@@ -256,6 +260,8 @@ bool pixelBytesForFormat(MetalTextureFormat format, MetalTexturePixel pixel, uin
         bytes[0] = pixel.red;
         byteCount = 1;
         return true;
+    case MetalTextureFormat::R32Float:
+        break;
     case MetalTextureFormat::BGRA8Unorm:
     case MetalTextureFormat::BGRA8UnormSrgb:
         bytes[0] = pixel.blue;
@@ -899,6 +905,8 @@ const char* MetalTexture::formatName(MetalTextureFormat format)
         return "RGBA8UnormSrgb";
     case MetalTextureFormat::R8Unorm:
         return "R8Unorm";
+    case MetalTextureFormat::R32Float:
+        return "R32Float";
     case MetalTextureFormat::Depth32Float:
         return "Depth32Float";
     }

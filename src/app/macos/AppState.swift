@@ -83,6 +83,7 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var sceneBytesText = "0 B"
     @Published var gaussianBytesText = "0 B"
     @Published var gaussianSortBytesText = "0 B"
+    @Published var shadowBytesText = "0 B"
     @Published var pendingConversionBytesText = "0 B"
     @Published var trackedBytesText = "0 B"
     @Published var meshCountText = "0"
@@ -101,6 +102,7 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var gamma = 2.2 { didSet { submitRenderSettings() } }
     @Published var backgroundBrightness = 0.04 { didSet { submitRenderSettings() } }
     @Published var lightingEnabled = true { didSet { submitRenderSettings() } }
+    @Published var shadowsEnabled = false { didSet { submitRenderSettings() } }
     @Published var lightPositionX = 3.0 { didSet { submitRenderSettings() } }
     @Published var lightPositionY = 4.0 { didSet { submitRenderSettings() } }
     @Published var lightPositionZ = 2.5 { didSet { submitRenderSettings() } }
@@ -261,6 +263,7 @@ final class Mesh2SplatAppState: ObservableObject {
             splitScreenEnabled,
             splitScreenPosition.clamped(to: 0.0...1.0),
             lightingEnabled,
+            shadowsEnabled,
             lightPositionX.clamped(to: -100.0...100.0),
             lightPositionY.clamped(to: -100.0...100.0),
             lightPositionZ.clamped(to: -100.0...100.0),
@@ -331,6 +334,14 @@ final class Mesh2SplatAppState: ObservableObject {
                 detail: sortingEnabled ? "Depth sorting enabled" : "Depth sorting off",
                 systemImage: "arrow.up.arrow.down",
                 tint: .orange
+            ),
+            ResourceTelemetryBridgeResource(
+                id: "shadows",
+                title: "Shadows",
+                value: shadowBytesText,
+                detail: shadowsEnabled ? "Shadow map enabled" : "Shadow map off",
+                systemImage: "lightbulb",
+                tint: .yellow
             ),
             ResourceTelemetryBridgeResource(
                 id: "pending-conversion",
@@ -449,6 +460,7 @@ final class Mesh2SplatAppState: ObservableObject {
         sceneBytesText = RendererStatusFormatting.bytes(resourceStats.sceneBytes)
         gaussianBytesText = RendererStatusFormatting.bytes(resourceStats.gaussianBytes)
         gaussianSortBytesText = RendererStatusFormatting.bytes(resourceStats.gaussianSortBytes)
+        shadowBytesText = RendererStatusFormatting.bytes(resourceStats.shadowBytes)
         pendingConversionBytesText = RendererStatusFormatting.bytes(resourceStats.pendingConversionBytes)
         trackedBytesText = RendererStatusFormatting.bytes(resourceStats.trackedBytes)
         meshCountText = "\(resourceStats.meshCount)"
@@ -476,6 +488,7 @@ final class Mesh2SplatAppState: ObservableObject {
         gamma = Double(status.gamma)
         backgroundBrightness = Double(status.backgroundBrightness)
         lightingEnabled = status.lightingEnabled
+        shadowsEnabled = status.shadowsEnabled
         lightPositionX = Double(status.lightPositionX)
         lightPositionY = Double(status.lightPositionY)
         lightPositionZ = Double(status.lightPositionZ)
@@ -574,6 +587,7 @@ final class Mesh2SplatAppState: ObservableObject {
         lightColorRed = preset.lighting.colorRed
         lightColorGreen = preset.lighting.colorGreen
         lightColorBlue = preset.lighting.colorBlue
+        shadowsEnabled = false
         conversionQuality = preset.quality
         sortingEnabled = preset.toggles.sortingEnabled
         depthTestEnabled = preset.toggles.depthTestEnabled

@@ -46,6 +46,8 @@ const char* textureFormatName(MetalTextureFormat format)
         return "RGBA8UnormSrgb";
     case MetalTextureFormat::R8Unorm:
         return "R8Unorm";
+    case MetalTextureFormat::R32Float:
+        return "R32Float";
     case MetalTextureFormat::Depth32Float:
         return "Depth32Float";
     }

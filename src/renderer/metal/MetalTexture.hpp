@@ -15,6 +15,7 @@ enum class MetalTextureFormat {
     RGBA8Unorm,
     RGBA8UnormSrgb,
     R8Unorm,
+    R32Float,
     Depth32Float,
 };
 

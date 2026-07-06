@@ -103,6 +103,9 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     resourceStats.gaussianSortBytes = summary.resources.gaussianSortBytes != 0 ?
         summary.resources.gaussianSortBytes :
         summary.gaussianSortResourceBytes;
+    resourceStats.shadowBytes = summary.resources.shadowBytes != 0 ?
+        summary.resources.shadowBytes :
+        summary.shadowResourceBytes;
     resourceStats.pendingConversionBytes = summary.resources.pendingConversionBytes != 0 ?
         summary.resources.pendingConversionBytes :
         summary.pendingConversionResourceBytes;
@@ -199,6 +202,7 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.depthTestEnabled = summary.depthTestEnabled;
     status.splitScreenEnabled = summary.splitScreenEnabled;
     status.splitScreenPosition = summary.splitScreenPosition;
+    status.shadowsEnabled = summary.shadowsEnabled;
     status.frameStats = frameStats;
     status.backendStatus = bridgeBackendStatus(summary);
     status.resourceStats = resourceStats;

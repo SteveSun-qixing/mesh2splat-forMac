@@ -44,6 +44,8 @@ MTLPixelFormat toPixelFormat(MetalTextureFormat format)
         return MTLPixelFormatRGBA8Unorm_sRGB;
     case MetalTextureFormat::R8Unorm:
         return MTLPixelFormatR8Unorm;
+    case MetalTextureFormat::R32Float:
+        return MTLPixelFormatR32Float;
     case MetalTextureFormat::Depth32Float:
         return MTLPixelFormatDepth32Float;
     }
@@ -74,6 +76,8 @@ std::string textureFormatName(MetalTextureFormat format)
         return "RGBA8UnormSrgb";
     case MetalTextureFormat::R8Unorm:
         return "R8Unorm";
+    case MetalTextureFormat::R32Float:
+        return "R32Float";
     case MetalTextureFormat::Depth32Float:
         return "Depth32Float";
     }

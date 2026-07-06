@@ -17,6 +17,7 @@
 #include "MetalFrameResources.hpp"
 #include "MetalGaussianBuffer.hpp"
 #include "MetalGaussianRenderPass.hpp"
+#include "MetalGaussianShadowPass.hpp"
 #include "MetalGaussianSortBuffer.hpp"
 #include "MetalGaussianSortPass.hpp"
 #include "MetalMeshRenderPass.hpp"
@@ -656,6 +657,7 @@ struct MetalRenderer::Impl {
     std::shared_ptr<PendingGaussianConversion> pendingConversion;
     std::unique_ptr<MetalConversionPass> conversionPass;
     std::unique_ptr<MetalGaussianRenderPass> gaussianRenderPass;
+    std::unique_ptr<MetalGaussianShadowPass> gaussianShadowPass;
     std::unique_ptr<MetalGaussianSortPass> gaussianSortPass;
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     std::unique_ptr<MetalRenderTarget> drawableDepthTarget;
@@ -686,6 +688,7 @@ struct MetalRenderer::Impl {
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
     bool lightingEnabled = true;
+    bool shadowsEnabled = false;
     float lightPosition[3] = {3.0f, 4.0f, 2.5f};
     float lightIntensity = 1.0f;
     float lightColor[3] = {1.0f, 0.95f, 0.85f};
@@ -1232,6 +1235,18 @@ bool MetalRenderer::initialize()
             m_impl->gaussianRenderPass.reset();
         }
 
+        m_impl->gaussianShadowPass = std::make_unique<MetalGaussianShadowPass>(*m_impl->deviceContext);
+        passError.clear();
+        if (!m_impl->gaussianShadowPass->initialize(
+                *m_impl->shaderLibrary,
+                *m_impl->pipelineCache,
+                *m_impl->renderStateCache,
+                1024,
+                &passError)) {
+            appendRendererDiagnostic(passError);
+            m_impl->gaussianShadowPass.reset();
+        }
+
         m_impl->gaussianSortPass = std::make_unique<MetalGaussianSortPass>();
         passError.clear();
         if (!m_impl->gaussianSortPass->initialize(*m_impl->shaderLibrary, *m_impl->pipelineCache, &passError)) {
@@ -1441,6 +1456,8 @@ MetalRendererStats MetalRenderer::rendererStats() const
         toResourceBytes(m_impl->gaussianBuffer == nullptr ? 0 : m_impl->gaussianBuffer->totalSizeBytes());
     stats.gaussianSortResourceBytes =
         toResourceBytes(m_impl->gaussianSortBuffer == nullptr ? 0 : m_impl->gaussianSortBuffer->sizeBytes());
+    stats.shadowResourceBytes =
+        toResourceBytes(m_impl->gaussianShadowPass == nullptr ? 0 : m_impl->gaussianShadowPass->sizeBytes());
     const uint64_t renderTargetResourceBytes =
         toResourceBytes(m_impl->drawableDepthTarget == nullptr ? 0 : m_impl->drawableDepthTarget->sizeBytes());
 
@@ -1473,6 +1490,7 @@ MetalRendererStats MetalRenderer::rendererStats() const
     addResourceBytes(totalResourceBytes, stats.sceneResourceBytes);
     addResourceBytes(totalResourceBytes, stats.gaussianResourceBytes);
     addResourceBytes(totalResourceBytes, stats.gaussianSortResourceBytes);
+    addResourceBytes(totalResourceBytes, stats.shadowResourceBytes);
     addResourceBytes(totalResourceBytes, renderTargetResourceBytes);
     addResourceBytes(totalResourceBytes, stats.pendingConversionResourceBytes);
     stats.trackedResourceBytes = totalResourceBytes;
@@ -1588,6 +1606,7 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     m_impl->splitScreenEnabled = request.splitScreenEnabled;
     m_impl->splitScreenPosition = clampedFinite(request.splitScreenPosition, 0.0f, 1.0f, 0.5f);
     m_impl->lightingEnabled = request.lightingEnabled;
+    m_impl->shadowsEnabled = request.shadowsEnabled;
     m_impl->lightPosition[0] = clampedFinite(request.lightPosition[0], -100.0f, 100.0f, 3.0f);
     m_impl->lightPosition[1] = clampedFinite(request.lightPosition[1], -100.0f, 100.0f, 4.0f);
     m_impl->lightPosition[2] = clampedFinite(request.lightPosition[2], -100.0f, 100.0f, 2.5f);
@@ -1615,6 +1634,7 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     result.splitScreenEnabled = m_impl->splitScreenEnabled;
     result.splitScreenPosition = m_impl->splitScreenPosition;
     result.lightingEnabled = m_impl->lightingEnabled;
+    result.shadowsEnabled = m_impl->shadowsEnabled;
     result.lightPosition[0] = m_impl->lightPosition[0];
     result.lightPosition[1] = m_impl->lightPosition[1];
     result.lightPosition[2] = m_impl->lightPosition[2];
@@ -1711,6 +1731,7 @@ mesh2splat::renderer::RendererRenderSettingsSummary MetalRenderer::renderSetting
     settings.splitScreenEnabled = m_impl->splitScreenEnabled;
     settings.splitScreenPosition = m_impl->splitScreenPosition;
     settings.lightingEnabled = m_impl->lightingEnabled;
+    settings.shadowsEnabled = m_impl->shadowsEnabled;
     settings.lightPosition[0] = m_impl->lightPosition[0];
     settings.lightPosition[1] = m_impl->lightPosition[1];
     settings.lightPosition[2] = m_impl->lightPosition[2];
@@ -1976,6 +1997,21 @@ void MetalRenderer::draw(
     bool sortedGaussiansThisFrame = false;
     const bool showGaussians =
         m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
+    if (showGaussians &&
+        m_impl->shadowsEnabled &&
+        m_impl->lightingEnabled &&
+        m_impl->gaussianVisualizationMode == GaussianVisualizationMode::Final &&
+        m_impl->gaussianShadowPass != nullptr &&
+        m_impl->gaussianBuffer != nullptr &&
+        m_impl->frameUniformBuffer != nullptr) {
+        if (!m_impl->gaussianShadowPass->encode(
+                (__bridge void*)commandBuffer,
+                *m_impl->gaussianBuffer,
+                m_impl->frameUniforms,
+                frameResourceIndex)) {
+            m_impl->recordDiagnostic(m_impl->gaussianShadowPass->lastDiagnostic());
+        }
+    }
     if (showGaussians && m_impl->gaussianSortPass != nullptr && m_impl->gaussianBuffer != nullptr &&
         m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr) {
         const bool gaussianCountChanged =

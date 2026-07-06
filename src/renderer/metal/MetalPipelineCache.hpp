@@ -56,6 +56,10 @@ public:
         MetalTextureFormat colorFormat,
         MetalTextureFormat depthFormat,
         uint32_t rasterSampleCount = 1);
+    static MetalRenderPipelineDesc gaussianShadowPipelineDesc(
+        MetalTextureFormat colorFormat,
+        MetalTextureFormat depthFormat,
+        uint32_t rasterSampleCount = 1);
     static MetalComputePipelineDesc conversionPipelineDesc();
     static std::vector<MetalComputePipelineDesc> sortPipelineDescs();
 

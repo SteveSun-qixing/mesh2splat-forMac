@@ -52,6 +52,7 @@ constexpr float kDefaultLightIntensity = 1.0f;
 constexpr float kDefaultLightColorRed = 1.0f;
 constexpr float kDefaultLightColorGreen = 0.95f;
 constexpr float kDefaultLightColorBlue = 0.85f;
+constexpr bool kDefaultShadowsEnabled = false;
 constexpr RenderDebugFlags kNoRenderDebugFlags = 0;
 constexpr RenderDebugFlags kKnownRenderDebugFlags =
     static_cast<RenderDebugFlags>(RenderDebugFlag::ShowBounds) |
@@ -111,6 +112,7 @@ struct RenderSettings {
         kDefaultLightColorGreen,
         kDefaultLightColorBlue,
     };
+    bool enableShadows = kDefaultShadowsEnabled;
     RenderDebugFlags debugFlags = kNoRenderDebugFlags;
     uint32_t conversionSamplesPerTriangle = kDefaultConversionSamplesPerTriangle;
 };
@@ -141,6 +143,7 @@ struct RenderSettingsSnapshot {
         kDefaultLightColorGreen,
         kDefaultLightColorBlue,
     };
+    bool shadowsEnabled = kDefaultShadowsEnabled;
     RenderDebugFlags debugFlags = kNoRenderDebugFlags;
     uint32_t requestedConversionSamplesPerTriangle = kDefaultConversionSamplesPerTriangle;
     uint32_t conversionSamplesPerTriangle = kDefaultConversionSamplesPerTriangle;
@@ -484,6 +487,7 @@ inline RenderSettingsSnapshot makeRenderSettingsSnapshot(
     snapshot.lightColor[0] = clampedSettings.lightColor[0];
     snapshot.lightColor[1] = clampedSettings.lightColor[1];
     snapshot.lightColor[2] = clampedSettings.lightColor[2];
+    snapshot.shadowsEnabled = clampedSettings.enableShadows;
     snapshot.debugFlags = clampedSettings.debugFlags;
     snapshot.requestedConversionSamplesPerTriangle = conversionSettings.requestedSamplesPerTriangle;
     snapshot.conversionSamplesPerTriangle = conversionSettings.effectiveSamplesPerTriangle;
