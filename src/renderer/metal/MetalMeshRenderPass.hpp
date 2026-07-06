@@ -33,6 +33,8 @@ struct MetalMeshRenderPassDiagnostics {
     bool depthEnabled = true;
     bool depthWriteEnabled = true;
     bool wireframeEnabled = false;
+    bool shadowsEnabled = false;
+    bool shadowTextureBound = false;
     std::string colorFormat;
     std::string depthFormat;
     std::string debugLabel;
@@ -66,7 +68,9 @@ public:
         const MetalSceneResources& sceneResources,
         void* frameUniformBuffer,
         bool depthTestEnabled = true,
-        bool wireframeEnabled = false) const;
+        bool wireframeEnabled = false,
+        void* shadowDistanceTexture = nullptr,
+        bool shadowsEnabled = false) const;
 
 private:
     struct Impl;

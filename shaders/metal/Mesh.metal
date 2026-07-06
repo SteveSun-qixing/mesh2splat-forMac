@@ -209,6 +209,59 @@ static float m2sMeshShaderGeometrySmith(float3 normal, float3 viewDirection, flo
         m2sMeshShaderGeometrySchlickGGX(nDotL, roughness);
 }
 
+static float m2sMeshShaderShadowFactor(
+    float3 worldPosition,
+    constant M2SMeshShaderFrameUniforms& frame,
+    texturecube<float> shadowDistanceTexture,
+    sampler shadowSampler)
+{
+    if (frame.lightColorFlags.w < 1.5f) {
+        return 0.0f;
+    }
+
+    const float3 sampleOffsetDirections[20] = {
+        float3(1.0f, 1.0f, 1.0f),
+        float3(1.0f, -1.0f, 1.0f),
+        float3(-1.0f, -1.0f, 1.0f),
+        float3(-1.0f, 1.0f, 1.0f),
+        float3(1.0f, 1.0f, -1.0f),
+        float3(1.0f, -1.0f, -1.0f),
+        float3(-1.0f, -1.0f, -1.0f),
+        float3(-1.0f, 1.0f, -1.0f),
+        float3(1.0f, 1.0f, 0.0f),
+        float3(1.0f, -1.0f, 0.0f),
+        float3(-1.0f, -1.0f, 0.0f),
+        float3(-1.0f, 1.0f, 0.0f),
+        float3(1.0f, 0.0f, 1.0f),
+        float3(-1.0f, 0.0f, 1.0f),
+        float3(1.0f, 0.0f, -1.0f),
+        float3(-1.0f, 0.0f, -1.0f),
+        float3(0.0f, 1.0f, 1.0f),
+        float3(0.0f, -1.0f, 1.0f),
+        float3(0.0f, -1.0f, -1.0f),
+        float3(0.0f, 1.0f, -1.0f),
+    };
+
+    const float farPlane = max(frame.clippingPlanes.y, frame.clippingPlanes.x + 1.0e-3f);
+    const float3 lightVector = worldPosition - frame.lightPositionIntensity.xyz;
+    const float currentDepth = length(lightVector);
+    if (currentDepth <= 1.0e-4f || currentDepth >= farPlane) {
+        return 0.0f;
+    }
+
+    const float3 sampleDirection = m2sMeshShaderSafeNormalize(lightVector, float3(0.0f, 0.0f, 1.0f));
+    const float bias = 0.05f;
+    const float diskRadius = 0.025f;
+    float shadow = 0.0f;
+    for (uint index = 0; index < 20u; ++index) {
+        const float closestDepth =
+            shadowDistanceTexture.sample(shadowSampler, sampleDirection + sampleOffsetDirections[index] * diskRadius).r *
+            farPlane;
+        shadow += currentDepth - bias > closestDepth ? 1.0f : 0.0f;
+    }
+    return shadow / 20.0f;
+}
+
 static float3 m2sMeshShaderNormalFromTexture(
     M2SMeshShaderVertexOut in,
     M2SMeshShaderMaterial material,
@@ -247,7 +300,9 @@ static float3 m2sMeshShaderLitPreviewColor(
     float roughness,
     float occlusion,
     float3 emissive,
-    constant M2SMeshShaderFrameUniforms& frame)
+    constant M2SMeshShaderFrameUniforms& frame,
+    texturecube<float> shadowDistanceTexture,
+    sampler shadowSampler)
 {
     const float3 fallbackLightDirection = normalize(float3(0.35f, 0.8f, 0.45f));
     const float3 lightVector = frame.lightPositionIntensity.xyz - worldPosition;
@@ -272,7 +327,9 @@ static float3 m2sMeshShaderLitPreviewColor(
     const float3 specular = (normalDistribution * geometry * fresnel) / denominator;
     const float3 diffuseWeight = (1.0f - fresnel) * (1.0f - metallic);
     const float nDotL = saturate(dot(normal, lightDirection));
-    const float3 direct = (diffuseWeight * baseColor / kM2SMeshShaderPi + specular) * radiance * nDotL;
+    const float shadow = m2sMeshShaderShadowFactor(worldPosition, frame, shadowDistanceTexture, shadowSampler);
+    const float3 direct =
+        (diffuseWeight * baseColor / kM2SMeshShaderPi + specular) * radiance * nDotL * (1.0f - shadow);
     const float3 ambient = 0.3f * baseColor * occlusion;
     return ambient + direct + emissive;
 }
@@ -334,6 +391,7 @@ fragment float4 meshFragment(
     texture2d<float> normalTexture [[texture(2)]],
     texture2d<float> occlusionTexture [[texture(3)]],
     texture2d<float> emissiveTexture [[texture(4)]],
+    texturecube<float> shadowDistanceTexture [[texture(5)]],
     sampler materialTextureSampler [[sampler(0)]])
 {
     const M2SMeshShaderMaterial material = materials[materialIndex];
@@ -415,7 +473,9 @@ fragment float4 meshFragment(
             roughness,
             occlusion,
             emissive,
-            frame);
+            frame,
+            shadowDistanceTexture,
+            materialTextureSampler);
         return float4(m2sMeshShaderToneMappedColor(litColor, frame), baseColor.a);
     }
 

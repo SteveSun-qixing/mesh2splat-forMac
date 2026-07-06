@@ -2003,7 +2003,8 @@ void MetalRenderer::draw(
     bool sortedGaussiansThisFrame = false;
     const bool showGaussians =
         m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
-    if (showGaussians &&
+    const bool showMesh = m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::MeshOnly;
+    if ((showGaussians || showMesh) &&
         shadowsActiveForFrame &&
         m_impl->lightingEnabled &&
         m_impl->gaussianVisualizationMode == GaussianVisualizationMode::Final &&
@@ -2072,7 +2073,6 @@ void MetalRenderer::draw(
               drawableWidth,
               static_cast<uint32_t>(std::lround(m_impl->splitScreenPosition * static_cast<float>(drawableWidth))))
         : drawableWidth;
-    const bool showMesh = m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::MeshOnly;
     const bool canRenderMeshThisFrame =
         showMesh && m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
         m_impl->frameUniformBuffer != nullptr;
@@ -2092,7 +2092,9 @@ void MetalRenderer::draw(
             *m_impl->sceneResources,
             m_impl->frameUniformBuffer->buffer(frameResourceIndex),
             m_impl->depthTestEnabled,
-            showMeshWireframe);
+            showMeshWireframe,
+            m_impl->gaussianShadowPass == nullptr ? nullptr : m_impl->gaussianShadowPass->shadowDistanceTexture(),
+            shadowsActiveForFrame);
         m_impl->recordDiagnostic(m_impl->meshRenderPass->lastDiagnostic());
         renderedMeshThisFrame =
             m_impl->meshRenderPass->lastEncodeDiagnostics().encodedDrawRangeCount > 0;

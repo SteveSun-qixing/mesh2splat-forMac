@@ -37,6 +37,7 @@ inline constexpr BindingIndex kMetallicRoughness = 1;
 inline constexpr BindingIndex kNormal = 2;
 inline constexpr BindingIndex kOcclusion = 3;
 inline constexpr BindingIndex kEmissive = 4;
+inline constexpr BindingIndex kShadowDistance = 5;
 
 } // namespace material_textures
 
