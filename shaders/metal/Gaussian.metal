@@ -357,7 +357,64 @@ static float geometrySmith(float3 normal, float3 viewDirection, float3 lightDire
     return geometrySchlickGGX(nDotV, roughness) * geometrySchlickGGX(nDotL, roughness);
 }
 
-static float3 finalPreviewColor(GaussianVertexOut in, constant FrameUniforms& frame)
+static float gaussianShadowFactor(
+    float3 worldPosition,
+    constant FrameUniforms& frame,
+    texturecube<float> shadowDistanceTexture,
+    sampler shadowSampler)
+{
+    if (frame.lightColorFlags.w < 1.5) {
+        return 0.0;
+    }
+
+    const float3 sampleOffsetDirections[20] = {
+        float3(1.0, 1.0, 1.0),
+        float3(1.0, -1.0, 1.0),
+        float3(-1.0, -1.0, 1.0),
+        float3(-1.0, 1.0, 1.0),
+        float3(1.0, 1.0, -1.0),
+        float3(1.0, -1.0, -1.0),
+        float3(-1.0, -1.0, -1.0),
+        float3(-1.0, 1.0, -1.0),
+        float3(1.0, 1.0, 0.0),
+        float3(1.0, -1.0, 0.0),
+        float3(-1.0, -1.0, 0.0),
+        float3(-1.0, 1.0, 0.0),
+        float3(1.0, 0.0, 1.0),
+        float3(-1.0, 0.0, 1.0),
+        float3(1.0, 0.0, -1.0),
+        float3(-1.0, 0.0, -1.0),
+        float3(0.0, 1.0, 1.0),
+        float3(0.0, -1.0, 1.0),
+        float3(0.0, -1.0, -1.0),
+        float3(0.0, 1.0, -1.0),
+    };
+
+    const float farPlane = max(frame.clippingPlanes.y, frame.clippingPlanes.x + 1.0e-3);
+    const float3 lightVector = worldPosition - frame.lightPositionIntensity.xyz;
+    const float currentDepth = length(lightVector);
+    if (currentDepth <= 1.0e-4 || currentDepth >= farPlane) {
+        return 0.0;
+    }
+
+    const float3 sampleDirection = safeNormalize(lightVector, float3(0.0, 0.0, 1.0));
+    const float bias = 0.05;
+    const float diskRadius = 0.025;
+    float shadow = 0.0;
+    for (uint index = 0; index < 20u; ++index) {
+        const float closestDepth =
+            shadowDistanceTexture.sample(shadowSampler, sampleDirection + sampleOffsetDirections[index] * diskRadius).r *
+            farPlane;
+        shadow += currentDepth - bias > closestDepth ? 1.0 : 0.0;
+    }
+    return shadow / 20.0;
+}
+
+static float3 finalPreviewColor(
+    GaussianVertexOut in,
+    constant FrameUniforms& frame,
+    texturecube<float> shadowDistanceTexture,
+    sampler shadowSampler)
 {
     const float3 baseColor = max(in.color.rgb, float3(0.0));
     const float3 normal = safeNormalize(in.normal, float3(0.0, 1.0, 0.0));
@@ -387,7 +444,8 @@ static float3 finalPreviewColor(GaussianVertexOut in, constant FrameUniforms& fr
     const float3 specular = (normalDistribution * geometry * fresnel) / denominator;
     const float3 diffuseWeight = (1.0 - fresnel) * (1.0 - metallic);
     const float nDotL = saturate(dot(normal, lightDirection));
-    const float3 direct = (diffuseWeight * baseColor / kPi + specular) * radiance * nDotL;
+    const float shadow = gaussianShadowFactor(in.worldPosition, frame, shadowDistanceTexture, shadowSampler);
+    const float3 direct = (diffuseWeight * baseColor / kPi + specular) * radiance * nDotL * (1.0 - shadow);
     const float3 ambient = 0.3 * baseColor * occlusion;
     return ambient + direct + emissive;
 }
@@ -409,7 +467,11 @@ static bool renderModeUsesToneMapping(uint renderMode)
     return renderMode == kRenderModeAlbedo || renderMode == kRenderModeFinal;
 }
 
-static float3 visualizationColor(GaussianVertexOut in, constant FrameUniforms& frame)
+static float3 visualizationColor(
+    GaussianVertexOut in,
+    constant FrameUniforms& frame,
+    texturecube<float> shadowDistanceTexture,
+    sampler shadowSampler)
 {
     if ((frame.flags & kDebugFlagShowSortOrder) != 0u) {
         return in.sortColor;
@@ -437,7 +499,7 @@ static float3 visualizationColor(GaussianVertexOut in, constant FrameUniforms& f
     }
 
     if (frame.renderMode == kRenderModeFinal) {
-        return finalPreviewColor(in, frame);
+        return finalPreviewColor(in, frame, shadowDistanceTexture, shadowSampler);
     }
 
     return in.color.rgb;
@@ -533,7 +595,9 @@ vertex GaussianVertexOut gaussianPreviewVertex(
 
 fragment float4 gaussianPreviewFragment(
     GaussianVertexOut in [[stage_in]],
-    constant FrameUniforms& frame [[buffer(0)]])
+    constant FrameUniforms& frame [[buffer(0)]],
+    texturecube<float> shadowDistanceTexture [[texture(0)]],
+    sampler shadowSampler [[sampler(0)]])
 {
     if (in.screenRadiusPixels <= 0.0 || in.color.a <= 0.0) {
         discard_fragment();
@@ -553,7 +617,7 @@ fragment float4 gaussianPreviewFragment(
         discard_fragment();
     }
 
-    float3 color = visualizationColor(in, frame);
+    float3 color = visualizationColor(in, frame, shadowDistanceTexture, shadowSampler);
     if (renderModeUsesToneMapping(frame.renderMode)) {
         color = toneMappedColor(color, frame);
     }

@@ -1898,7 +1898,13 @@ void MetalRenderer::draw(
     m_impl->frameUniforms.lightColorFlags[0] = m_impl->lightColor[0];
     m_impl->frameUniforms.lightColorFlags[1] = m_impl->lightColor[1];
     m_impl->frameUniforms.lightColorFlags[2] = m_impl->lightColor[2];
-    m_impl->frameUniforms.lightColorFlags[3] = m_impl->lightingEnabled ? 1.0f : 0.0f;
+    const bool shadowsActiveForFrame =
+        m_impl->shadowsEnabled &&
+        m_impl->lightingEnabled &&
+        m_impl->gaussianShadowPass != nullptr &&
+        m_impl->gaussianShadowPass->isReady();
+    m_impl->frameUniforms.lightColorFlags[3] =
+        m_impl->lightingEnabled ? (shadowsActiveForFrame ? 2.0f : 1.0f) : 0.0f;
     if (m_impl->frameUniformBuffer == nullptr ||
         !m_impl->frameUniformBuffer->update(frameResourceIndex, m_impl->frameUniforms)) {
         m_impl->recordDiagnostic(
@@ -1998,7 +2004,7 @@ void MetalRenderer::draw(
     const bool showGaussians =
         m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
     if (showGaussians &&
-        m_impl->shadowsEnabled &&
+        shadowsActiveForFrame &&
         m_impl->lightingEnabled &&
         m_impl->gaussianVisualizationMode == GaussianVisualizationMode::Final &&
         m_impl->gaussianShadowPass != nullptr &&
@@ -2112,7 +2118,9 @@ void MetalRenderer::draw(
             *m_impl->gaussianSortBuffer,
             m_impl->frameUniformBuffer->buffer(frameResourceIndex),
             m_impl->depthTestEnabled,
-            overdrawVisualization);
+            overdrawVisualization,
+            m_impl->gaussianShadowPass == nullptr ? nullptr : m_impl->gaussianShadowPass->shadowDistanceTexture(),
+            shadowsActiveForFrame);
         m_impl->recordDiagnostic(m_impl->gaussianRenderPass->lastDiagnostic());
         renderedGaussiansThisFrame =
             m_impl->gaussianRenderPass->lastEncodeDiagnostics().instanceCount > 0;

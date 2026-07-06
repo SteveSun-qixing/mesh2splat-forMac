@@ -113,12 +113,16 @@ struct MetalGaussianRenderPass::Impl {
         const MetalGaussianSortBuffer* sortBuffer,
         bool ready,
         bool requestedDepthTestEnabled,
-        bool overdrawVisualization) const
+        bool overdrawVisualization,
+        bool requestedShadowsEnabled,
+        bool shadowTextureBound) const
     {
         lastEncodeDiagnostics = {};
         lastEncodeDiagnostics.ready = ready;
         lastEncodeDiagnostics.gaussianBufferValid = gaussianBuffer.isValid();
         lastEncodeDiagnostics.sortBufferValid = sortBuffer != nullptr && sortBuffer->isValid();
+        lastEncodeDiagnostics.shadowsEnabled = requestedShadowsEnabled;
+        lastEncodeDiagnostics.shadowTextureBound = shadowTextureBound;
         lastEncodeDiagnostics.depthTestEnabled = requestedDepthTestEnabled;
         lastEncodeDiagnostics.depthWriteEnabled = false;
         lastEncodeDiagnostics.gaussianCapacity = gaussianBuffer.capacity();
@@ -359,9 +363,19 @@ void MetalGaussianRenderPass::encode(
     const MetalGaussianBuffer& gaussianBuffer,
     void* frameUniformBuffer,
     bool depthTestEnabled,
-    bool overdrawVisualization) const
+    bool overdrawVisualization,
+    void* shadowDistanceTexture,
+    bool shadowsEnabled) const
 {
-    encodeImpl(renderCommandEncoder, gaussianBuffer, nullptr, frameUniformBuffer, depthTestEnabled, overdrawVisualization);
+    encodeImpl(
+        renderCommandEncoder,
+        gaussianBuffer,
+        nullptr,
+        frameUniformBuffer,
+        depthTestEnabled,
+        overdrawVisualization,
+        shadowDistanceTexture,
+        shadowsEnabled);
 }
 
 void MetalGaussianRenderPass::encode(
@@ -370,9 +384,19 @@ void MetalGaussianRenderPass::encode(
     const MetalGaussianSortBuffer& sortBuffer,
     void* frameUniformBuffer,
     bool depthTestEnabled,
-    bool overdrawVisualization) const
+    bool overdrawVisualization,
+    void* shadowDistanceTexture,
+    bool shadowsEnabled) const
 {
-    encodeImpl(renderCommandEncoder, gaussianBuffer, &sortBuffer, frameUniformBuffer, depthTestEnabled, overdrawVisualization);
+    encodeImpl(
+        renderCommandEncoder,
+        gaussianBuffer,
+        &sortBuffer,
+        frameUniformBuffer,
+        depthTestEnabled,
+        overdrawVisualization,
+        shadowDistanceTexture,
+        shadowsEnabled);
 }
 
 void MetalGaussianRenderPass::encodeImpl(
@@ -381,14 +405,24 @@ void MetalGaussianRenderPass::encodeImpl(
     const MetalGaussianSortBuffer* sortBuffer,
     void* frameUniformBuffer,
     bool depthTestEnabled,
-    bool overdrawVisualization) const
+    bool overdrawVisualization,
+    void* shadowDistanceTexture,
+    bool shadowsEnabled) const
 {
     if (m_impl == nullptr) {
         return;
     }
 
     const bool ready = isReady();
-    m_impl->beginEncodeDiagnostics(gaussianBuffer, sortBuffer, ready, depthTestEnabled, overdrawVisualization);
+    id<MTLTexture> shadowTexture = (__bridge id<MTLTexture>)shadowDistanceTexture;
+    m_impl->beginEncodeDiagnostics(
+        gaussianBuffer,
+        sortBuffer,
+        ready,
+        depthTestEnabled,
+        overdrawVisualization,
+        shadowsEnabled,
+        shadowTexture != nil);
     if (!ready) {
         m_impl->recordDiagnostic("Metal gaussian render pass skipped: pass is not ready.");
         return;
@@ -487,6 +521,9 @@ void MetalGaussianRenderPass::encodeImpl(
     [encoder setFragmentBuffer:frameBuffer
                          offset:0
                         atIndex:bindings::gaussian_preview::fragment_buffers::kFrameUniforms];
+    if (shadowTexture != nil) {
+        [encoder setFragmentTexture:shadowTexture atIndex:0];
+    }
     [encoder setFragmentSamplerState:samplerState atIndex:0];
     [encoder drawPrimitives:MTLPrimitiveTypeTriangle
                 vertexStart:0

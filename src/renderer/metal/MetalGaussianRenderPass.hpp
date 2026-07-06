@@ -22,6 +22,8 @@ struct MetalGaussianRenderPassDiagnostics {
     bool sortBufferValid = false;
     bool usedSortedIndices = false;
     bool usedIdentityIndices = false;
+    bool shadowsEnabled = false;
+    bool shadowTextureBound = false;
     bool depthTestEnabled = true;
     bool depthWriteEnabled = false;
     std::size_t gaussianCapacity = 0;
@@ -71,14 +73,18 @@ public:
         const MetalGaussianBuffer& gaussianBuffer,
         void* frameUniformBuffer,
         bool depthTestEnabled = true,
-        bool overdrawVisualization = false) const;
+        bool overdrawVisualization = false,
+        void* shadowDistanceTexture = nullptr,
+        bool shadowsEnabled = false) const;
     void encode(
         void* renderCommandEncoder,
         const MetalGaussianBuffer& gaussianBuffer,
         const MetalGaussianSortBuffer& sortBuffer,
         void* frameUniformBuffer,
         bool depthTestEnabled = true,
-        bool overdrawVisualization = false) const;
+        bool overdrawVisualization = false,
+        void* shadowDistanceTexture = nullptr,
+        bool shadowsEnabled = false) const;
 
 private:
     void encodeImpl(
@@ -87,7 +93,9 @@ private:
         const MetalGaussianSortBuffer* sortBuffer,
         void* frameUniformBuffer,
         bool depthTestEnabled,
-        bool overdrawVisualization) const;
+        bool overdrawVisualization,
+        void* shadowDistanceTexture,
+        bool shadowsEnabled) const;
 
     struct Impl;
     std::unique_ptr<Impl> m_impl;
