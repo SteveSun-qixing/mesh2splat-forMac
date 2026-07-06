@@ -13,7 +13,7 @@ struct Mesh2SplatAppEnvironment: Equatable {
         displayName: "Mesh2Splat Metal",
         bundleIdentifier: "com.mesh2splat.metal",
         defaultExportFileName: "mesh2splat-gaussians.ply",
-        supportedImportTypes: Self.contentTypes(forFilenameExtensions: ["glb", "gltf"]),
+        supportedImportTypes: Self.contentTypes(forFilenameExtensions: ["glb", "gltf", "ply"]),
         supportedExportTypes: Self.contentTypes(forFilenameExtensions: ["ply"]),
         polling: .production
     )

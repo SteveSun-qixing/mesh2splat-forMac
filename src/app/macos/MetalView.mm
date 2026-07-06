@@ -921,7 +921,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     self.paused = NO;
     self.framebufferOnly = YES;
     self.autoResizeDrawable = NO;
-    self.lastDiagnosticMessage = @"Drop or open a .glb/.gltf mesh.";
+    self.lastDiagnosticMessage = @"Drop or open a .glb, .gltf, or .ply scene.";
     self.lastImportStatus = @"Import: waiting";
     self.lastConversionStatus = @"Conversion: idle";
     self.lastExportStatus = @"Export: not ready";
