@@ -23,6 +23,7 @@
 #include "MetalRenderTarget.hpp"
 #include "MetalSceneResources.hpp"
 #include "MetalShaderLibrary.hpp"
+#include "renderer/RendererAssetSession.hpp"
 #include "renderer/event.hpp"
 
 #import <Foundation/Foundation.h>
@@ -464,6 +465,7 @@ struct MetalRenderer::Impl {
     void recordDiagnostic(const std::string& message);
     void transitionTo(mesh2splat::renderer::RendererRuntimeState nextState);
     void markFailed(const std::string& message);
+    void markTrackedConversionFailed(const std::string& message);
     mesh2splat::renderer::RendererRuntimeState effectiveRuntimeState() const;
     float currentConversionProgress() const;
 
@@ -486,6 +488,7 @@ struct MetalRenderer::Impl {
     core::FrameUniforms frameUniforms;
     core::Matrix4 lastSortedViewMatrix;
     core::CameraController camera;
+    mesh2splat::renderer::RendererAssetSession assetSession;
     std::string loadedMeshPath;
     std::string lastDiagnostic;
     std::string lastErrorMessage;
@@ -520,6 +523,13 @@ void MetalRenderer::Impl::markFailed(const std::string& message)
     runtimeState = mesh2splat::renderer::RendererRuntimeState::Failed;
     lastErrorMessage = message;
     recordDiagnostic(message);
+}
+
+void MetalRenderer::Impl::markTrackedConversionFailed(const std::string& message)
+{
+    if (assetSession.hasScene()) {
+        assetSession.conversionFailed(message);
+    }
 }
 
 mesh2splat::renderer::RendererRuntimeState MetalRenderer::Impl::effectiveRuntimeState() const
@@ -727,18 +737,22 @@ bool MetalRenderer::Impl::submitSceneConversion(
 {
     if (deviceContext == nullptr || !deviceContext->isValid()) {
         markFailed("Cannot submit Metal mesh conversion: device context is invalid.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: device context is invalid.");
         return false;
     }
     if (conversionPass == nullptr || !conversionPass->isReady()) {
         recordDiagnostic("Cannot submit Metal mesh conversion: conversion pass is not ready.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: conversion pass is not ready.");
         return false;
     }
     if (!conversionSceneResources.isValid()) {
         recordDiagnostic("Cannot submit Metal mesh conversion: scene resources are invalid.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: scene resources are invalid.");
         return false;
     }
     if (!core::gaussianCountFitsBuffer(conversionSceneResources.totalVertexCount())) {
         recordDiagnostic("Cannot submit Metal mesh conversion: scene vertex count exceeds gaussian buffer limits.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: scene vertex count exceeds gaussian buffer limits.");
         return false;
     }
 
@@ -747,11 +761,13 @@ bool MetalRenderer::Impl::submitSceneConversion(
         conversionSceneResources.conversionCapacity(conversionSamplesPerTriangle);
     if (gaussianCapacity == 0) {
         recordDiagnostic("Cannot submit Metal mesh conversion: planned gaussian capacity is zero.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: planned gaussian capacity is zero.");
         return false;
     }
 
     if (!core::gaussianCountFitsBuffer(gaussianCapacity)) {
         recordDiagnostic("Cannot submit Metal mesh conversion: planned gaussian capacity exceeds buffer limits.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: planned gaussian capacity exceeds buffer limits.");
         return false;
     }
 
@@ -764,12 +780,14 @@ bool MetalRenderer::Impl::submitSceneConversion(
     nextConversion->gaussianBuffer = std::make_unique<MetalGaussianBuffer>(*deviceContext);
     if (!nextConversion->gaussianBuffer->create(gaussianCapacity, "Mesh2Splat Converted Gaussians")) {
         recordDiagnostic("Cannot submit Metal mesh conversion: failed to allocate gaussian output buffers.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: failed to allocate gaussian output buffers.");
         return false;
     }
 
     nextConversion->sortBuffer = std::make_unique<MetalGaussianSortBuffer>(*deviceContext);
     if (!nextConversion->sortBuffer->create(gaussianCapacity, "Mesh2Splat Gaussian Sort")) {
         recordDiagnostic("Cannot submit Metal mesh conversion: failed to allocate gaussian sort buffers.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: failed to allocate gaussian sort buffers.");
         return false;
     }
 
@@ -778,6 +796,7 @@ bool MetalRenderer::Impl::submitSceneConversion(
         (__bridge id<MTLCommandBuffer>)commandScheduler.createCommandBuffer("Mesh2Splat Mesh Conversion");
     if (commandBuffer == nil) {
         recordDiagnostic("Cannot submit Metal mesh conversion: failed to create command buffer.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: failed to create command buffer.");
         return false;
     }
 
@@ -789,6 +808,10 @@ bool MetalRenderer::Impl::submitSceneConversion(
             conversionSamplesPerTriangle,
             &conversionError)) {
         recordDiagnostic(
+            conversionError.empty()
+                ? "Cannot submit Metal mesh conversion: failed to encode conversion pass."
+                : "Cannot submit Metal mesh conversion: " + conversionError);
+        markTrackedConversionFailed(
             conversionError.empty()
                 ? "Cannot submit Metal mesh conversion: failed to encode conversion pass."
                 : "Cannot submit Metal mesh conversion: " + conversionError);
@@ -851,6 +874,7 @@ bool MetalRenderer::Impl::submitSceneConversion(
             *nextSceneResources = std::move(nextConversion->nextSceneResources);
         }
         recordDiagnostic("Cannot submit Metal mesh conversion: failed to commit command buffer.");
+        markTrackedConversionFailed("Cannot submit Metal mesh conversion: failed to commit command buffer.");
         return false;
     }
 
@@ -858,6 +882,10 @@ bool MetalRenderer::Impl::submitSceneConversion(
         timingState->recordConversionSubmitted(elapsedMilliseconds(conversionCpuStart, Clock::now()));
     }
     pendingConversion = nextConversion;
+    if (assetSession.hasScene()) {
+        assetSession.conversionSubmitted();
+        assetSession.conversionRunning();
+    }
     transitionTo(mesh2splat::renderer::RendererRuntimeState::Converting);
     return true;
 }
@@ -893,6 +921,10 @@ void MetalRenderer::Impl::finalizePendingConversion()
             conversion->completionDiagnostic.empty()
                 ? "Metal mesh conversion command did not produce gaussians."
                 : conversion->completionDiagnostic);
+        markTrackedConversionFailed(
+            conversion->completionDiagnostic.empty()
+                ? "Metal mesh conversion command did not produce gaussians."
+                : conversion->completionDiagnostic);
         return;
     }
 
@@ -905,6 +937,9 @@ void MetalRenderer::Impl::finalizePendingConversion()
     convertedGaussianCount = conversion->convertedCount.load(std::memory_order_relaxed);
     gaussianBuffer = std::move(conversion->gaussianBuffer);
     gaussianSortBuffer = std::move(conversion->sortBuffer);
+    if (assetSession.hasScene()) {
+        assetSession.conversionCompleted(convertedGaussianCount > 0);
+    }
     hasSortedGaussianDepths = false;
     transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
 }
@@ -1040,27 +1075,35 @@ bool MetalRenderer::initialize()
 
 bool MetalRenderer::loadMeshFile(const std::string& filePath)
 {
+    if (!filePath.empty()) {
+        m_impl->assetSession.importStarted(filePath);
+    }
     if (m_impl->deviceContext == nullptr || !m_impl->deviceContext->isValid() || filePath.empty()) {
-        m_impl->markFailed(
-            filePath.empty()
-                ? "Cannot load Metal scene: mesh file path is empty."
-                : "Cannot load Metal scene: device context is invalid.");
+        const std::string message = filePath.empty()
+            ? "Cannot load Metal scene: mesh file path is empty."
+            : "Cannot load Metal scene: device context is invalid.";
+        m_impl->assetSession.importFailed(message);
+        m_impl->markFailed(message);
         return false;
     }
 
     m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Loading);
     io::GltfSceneLoadResult loadResult;
     if (!io::loadGltfScene(filePath, loadResult)) {
-        m_impl->markFailed(
+        const std::string message =
             loadResult.error.empty()
                 ? "Failed to load mesh: " + filePath
-                : "Failed to load mesh: " + loadResult.error);
+                : "Failed to load mesh: " + loadResult.error;
+        m_impl->assetSession.importFailed(message);
+        m_impl->markFailed(message);
         return false;
     }
 
     auto nextSceneResources = std::make_unique<MetalSceneResources>(*m_impl->deviceContext);
     if (!nextSceneResources->uploadMeshes(loadResult.scene.meshes)) {
-        m_impl->markFailed("Failed to upload mesh resources: " + filePath);
+        const std::string message = "Failed to upload mesh resources: " + filePath;
+        m_impl->assetSession.importFailed(message);
+        m_impl->markFailed(message);
         return false;
     }
 
@@ -1069,6 +1112,7 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
     }
 
     const core::MeshBounds meshBounds = loadResult.scene.bounds;
+    m_impl->assetSession.importSucceeded(filePath);
     if (!m_impl->submitSceneConversion(
             *nextSceneResources,
             &nextSceneResources,
@@ -1083,6 +1127,7 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
         m_impl->gaussianSortBuffer.reset();
         m_impl->convertedGaussianCount = 0;
         m_impl->hasSortedGaussianDepths = false;
+        m_impl->assetSession.conversionFailed("Metal mesh conversion could not be submitted.");
         m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
     }
     return true;
@@ -1226,6 +1271,20 @@ const std::string& MetalRenderer::loadedMeshPath() const
     return m_impl->loadedMeshPath;
 }
 
+mesh2splat::renderer::RendererLoadedSceneSnapshot MetalRenderer::loadedSceneSnapshot() const
+{
+    const mesh2splat::renderer::RendererAssetSessionSnapshot session = m_impl->assetSession.snapshot();
+    mesh2splat::renderer::RendererLoadedSceneSnapshot loadedScene;
+    loadedScene.loaded = session.hasScene || !m_impl->loadedMeshPath.empty();
+    loadedScene.kind = mesh2splat::renderer::RendererSceneKind::Mesh;
+    loadedScene.filePath = session.sourcePath.empty() ? m_impl->loadedMeshPath : session.sourcePath;
+    loadedScene.displayName = session.displayName.empty()
+        ? mesh2splat::renderer::Renderer::rendererDisplayNameFromPath(loadedScene.filePath)
+        : session.displayName;
+    loadedScene.revision = session.loadSerial;
+    return loadedScene;
+}
+
 mesh2splat::renderer::RendererSceneLoadResult MetalRenderer::loadScene(
     const mesh2splat::renderer::RendererSceneLoadRequest& request)
 {
@@ -1331,12 +1390,14 @@ mesh2splat::renderer::RendererExportPlyResult MetalRenderer::exportPly(
     }
 
     m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Exporting);
+    m_impl->assetSession.exportStarted(request.filePath);
     std::vector<core::GaussianRecord> gaussians;
     if (!m_impl->gaussianBuffer->readback(gaussians)) {
         result.diagnostic = m_impl->gaussianBuffer->lastErrorMessage().empty()
             ? "PLY export failed: Metal gaussian readback did not complete."
             : "PLY export failed: " + m_impl->gaussianBuffer->lastErrorMessage();
         m_impl->recordDiagnostic(result.diagnostic);
+        m_impl->assetSession.exportFailed(result.diagnostic);
         m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
         return result;
     }
@@ -1363,6 +1424,11 @@ mesh2splat::renderer::RendererExportPlyResult MetalRenderer::exportPly(
             : "PLY export failed: " + writeResult.error;
     }
     m_impl->recordDiagnostic(result.diagnostic);
+    if (result.exported) {
+        m_impl->assetSession.exportSucceeded(request.filePath);
+    } else {
+        m_impl->assetSession.exportFailed(result.diagnostic);
+    }
     m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
     return result;
 }
@@ -1409,7 +1475,8 @@ mesh2splat::renderer::RendererDiagnostics MetalRenderer::diagnostics() const
     diagnostics.stats = rendererStats();
     diagnostics.message = m_impl->lastDiagnostic;
     diagnostics.lastError = m_impl->lastErrorMessage;
-    diagnostics.loadedScenePath = loadedMeshPath();
+    diagnostics.loadedScene = loadedSceneSnapshot();
+    diagnostics.loadedScenePath = diagnostics.loadedScene.filePath;
     diagnostics.progress = conversionProgress();
     diagnostics.convertedGaussianCount = convertedGaussianCount();
     diagnostics.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
@@ -1417,11 +1484,16 @@ mesh2splat::renderer::RendererDiagnostics MetalRenderer::diagnostics() const
     diagnostics.gaussianVisualizationMode = gaussianVisualizationMode();
     diagnostics.gaussianScale = gaussianScale();
     diagnostics.converting = isConvertingGaussians();
-    diagnostics.hasScene = m_impl->sceneResources != nullptr && m_impl->sceneResources->isValid();
+    diagnostics.hasScene = diagnostics.loadedScene.loaded ||
+        (m_impl->sceneResources != nullptr && m_impl->sceneResources->isValid());
     diagnostics.hasGaussians = convertedGaussianCount() > 0;
     if (diagnostics.message.empty()) {
-        diagnostics.message = std::string("Metal renderer is ") + rendererStateName(diagnostics.state) + ".";
+        const mesh2splat::renderer::RendererAssetSessionSnapshot session = m_impl->assetSession.snapshot();
+        diagnostics.message = session.statusText.empty()
+            ? std::string("Metal renderer is ") + rendererStateName(diagnostics.state) + "."
+            : session.statusText;
     }
+    diagnostics.statusText = diagnostics.message;
     return diagnostics;
 }
 

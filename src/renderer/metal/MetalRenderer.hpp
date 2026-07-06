@@ -37,6 +37,7 @@ public:
     MetalRendererStats rendererStats() const override;
     const std::string& lastDiagnostic() const override;
     const std::string& loadedMeshPath() const override;
+    mesh2splat::renderer::RendererLoadedSceneSnapshot loadedSceneSnapshot() const override;
     mesh2splat::renderer::RendererSceneLoadResult loadScene(
         const mesh2splat::renderer::RendererSceneLoadRequest& request) override;
     mesh2splat::renderer::RendererConversionResult startConversion(
