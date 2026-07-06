@@ -32,6 +32,7 @@ struct MetalMeshRenderPassDiagnostics {
     std::size_t missingMaterialTextureCount = 0;
     bool depthEnabled = true;
     bool depthWriteEnabled = true;
+    bool wireframeEnabled = false;
     std::string colorFormat;
     std::string depthFormat;
     std::string debugLabel;
@@ -64,7 +65,8 @@ public:
         void* renderCommandEncoder,
         const MetalSceneResources& sceneResources,
         void* frameUniformBuffer,
-        bool depthTestEnabled = true) const;
+        bool depthTestEnabled = true,
+        bool wireframeEnabled = false) const;
 
 private:
     struct Impl;

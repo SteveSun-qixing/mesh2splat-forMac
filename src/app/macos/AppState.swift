@@ -114,6 +114,7 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var meshRenderingEnabled = true { didSet { submitRenderSettings() } }
     @Published var gaussianRenderingEnabled = true { didSet { submitRenderSettings() } }
     @Published var conversionEnabled = true { didSet { submitRenderSettings() } }
+    @Published var showMeshWireframe = false { didSet { submitRenderSettings() } }
     @Published var showGaussianCenters = false { didSet { submitRenderSettings() } }
     @Published var showSortOrder = false { didSet { submitRenderSettings() } }
 
@@ -483,6 +484,7 @@ final class Mesh2SplatAppState: ObservableObject {
         meshRenderingEnabled = status.meshRenderingEnabled
         gaussianRenderingEnabled = status.gaussianRenderingEnabled
         conversionEnabled = status.meshToGaussianConversionEnabled
+        showMeshWireframe = (status.debugFlags & Self.showMeshWireframeFlag) != 0
         showGaussianCenters = (status.debugFlags & Self.showGaussianCentersFlag) != 0
         showSortOrder = (status.debugFlags & Self.showSortOrderFlag) != 0
         if let quality = ConversionQuality(rawValue: Int(status.conversionSamplesPerTriangle)) {
@@ -572,6 +574,7 @@ final class Mesh2SplatAppState: ObservableObject {
         meshRenderingEnabled = preset.toggles.meshRenderingEnabled
         gaussianRenderingEnabled = preset.toggles.gaussianRenderingEnabled
         conversionEnabled = preset.toggles.conversionEnabled
+        showMeshWireframe = false
         showGaussianCenters = false
         showSortOrder = false
         isResettingRenderSettings = false
@@ -581,11 +584,15 @@ final class Mesh2SplatAppState: ObservableObject {
         }
     }
 
+    private static let showMeshWireframeFlag: UInt32 = 1 << 1
     private static let showGaussianCentersFlag: UInt32 = 1 << 2
     private static let showSortOrderFlag: UInt32 = 1 << 4
 
     private var renderDebugFlags: UInt32 {
         var flags: UInt32 = 0
+        if showMeshWireframe {
+            flags |= Self.showMeshWireframeFlag
+        }
         if showGaussianCenters {
             flags |= Self.showGaussianCentersFlag
         }

@@ -132,7 +132,8 @@ struct MetalMeshRenderPass::Impl {
     void beginEncodeDiagnostics(
         const MetalSceneResources& sceneResources,
         bool ready,
-        bool requestedDepthTestEnabled) const
+        bool requestedDepthTestEnabled,
+        bool requestedWireframeEnabled) const
     {
         lastEncodeDiagnostics = {};
         lastEncodeDiagnostics.ready = ready;
@@ -145,6 +146,7 @@ struct MetalMeshRenderPass::Impl {
         lastEncodeDiagnostics.emptyScene = sceneLooksEmpty(sceneResources);
         lastEncodeDiagnostics.depthEnabled = depthEnabled && requestedDepthTestEnabled;
         lastEncodeDiagnostics.depthWriteEnabled = depthWriteEnabled && requestedDepthTestEnabled;
+        lastEncodeDiagnostics.wireframeEnabled = requestedWireframeEnabled;
         lastEncodeDiagnostics.colorFormat = textureFormatName(colorFormat);
         lastEncodeDiagnostics.depthFormat = textureFormatName(depthFormat);
         lastEncodeDiagnostics.debugLabel = debugLabel;
@@ -290,14 +292,15 @@ void MetalMeshRenderPass::encode(
     void* renderCommandEncoder,
     const MetalSceneResources& sceneResources,
     void* frameUniformBuffer,
-    bool depthTestEnabled) const
+    bool depthTestEnabled,
+    bool wireframeEnabled) const
 {
     if (m_impl == nullptr) {
         return;
     }
 
     const bool ready = isReady();
-    m_impl->beginEncodeDiagnostics(sceneResources, ready, depthTestEnabled);
+    m_impl->beginEncodeDiagnostics(sceneResources, ready, depthTestEnabled, wireframeEnabled);
     if (!ready) {
         m_impl->recordDiagnostic("Metal mesh render pass skipped: pass is not ready.");
         return;
@@ -337,6 +340,7 @@ void MetalMeshRenderPass::encode(
     [encoder pushDebugGroup:stringFromUtf8(m_impl->debugLabel.c_str())];
     [encoder setRenderPipelineState:pipelineState];
     [encoder setDepthStencilState:depthStencilState];
+    [encoder setTriangleFillMode:wireframeEnabled ? MTLTriangleFillModeLines : MTLTriangleFillModeFill];
     [encoder setVertexBuffer:frameBuffer offset:0 atIndex:bindings::mesh::vertex_buffers::kFrameUniforms];
     [encoder setFragmentBuffer:frameBuffer offset:0 atIndex:bindings::mesh::fragment_buffers::kFrameUniforms];
     [encoder setFragmentSamplerState:samplerState atIndex:bindings::mesh::fragment_samplers::kMaterialTextures];

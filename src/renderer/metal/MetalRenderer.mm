@@ -2021,11 +2021,14 @@ void MetalRenderer::draw(
         m_impl->frameUniformBuffer != nullptr;
     bool renderedMeshThisFrame = false;
     if (canRenderMeshThisFrame) {
+        const bool showMeshWireframe =
+            core::hasRenderDebugFlag(m_impl->debugFlags, core::RenderDebugFlag::ShowMeshWireframe);
         m_impl->meshRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->sceneResources,
             m_impl->frameUniformBuffer->buffer(frameResourceIndex),
-            m_impl->depthTestEnabled);
+            m_impl->depthTestEnabled,
+            showMeshWireframe);
         m_impl->recordDiagnostic(m_impl->meshRenderPass->lastDiagnostic());
         renderedMeshThisFrame =
             m_impl->meshRenderPass->lastEncodeDiagnostics().encodedDrawRangeCount > 0;
