@@ -1300,12 +1300,7 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
 
     const core::MeshBounds meshBounds = loadResult.scene.bounds;
     m_impl->assetSession.importSucceeded(filePath);
-    if (!m_impl->submitSceneConversion(
-            *nextSceneResources,
-            &nextSceneResources,
-            meshBounds,
-            filePath)) {
-        NSLog(@"Metal mesh conversion could not be submitted: %s", filePath.c_str());
+    auto installSceneWithoutGaussians = [&](std::string diagnostic) {
         m_impl->pendingConversion.reset();
         m_impl->sceneResources = std::move(nextSceneResources);
         m_impl->camera.frameBounds(meshBounds);
@@ -1314,8 +1309,26 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
         m_impl->gaussianSortBuffer.reset();
         m_impl->convertedGaussianCount = 0;
         m_impl->hasSortedGaussianDepths = false;
-        m_impl->assetSession.conversionFailed("Metal mesh conversion could not be submitted.");
+        if (!diagnostic.empty()) {
+            m_impl->recordDiagnostic(diagnostic);
+        }
         m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
+    };
+
+    if (!m_impl->meshToGaussianConversionEnabled) {
+        installSceneWithoutGaussians("Metal mesh conversion is disabled; loaded mesh without gaussian conversion.");
+        m_impl->assetSession.conversionCancelled();
+        return true;
+    }
+
+    if (!m_impl->submitSceneConversion(
+            *nextSceneResources,
+            &nextSceneResources,
+            meshBounds,
+            filePath)) {
+        NSLog(@"Metal mesh conversion could not be submitted: %s", filePath.c_str());
+        installSceneWithoutGaussians("Metal mesh conversion could not be submitted.");
+        m_impl->assetSession.conversionFailed("Metal mesh conversion could not be submitted.");
     }
     return true;
 }
@@ -1369,6 +1382,17 @@ bool MetalRenderer::setConversionSamplesPerTriangle(uint32_t samplesPerTriangle)
     const uint32_t normalizedSamples = normalizedConversionSamples(samplesPerTriangle);
     if (m_impl->conversionSamplesPerTriangle == normalizedSamples) {
         return true;
+    }
+
+    if (!m_impl->meshToGaussianConversionEnabled) {
+        m_impl->conversionSamplesPerTriangle = normalizedSamples;
+        m_impl->recordDiagnostic("Metal mesh conversion is disabled; stored conversion quality without rebuilding.");
+        return true;
+    }
+
+    if (isConvertingGaussians()) {
+        m_impl->recordDiagnostic("Cannot change Metal conversion quality while conversion is running.");
+        return false;
     }
 
     const uint32_t previousSamples = m_impl->conversionSamplesPerTriangle;
@@ -1505,6 +1529,11 @@ mesh2splat::renderer::RendererConversionResult MetalRenderer::startConversion(
     mesh2splat::renderer::RendererConversionResult result;
     result.samplesPerTriangle = conversionSamplesPerTriangle();
     result.convertedGaussianCount = convertedGaussianCount();
+    if (!m_impl->meshToGaussianConversionEnabled) {
+        result.diagnostic = "Metal mesh conversion is disabled.";
+        m_impl->recordDiagnostic(result.diagnostic);
+        return result;
+    }
     if (isConvertingGaussians()) {
         result.diagnostic = "Renderer is already converting gaussians.";
         return result;

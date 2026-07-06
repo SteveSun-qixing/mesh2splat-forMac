@@ -497,10 +497,20 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     request.debugFlags = settings.debugFlags;
     request.gaussianSortingEnabled = settings.gaussianSortingEnabled;
     request.meshToGaussianConversionEnabled = settings.meshToGaussianConversionEnabled;
+    const bool hadGaussians = _renderer->convertedGaussianCount() > 0;
+    const bool wasConverting = _renderer->isConvertingGaussians();
     result = _renderer->setRenderMode(request);
 
     if (settings.meshToGaussianConversionEnabled && settings.conversionSamplesPerTriangle > 0) {
-        _renderer->setConversionSamplesPerTriangle(settings.conversionSamplesPerTriangle);
+        const uint32_t requestedSamples = settings.conversionSamplesPerTriangle;
+        if (requestedSamples != _renderer->conversionSamplesPerTriangle()) {
+            _renderer->setConversionSamplesPerTriangle(requestedSamples);
+        } else if (!hadGaussians && !wasConverting && _renderer->diagnostics().hasScene) {
+            mesh2splat::renderer::RendererConversionRequest conversionRequest;
+            conversionRequest.samplesPerTriangle = requestedSamples;
+            conversionRequest.forceRebuild = true;
+            _renderer->startConversion(conversionRequest);
+        }
     }
     return result;
 }
