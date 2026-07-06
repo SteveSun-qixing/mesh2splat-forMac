@@ -72,6 +72,7 @@ void clearErrorMessage(std::string* errorMessage)
 struct MetalGaussianRenderPass::Impl {
     id<MTLDevice> device = nil;
     void* renderPipelineState = nullptr;
+    void* overdrawPipelineState = nullptr;
     void* depthStencilState = nullptr;
     void* depthDisabledState = nullptr;
     void* samplerState = nullptr;
@@ -86,6 +87,7 @@ struct MetalGaussianRenderPass::Impl {
     void resetPipelineState()
     {
         renderPipelineState = nullptr;
+        overdrawPipelineState = nullptr;
         depthStencilState = nullptr;
         depthDisabledState = nullptr;
         samplerState = nullptr;
@@ -108,7 +110,8 @@ struct MetalGaussianRenderPass::Impl {
         const MetalGaussianBuffer& gaussianBuffer,
         const MetalGaussianSortBuffer* sortBuffer,
         bool ready,
-        bool requestedDepthTestEnabled) const
+        bool requestedDepthTestEnabled,
+        bool overdrawVisualization) const
     {
         lastEncodeDiagnostics = {};
         lastEncodeDiagnostics.ready = ready;
@@ -127,8 +130,9 @@ struct MetalGaussianRenderPass::Impl {
         lastEncodeDiagnostics.identityIndexBytes = identityIndexCapacity * sizeof(uint32_t);
         lastEncodeDiagnostics.colorFormat = textureFormatName(colorFormat);
         lastEncodeDiagnostics.depthFormat = textureFormatName(depthFormat);
-        lastEncodeDiagnostics.blendMode = kGaussianBlendModeName;
-        lastEncodeDiagnostics.alphaBlendDescription = kGaussianAlphaBlendDescription;
+        lastEncodeDiagnostics.blendMode = overdrawVisualization ? "Additive" : kGaussianBlendModeName;
+        lastEncodeDiagnostics.alphaBlendDescription =
+            overdrawVisualization ? kGaussianAdditiveBlendDescription : kGaussianAlphaBlendDescription;
         lastEncodeDiagnostics.additiveBlendDescription = kGaussianAdditiveBlendDescription;
         lastEncodeDiagnostics.debugLabel = debugLabel;
     }
@@ -242,6 +246,26 @@ bool MetalGaussianRenderPass::initialize(
         return false;
     }
 
+    MetalRenderPipelineDesc overdrawPipelineDesc = pipelineDesc;
+    overdrawPipelineDesc.label = "Gaussian Overdraw Pipeline";
+    overdrawPipelineDesc.blendMode = MetalBlendMode::Additive;
+    overdrawPipelineDesc.variantKey += "/overdraw=additive";
+    m_impl->overdrawPipelineState = pipelineCache.renderPipeline(shaderLibrary, overdrawPipelineDesc, &pipelineError);
+    if (m_impl->overdrawPipelineState == nullptr) {
+        std::string message =
+            "Failed to initialize gaussian overdraw pipeline '" + overdrawPipelineDesc.vertexFunction + "/" +
+            overdrawPipelineDesc.fragmentFunction + "' for colorFormat=" + textureFormatName(colorFormat) +
+            ", depthFormat=" + textureFormatName(depthFormat) + ", blendMode=Additive";
+        if (!pipelineError.empty()) {
+            message += ": " + pipelineError;
+        } else {
+            message += ": pipeline cache returned no diagnostic.";
+        }
+        m_impl->recordDiagnostic(message);
+        setErrorMessage(errorMessage, std::move(message));
+        return false;
+    }
+
     MetalDepthStencilDesc depthDesc;
     depthDesc.label = "Gaussian Preview Depth";
     depthDesc.depthTestEnabled = true;
@@ -303,7 +327,8 @@ bool MetalGaussianRenderPass::initialize(
 bool MetalGaussianRenderPass::isReady() const
 {
     return m_impl != nullptr &&
-        m_impl->renderPipelineState != nullptr && m_impl->depthStencilState != nullptr &&
+        m_impl->renderPipelineState != nullptr && m_impl->overdrawPipelineState != nullptr &&
+        m_impl->depthStencilState != nullptr &&
         m_impl->depthDisabledState != nullptr &&
         m_impl->samplerState != nullptr;
 }
@@ -331,9 +356,10 @@ void MetalGaussianRenderPass::encode(
     void* renderCommandEncoder,
     const MetalGaussianBuffer& gaussianBuffer,
     void* frameUniformBuffer,
-    bool depthTestEnabled) const
+    bool depthTestEnabled,
+    bool overdrawVisualization) const
 {
-    encodeImpl(renderCommandEncoder, gaussianBuffer, nullptr, frameUniformBuffer, depthTestEnabled);
+    encodeImpl(renderCommandEncoder, gaussianBuffer, nullptr, frameUniformBuffer, depthTestEnabled, overdrawVisualization);
 }
 
 void MetalGaussianRenderPass::encode(
@@ -341,9 +367,10 @@ void MetalGaussianRenderPass::encode(
     const MetalGaussianBuffer& gaussianBuffer,
     const MetalGaussianSortBuffer& sortBuffer,
     void* frameUniformBuffer,
-    bool depthTestEnabled) const
+    bool depthTestEnabled,
+    bool overdrawVisualization) const
 {
-    encodeImpl(renderCommandEncoder, gaussianBuffer, &sortBuffer, frameUniformBuffer, depthTestEnabled);
+    encodeImpl(renderCommandEncoder, gaussianBuffer, &sortBuffer, frameUniformBuffer, depthTestEnabled, overdrawVisualization);
 }
 
 void MetalGaussianRenderPass::encodeImpl(
@@ -351,14 +378,15 @@ void MetalGaussianRenderPass::encodeImpl(
     const MetalGaussianBuffer& gaussianBuffer,
     const MetalGaussianSortBuffer* sortBuffer,
     void* frameUniformBuffer,
-    bool depthTestEnabled) const
+    bool depthTestEnabled,
+    bool overdrawVisualization) const
 {
     if (m_impl == nullptr) {
         return;
     }
 
     const bool ready = isReady();
-    m_impl->beginEncodeDiagnostics(gaussianBuffer, sortBuffer, ready, depthTestEnabled);
+    m_impl->beginEncodeDiagnostics(gaussianBuffer, sortBuffer, ready, depthTestEnabled, overdrawVisualization);
     if (!ready) {
         m_impl->recordDiagnostic("Metal gaussian render pass skipped: pass is not ready.");
         return;
@@ -424,7 +452,8 @@ void MetalGaussianRenderPass::encodeImpl(
     m_impl->lastEncodeDiagnostics.instanceCount = instanceCount;
 
     id<MTLRenderCommandEncoder> encoder = (__bridge id<MTLRenderCommandEncoder>)renderCommandEncoder;
-    id<MTLRenderPipelineState> pipelineState = (__bridge id<MTLRenderPipelineState>)m_impl->renderPipelineState;
+    id<MTLRenderPipelineState> pipelineState = (__bridge id<MTLRenderPipelineState>)(
+        overdrawVisualization ? m_impl->overdrawPipelineState : m_impl->renderPipelineState);
     id<MTLDepthStencilState> depthStencilState = (__bridge id<MTLDepthStencilState>)(
         depthTestEnabled ? m_impl->depthStencilState : m_impl->depthDisabledState);
     id<MTLSamplerState> samplerState = (__bridge id<MTLSamplerState>)m_impl->samplerState;

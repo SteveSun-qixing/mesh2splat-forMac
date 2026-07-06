@@ -2036,12 +2036,15 @@ void MetalRenderer::draw(
         m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr;
     bool renderedGaussiansThisFrame = false;
     if (canRenderGaussiansThisFrame) {
+        const bool overdrawVisualization =
+            m_impl->gaussianVisualizationMode == GaussianVisualizationMode::Overdraw;
         m_impl->gaussianRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->gaussianBuffer,
             *m_impl->gaussianSortBuffer,
             m_impl->frameUniformBuffer->buffer(frameResourceIndex),
-            m_impl->depthTestEnabled);
+            m_impl->depthTestEnabled,
+            overdrawVisualization);
         m_impl->recordDiagnostic(m_impl->gaussianRenderPass->lastDiagnostic());
         renderedGaussiansThisFrame =
             m_impl->gaussianRenderPass->lastEncodeDiagnostics().instanceCount > 0;

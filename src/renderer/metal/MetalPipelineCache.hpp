@@ -16,6 +16,7 @@ enum class MetalBlendMode {
     Disabled,
     Alpha,
     PremultipliedAlpha,
+    Additive,
 };
 
 struct MetalRenderPipelineDesc {

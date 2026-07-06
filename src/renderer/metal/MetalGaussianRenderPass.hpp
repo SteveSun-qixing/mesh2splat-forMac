@@ -70,13 +70,15 @@ public:
         void* renderCommandEncoder,
         const MetalGaussianBuffer& gaussianBuffer,
         void* frameUniformBuffer,
-        bool depthTestEnabled = true) const;
+        bool depthTestEnabled = true,
+        bool overdrawVisualization = false) const;
     void encode(
         void* renderCommandEncoder,
         const MetalGaussianBuffer& gaussianBuffer,
         const MetalGaussianSortBuffer& sortBuffer,
         void* frameUniformBuffer,
-        bool depthTestEnabled = true) const;
+        bool depthTestEnabled = true,
+        bool overdrawVisualization = false) const;
 
 private:
     void encodeImpl(
@@ -84,7 +86,8 @@ private:
         const MetalGaussianBuffer& gaussianBuffer,
         const MetalGaussianSortBuffer* sortBuffer,
         void* frameUniformBuffer,
-        bool depthTestEnabled) const;
+        bool depthTestEnabled,
+        bool overdrawVisualization) const;
 
     struct Impl;
     std::unique_ptr<Impl> m_impl;

@@ -79,6 +79,8 @@ std::string blendModeName(MetalBlendMode blendMode)
         return "Alpha";
     case MetalBlendMode::PremultipliedAlpha:
         return "PremultipliedAlpha";
+    case MetalBlendMode::Additive:
+        return "Additive";
     }
 
     return "Unknown(" + std::to_string(static_cast<int>(blendMode)) + ")";
@@ -515,12 +517,29 @@ void* MetalPipelineCache::renderPipeline(
     if (desc.blendMode != MetalBlendMode::Disabled) {
         MTLRenderPipelineColorAttachmentDescriptor* colorAttachment = pipelineDescriptor.colorAttachments[0];
         colorAttachment.blendingEnabled = YES;
-        colorAttachment.sourceRGBBlendFactor =
-            desc.blendMode == MetalBlendMode::PremultipliedAlpha ? MTLBlendFactorOne : MTLBlendFactorSourceAlpha;
-        colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        switch (desc.blendMode) {
+        case MetalBlendMode::Alpha:
+            colorAttachment.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+            colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+            colorAttachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
+            colorAttachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+            break;
+        case MetalBlendMode::PremultipliedAlpha:
+            colorAttachment.sourceRGBBlendFactor = MTLBlendFactorOne;
+            colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+            colorAttachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
+            colorAttachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+            break;
+        case MetalBlendMode::Additive:
+            colorAttachment.sourceRGBBlendFactor = MTLBlendFactorOne;
+            colorAttachment.destinationRGBBlendFactor = MTLBlendFactorOne;
+            colorAttachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
+            colorAttachment.destinationAlphaBlendFactor = MTLBlendFactorOne;
+            break;
+        case MetalBlendMode::Disabled:
+            break;
+        }
         colorAttachment.rgbBlendOperation = MTLBlendOperationAdd;
-        colorAttachment.sourceAlphaBlendFactor = MTLBlendFactorOne;
-        colorAttachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
         colorAttachment.alphaBlendOperation = MTLBlendOperationAdd;
     }
 
