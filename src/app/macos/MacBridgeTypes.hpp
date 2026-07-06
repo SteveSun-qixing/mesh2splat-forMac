@@ -49,6 +49,8 @@ struct MacBridgeUiCommand {
     bool gaussianRenderingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
     bool depthTestEnabled = true;
+    bool splitScreenEnabled = false;
+    float splitScreenPosition = 0.5f;
     std::uint64_t commandId = 0;
 };
 
@@ -245,6 +247,8 @@ struct MacBridgeRendererStatusSummary {
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
     bool depthTestEnabled = true;
+    bool splitScreenEnabled = false;
+    float splitScreenPosition = 0.5f;
     bool lastFrameRenderedMesh = false;
     bool lastFrameRenderedGaussians = false;
     bool lastFrameSortedGaussians = false;

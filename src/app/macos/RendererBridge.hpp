@@ -121,6 +121,8 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) BOOL gaussianSortingEnabled;
 @property (nonatomic, assign) BOOL meshToGaussianConversionEnabled;
 @property (nonatomic, assign) BOOL depthTestEnabled;
+@property (nonatomic, assign) BOOL splitScreenEnabled;
+@property (nonatomic, assign) float splitScreenPosition;
 @property (nonatomic, strong) M2SRendererFrameStats* frameStats;
 @property (nonatomic, strong) M2SRendererBackendStatus* backendStatus;
 @property (nonatomic, strong) M2SRendererResourceStats* resourceStats;

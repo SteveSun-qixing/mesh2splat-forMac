@@ -254,6 +254,8 @@ struct RendererModeRequest {
     float backgroundBrightness = 0.04f;
     bool depthTestEnabled = true;
     bool lightingEnabled = true;
+    bool splitScreenEnabled = false;
+    float splitScreenPosition = 0.5f;
     float lightPosition[3] = {3.0f, 4.0f, 2.5f};
     float lightIntensity = 1.0f;
     float lightColor[3] = {1.0f, 0.95f, 0.85f};
@@ -273,6 +275,8 @@ struct RendererModeResult {
     float backgroundBrightness = 0.04f;
     bool depthTestEnabled = true;
     bool lightingEnabled = true;
+    bool splitScreenEnabled = false;
+    float splitScreenPosition = 0.5f;
     float lightPosition[3] = {3.0f, 4.0f, 2.5f};
     float lightIntensity = 1.0f;
     float lightColor[3] = {1.0f, 0.95f, 0.85f};

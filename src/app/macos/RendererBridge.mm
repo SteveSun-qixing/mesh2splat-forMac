@@ -197,6 +197,8 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.gaussianSortingEnabled = summary.gaussianSortingEnabled;
     status.meshToGaussianConversionEnabled = summary.meshToGaussianConversionEnabled;
     status.depthTestEnabled = summary.depthTestEnabled;
+    status.splitScreenEnabled = summary.splitScreenEnabled;
+    status.splitScreenPosition = summary.splitScreenPosition;
     status.frameStats = frameStats;
     status.backendStatus = bridgeBackendStatus(summary);
     status.resourceStats = resourceStats;

@@ -78,6 +78,8 @@ struct RenderSettingsLimits {
     float maxLightIntensity = 1000.0f;
     float minLightColor = 0.0f;
     float maxLightColor = 4.0f;
+    float minSplitScreenPosition = 0.0f;
+    float maxSplitScreenPosition = 1.0f;
     uint32_t minConversionSamplesPerTriangle = kLowConversionSamplesPerTriangle;
     uint32_t maxConversionSamplesPerTriangle = kUltraConversionSamplesPerTriangle;
     uint32_t maxEffectiveConversionSamplesPerTriangle = kMaxEffectiveConversionSamplesPerTriangle;
@@ -91,6 +93,8 @@ struct RenderSettings {
     bool enableGaussianSorting = true;
     bool enableMeshToGaussianConversion = true;
     bool enableDepthTest = true;
+    bool enableSplitScreen = false;
+    float splitScreenPosition = 0.5f;
     float gaussianScale = kDefaultGaussianScale;
     float exposure = kDefaultExposure;
     float gamma = kDefaultGamma;
@@ -119,6 +123,8 @@ struct RenderSettingsSnapshot {
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
     bool depthTestEnabled = true;
+    bool splitScreenEnabled = false;
+    float splitScreenPosition = 0.5f;
     float gaussianScale = kDefaultGaussianScale;
     float exposure = kDefaultExposure;
     float gamma = kDefaultGamma;
@@ -427,6 +433,11 @@ inline RenderSettings clampRenderSettings(RenderSettings settings, const RenderS
         limits.minLightColor,
         limits.maxLightColor,
         kDefaultLightColorBlue);
+    settings.splitScreenPosition = clampFinite(
+        settings.splitScreenPosition,
+        limits.minSplitScreenPosition,
+        limits.maxSplitScreenPosition,
+        0.5f);
     settings.debugFlags &= kKnownRenderDebugFlags;
     settings.conversionSamplesPerTriangle =
         clampConversionSamplesPerTriangle(settings.conversionSamplesPerTriangle, limits);
@@ -459,6 +470,8 @@ inline RenderSettingsSnapshot makeRenderSettingsSnapshot(
     snapshot.gaussianSortingEnabled = clampedSettings.enableGaussianSorting;
     snapshot.meshToGaussianConversionEnabled = clampedSettings.enableMeshToGaussianConversion;
     snapshot.depthTestEnabled = clampedSettings.enableDepthTest;
+    snapshot.splitScreenEnabled = clampedSettings.enableSplitScreen;
+    snapshot.splitScreenPosition = clampedSettings.splitScreenPosition;
     snapshot.gaussianScale = clampedSettings.gaussianScale;
     snapshot.exposure = clampedSettings.exposure;
     snapshot.gamma = clampedSettings.gamma;

@@ -105,6 +105,8 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     BOOL gaussianRenderingEnabled,
     BOOL conversionEnabled,
     BOOL depthTestEnabled,
+    BOOL splitScreenEnabled,
+    double splitScreenPosition,
     BOOL lightingEnabled,
     double lightPositionX,
     double lightPositionY,
@@ -122,6 +124,8 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     settings.enableGaussianSorting = sortingEnabled;
     settings.enableMeshToGaussianConversion = conversionEnabled;
     settings.enableDepthTest = depthTestEnabled;
+    settings.enableSplitScreen = splitScreenEnabled;
+    settings.splitScreenPosition = static_cast<float>(splitScreenPosition);
     settings.gaussianScale = static_cast<float>(splatSize);
     settings.exposure = static_cast<float>(exposure);
     settings.gamma = static_cast<float>(gamma);
@@ -522,6 +526,8 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     request.lightColor[2] = settings.lightColor[2];
     request.debugFlags = settings.debugFlags;
     request.depthTestEnabled = settings.depthTestEnabled;
+    request.splitScreenEnabled = settings.splitScreenEnabled;
+    request.splitScreenPosition = settings.splitScreenPosition;
     request.gaussianSortingEnabled = settings.gaussianSortingEnabled;
     request.meshToGaussianConversionEnabled = settings.meshToGaussianConversionEnabled;
     const bool hadGaussians = _renderer->convertedGaussianCount() > 0;
@@ -706,6 +712,8 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.lightColorBlue = renderSettings.lightColor[2];
     summary.debugFlags = renderSettings.debugFlags;
     summary.depthTestEnabled = renderSettings.depthTestEnabled;
+    summary.splitScreenEnabled = renderSettings.splitScreenEnabled;
+    summary.splitScreenPosition = renderSettings.splitScreenPosition;
     summary.conversionProgress = diagnostics.progress;
     summary.conversionSamplesPerTriangle = renderSettings.conversionSamplesPerTriangle;
     summary.submittedConversionCount = stats.submittedConversionCount;
@@ -1226,6 +1234,8 @@ conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
 gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
       conversionEnabled:(BOOL)conversionEnabled
        depthTestEnabled:(BOOL)depthTestEnabled
+     splitScreenEnabled:(BOOL)splitScreenEnabled
+    splitScreenPosition:(double)splitScreenPosition
         lightingEnabled:(BOOL)lightingEnabled
          lightPositionX:(double)lightPositionX
          lightPositionY:(double)lightPositionY
@@ -1249,6 +1259,8 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
             gaussianRenderingEnabled,
             conversionEnabled,
             depthTestEnabled,
+            splitScreenEnabled,
+            splitScreenPosition,
             lightingEnabled,
             lightPositionX,
             lightPositionY,
@@ -1668,6 +1680,8 @@ conversionSamplesPerTriangle:static_cast<NSInteger>(command.conversionSamplesPer
      gaussianRenderingEnabled:command.gaussianRenderingEnabled
             conversionEnabled:command.meshToGaussianConversionEnabled
             depthTestEnabled:command.depthTestEnabled
+         splitScreenEnabled:command.splitScreenEnabled
+        splitScreenPosition:command.splitScreenPosition
              lightingEnabled:command.lightingEnabled
               lightPositionX:command.lightPositionX
               lightPositionY:command.lightPositionY

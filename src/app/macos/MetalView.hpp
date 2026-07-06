@@ -25,6 +25,8 @@ conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
 gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
       conversionEnabled:(BOOL)conversionEnabled
        depthTestEnabled:(BOOL)depthTestEnabled
+     splitScreenEnabled:(BOOL)splitScreenEnabled
+    splitScreenPosition:(double)splitScreenPosition
         lightingEnabled:(BOOL)lightingEnabled
          lightPositionX:(double)lightPositionX
          lightPositionY:(double)lightPositionY

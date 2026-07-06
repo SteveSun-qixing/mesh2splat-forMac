@@ -111,6 +111,8 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var conversionQuality: ConversionQuality = .balanced { didSet { submitRenderSettings() } }
     @Published var sortingEnabled = true { didSet { submitRenderSettings() } }
     @Published var depthTestEnabled = true { didSet { submitRenderSettings() } }
+    @Published var splitScreenEnabled = false { didSet { submitRenderSettings() } }
+    @Published var splitScreenPosition = 0.5 { didSet { submitRenderSettings() } }
     @Published var meshRenderingEnabled = true { didSet { submitRenderSettings() } }
     @Published var gaussianRenderingEnabled = true { didSet { submitRenderSettings() } }
     @Published var conversionEnabled = true { didSet { submitRenderSettings() } }
@@ -256,6 +258,8 @@ final class Mesh2SplatAppState: ObservableObject {
             gaussianRenderingEnabled,
             conversionEnabled,
             depthTestEnabled,
+            splitScreenEnabled,
+            splitScreenPosition.clamped(to: 0.0...1.0),
             lightingEnabled,
             lightPositionX.clamped(to: -100.0...100.0),
             lightPositionY.clamped(to: -100.0...100.0),
@@ -481,6 +485,8 @@ final class Mesh2SplatAppState: ObservableObject {
         lightColorBlue = Double(status.lightColorBlue)
         sortingEnabled = status.gaussianSortingEnabled
         depthTestEnabled = status.depthTestEnabled
+        splitScreenEnabled = status.splitScreenEnabled
+        splitScreenPosition = Double(status.splitScreenPosition)
         meshRenderingEnabled = status.meshRenderingEnabled
         gaussianRenderingEnabled = status.gaussianRenderingEnabled
         conversionEnabled = status.meshToGaussianConversionEnabled
@@ -571,6 +577,8 @@ final class Mesh2SplatAppState: ObservableObject {
         conversionQuality = preset.quality
         sortingEnabled = preset.toggles.sortingEnabled
         depthTestEnabled = preset.toggles.depthTestEnabled
+        splitScreenEnabled = false
+        splitScreenPosition = 0.5
         meshRenderingEnabled = preset.toggles.meshRenderingEnabled
         gaussianRenderingEnabled = preset.toggles.gaussianRenderingEnabled
         conversionEnabled = preset.toggles.conversionEnabled

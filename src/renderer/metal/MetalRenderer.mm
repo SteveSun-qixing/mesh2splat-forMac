@@ -676,6 +676,8 @@ struct MetalRenderer::Impl {
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
     bool depthTestEnabled = true;
+    bool splitScreenEnabled = false;
+    float splitScreenPosition = 0.5f;
     bool initialized = false;
     bool renderingFrame = false;
     bool exportPending = false;
@@ -1583,6 +1585,8 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     m_impl->gamma = clampedFinite(request.gamma, 0.1f, 4.0f, 2.2f);
     m_impl->backgroundBrightness = clampedFinite(request.backgroundBrightness, 0.0f, 1.0f, 0.04f);
     m_impl->depthTestEnabled = request.depthTestEnabled;
+    m_impl->splitScreenEnabled = request.splitScreenEnabled;
+    m_impl->splitScreenPosition = clampedFinite(request.splitScreenPosition, 0.0f, 1.0f, 0.5f);
     m_impl->lightingEnabled = request.lightingEnabled;
     m_impl->lightPosition[0] = clampedFinite(request.lightPosition[0], -100.0f, 100.0f, 3.0f);
     m_impl->lightPosition[1] = clampedFinite(request.lightPosition[1], -100.0f, 100.0f, 4.0f);
@@ -1608,6 +1612,8 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     result.gamma = m_impl->gamma;
     result.backgroundBrightness = m_impl->backgroundBrightness;
     result.depthTestEnabled = m_impl->depthTestEnabled;
+    result.splitScreenEnabled = m_impl->splitScreenEnabled;
+    result.splitScreenPosition = m_impl->splitScreenPosition;
     result.lightingEnabled = m_impl->lightingEnabled;
     result.lightPosition[0] = m_impl->lightPosition[0];
     result.lightPosition[1] = m_impl->lightPosition[1];
@@ -1702,6 +1708,8 @@ mesh2splat::renderer::RendererRenderSettingsSummary MetalRenderer::renderSetting
     settings.gamma = m_impl->gamma;
     settings.backgroundBrightness = m_impl->backgroundBrightness;
     settings.depthTestEnabled = m_impl->depthTestEnabled;
+    settings.splitScreenEnabled = m_impl->splitScreenEnabled;
+    settings.splitScreenPosition = m_impl->splitScreenPosition;
     settings.lightingEnabled = m_impl->lightingEnabled;
     settings.lightPosition[0] = m_impl->lightPosition[0];
     settings.lightPosition[1] = m_impl->lightPosition[1];
@@ -2015,12 +2023,26 @@ void MetalRenderer::draw(
         return;
     }
     encoder.label = @"Mesh2Splat Drawable Render";
+    const bool splitScreenThisFrame =
+        m_impl->splitScreenEnabled && m_impl->viewMode == RenderViewMode::Combined;
+    const uint32_t splitPixelX = splitScreenThisFrame
+        ? std::min<uint32_t>(
+              drawableWidth,
+              static_cast<uint32_t>(std::lround(m_impl->splitScreenPosition * static_cast<float>(drawableWidth))))
+        : drawableWidth;
     const bool showMesh = m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::MeshOnly;
     const bool canRenderMeshThisFrame =
         showMesh && m_impl->meshRenderPass != nullptr && m_impl->sceneResources != nullptr &&
         m_impl->frameUniformBuffer != nullptr;
     bool renderedMeshThisFrame = false;
-    if (canRenderMeshThisFrame) {
+    if (canRenderMeshThisFrame && (!splitScreenThisFrame || splitPixelX > 0)) {
+        if (splitScreenThisFrame) {
+            [encoder setScissorRect:MTLScissorRect{
+                0,
+                0,
+                static_cast<NSUInteger>(splitPixelX),
+                static_cast<NSUInteger>(drawableHeight)}];
+        }
         const bool showMeshWireframe =
             core::hasRenderDebugFlag(m_impl->debugFlags, core::RenderDebugFlag::ShowMeshWireframe);
         m_impl->meshRenderPass->encode(
@@ -2038,7 +2060,14 @@ void MetalRenderer::draw(
         m_impl->gaussianRenderPass != nullptr && m_impl->gaussianBuffer != nullptr &&
         m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr;
     bool renderedGaussiansThisFrame = false;
-    if (canRenderGaussiansThisFrame) {
+    if (canRenderGaussiansThisFrame && (!splitScreenThisFrame || splitPixelX < drawableWidth)) {
+        if (splitScreenThisFrame) {
+            [encoder setScissorRect:MTLScissorRect{
+                static_cast<NSUInteger>(splitPixelX),
+                0,
+                static_cast<NSUInteger>(drawableWidth - splitPixelX),
+                static_cast<NSUInteger>(drawableHeight)}];
+        }
         const bool overdrawVisualization =
             m_impl->gaussianVisualizationMode == GaussianVisualizationMode::Overdraw;
         m_impl->gaussianRenderPass->encode(
@@ -2051,6 +2080,13 @@ void MetalRenderer::draw(
         m_impl->recordDiagnostic(m_impl->gaussianRenderPass->lastDiagnostic());
         renderedGaussiansThisFrame =
             m_impl->gaussianRenderPass->lastEncodeDiagnostics().instanceCount > 0;
+    }
+    if (splitScreenThisFrame) {
+        [encoder setScissorRect:MTLScissorRect{
+            0,
+            0,
+            static_cast<NSUInteger>(drawableWidth),
+            static_cast<NSUInteger>(drawableHeight)}];
     }
     [encoder endEncoding];
 

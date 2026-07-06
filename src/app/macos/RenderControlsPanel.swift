@@ -22,6 +22,15 @@ struct RenderControlsPanel: View {
 
                 Toggle("Sort gaussians", isOn: $appState.sortingEnabled)
                 Toggle("Depth test", isOn: $appState.depthTestEnabled)
+                Toggle("Split view", isOn: $appState.splitScreenEnabled)
+                if appState.splitScreenEnabled {
+                    RenderControlSlider(
+                        title: "Split",
+                        value: $appState.splitScreenPosition,
+                        range: 0.0...1.0,
+                        format: "%.2f"
+                    )
+                }
                 Toggle("Wireframe", isOn: $appState.showMeshWireframe)
                 Toggle("Centers", isOn: $appState.showGaussianCenters)
                 Toggle("Sort order", isOn: $appState.showSortOrder)

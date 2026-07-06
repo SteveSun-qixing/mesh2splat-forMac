@@ -78,6 +78,8 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           BOOL gaussianRenderingEnabled,
                                           BOOL conversionEnabled,
                                           BOOL depthTestEnabled,
+                                          BOOL splitScreenEnabled,
+                                          double splitScreenPosition,
                                           BOOL lightingEnabled,
                                           double lightPositionX,
                                           double lightPositionY,
@@ -92,7 +94,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
         return;
     }
 
-    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:depthTestEnabled:lightingEnabled:lightPositionX:lightPositionY:lightPositionZ:lightIntensity:lightColorRed:lightColorGreen:lightColorBlue:debugFlags:");
+    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:depthTestEnabled:splitScreenEnabled:splitScreenPosition:lightingEnabled:lightPositionX:lightPositionY:lightPositionZ:lightIntensity:lightColorRed:lightColorGreen:lightColorBlue:debugFlags:");
     if (![view respondsToSelector:selector]) {
         return;
     }
@@ -111,6 +113,8 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
         BOOL,
         BOOL,
         BOOL,
+        BOOL,
+        double,
         BOOL,
         double,
         double,
@@ -134,6 +138,8 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
             gaussianRenderingEnabled,
             conversionEnabled,
             depthTestEnabled,
+            splitScreenEnabled,
+            splitScreenPosition,
             lightingEnabled,
             lightPositionX,
             lightPositionY,
