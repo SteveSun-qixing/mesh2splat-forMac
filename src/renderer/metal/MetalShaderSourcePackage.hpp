@@ -102,7 +102,7 @@ inline constexpr std::string_view kMetalShaderMetallibBundleResourcePath = "Mesh
 inline constexpr std::string_view kMetalShaderRuntimeFallbackSourceStringId =
     "mesh2splat.metal.runtime-source";
 
-inline constexpr std::array<MetalShaderSourceFileEntry, 6> kMetalShaderSourceFiles = {{
+inline constexpr std::array<MetalShaderSourceFileEntry, 7> kMetalShaderSourceFiles = {{
     {
         "gpu-types",
         "GpuTypes.metal",
@@ -157,9 +157,18 @@ inline constexpr std::array<MetalShaderSourceFileEntry, 6> kMetalShaderSourceFil
         kMetalShaderChecksumAlgorithm,
         kMetalShaderChecksumPlaceholder,
     },
+    {
+        "gaussian-shadow",
+        "Shadow.metal",
+        "shaders/metal/Shadow.metal",
+        "Shaders/Shadow.metal",
+        "mesh2splat.metal.source.shadow",
+        kMetalShaderChecksumAlgorithm,
+        kMetalShaderChecksumPlaceholder,
+    },
 }};
 
-inline constexpr std::array<MetalShaderExpectedFunction, 18> kMetalShaderExpectedFunctions = {{
+inline constexpr std::array<MetalShaderExpectedFunction, 21> kMetalShaderExpectedFunctions = {{
     {
         "clear.vertex",
         "clearVertex",
@@ -273,6 +282,14 @@ inline constexpr std::array<MetalShaderExpectedFunction, 18> kMetalShaderExpecte
         "mesh-conversion",
     },
     {
+        "gaussian-sort.identity",
+        "gaussianIdentityIndexKernel",
+        MetalShaderFunctionStage::Compute,
+        "gaussian-identity-index",
+        "gaussian-sort",
+        "gaussian-sort",
+    },
+    {
         "gaussian-sort.depth-key",
         "gaussianDepthKeyKernel",
         MetalShaderFunctionStage::Compute,
@@ -304,9 +321,25 @@ inline constexpr std::array<MetalShaderExpectedFunction, 18> kMetalShaderExpecte
         "gaussian-sort",
         "gaussian-sort",
     },
+    {
+        "gaussian-shadow.vertex",
+        "gaussianShadowVertex",
+        MetalShaderFunctionStage::Vertex,
+        "gaussian-shadow-vertex",
+        "gaussian-shadow",
+        "gaussian-shadow",
+    },
+    {
+        "gaussian-shadow.fragment",
+        "gaussianShadowFragment",
+        MetalShaderFunctionStage::Fragment,
+        "gaussian-shadow-fragment",
+        "gaussian-shadow",
+        "gaussian-shadow",
+    },
 }};
 
-inline constexpr std::array<MetalShaderLogicalGroup, 6> kMetalShaderLogicalGroups = {{
+inline constexpr std::array<MetalShaderLogicalGroup, 7> kMetalShaderLogicalGroups = {{
     {
         "gpu-types",
         "Shared GPU Types",
@@ -347,7 +380,14 @@ inline constexpr std::array<MetalShaderLogicalGroup, 6> kMetalShaderLogicalGroup
         "Gaussian Sort",
         "gaussian-sort",
         14,
-        4,
+        5,
+    },
+    {
+        "gaussian-shadow",
+        "Gaussian Shadows",
+        "gaussian-shadow",
+        19,
+        2,
     },
 }};
 
