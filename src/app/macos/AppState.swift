@@ -100,6 +100,14 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var exposure = 1.0 { didSet { submitRenderSettings() } }
     @Published var gamma = 2.2 { didSet { submitRenderSettings() } }
     @Published var backgroundBrightness = 0.04 { didSet { submitRenderSettings() } }
+    @Published var lightingEnabled = true { didSet { submitRenderSettings() } }
+    @Published var lightPositionX = 3.0 { didSet { submitRenderSettings() } }
+    @Published var lightPositionY = 4.0 { didSet { submitRenderSettings() } }
+    @Published var lightPositionZ = 2.5 { didSet { submitRenderSettings() } }
+    @Published var lightIntensity = 1.0 { didSet { submitRenderSettings() } }
+    @Published var lightColorRed = 1.0 { didSet { submitRenderSettings() } }
+    @Published var lightColorGreen = 0.95 { didSet { submitRenderSettings() } }
+    @Published var lightColorBlue = 0.85 { didSet { submitRenderSettings() } }
     @Published var conversionQuality: ConversionQuality = .balanced { didSet { submitRenderSettings() } }
     @Published var sortingEnabled = true { didSet { submitRenderSettings() } }
     @Published var meshRenderingEnabled = true { didSet { submitRenderSettings() } }
@@ -245,6 +253,14 @@ final class Mesh2SplatAppState: ObservableObject {
             meshRenderingEnabled,
             gaussianRenderingEnabled,
             conversionEnabled,
+            lightingEnabled,
+            lightPositionX.clamped(to: -100.0...100.0),
+            lightPositionY.clamped(to: -100.0...100.0),
+            lightPositionZ.clamped(to: -100.0...100.0),
+            lightIntensity.clamped(to: 0.0...16.0),
+            lightColorRed.clamped(to: 0.0...4.0),
+            lightColorGreen.clamped(to: 0.0...4.0),
+            lightColorBlue.clamped(to: 0.0...4.0),
             renderDebugFlags
         )
         Mesh2SplatRefreshMetalViewStatus(metalView)
@@ -452,6 +468,14 @@ final class Mesh2SplatAppState: ObservableObject {
         exposure = Double(status.exposure)
         gamma = Double(status.gamma)
         backgroundBrightness = Double(status.backgroundBrightness)
+        lightingEnabled = status.lightingEnabled
+        lightPositionX = Double(status.lightPositionX)
+        lightPositionY = Double(status.lightPositionY)
+        lightPositionZ = Double(status.lightPositionZ)
+        lightIntensity = Double(status.lightIntensity)
+        lightColorRed = Double(status.lightColorRed)
+        lightColorGreen = Double(status.lightColorGreen)
+        lightColorBlue = Double(status.lightColorBlue)
         sortingEnabled = status.gaussianSortingEnabled
         meshRenderingEnabled = status.meshRenderingEnabled
         gaussianRenderingEnabled = status.gaussianRenderingEnabled
@@ -503,6 +527,16 @@ final class Mesh2SplatAppState: ObservableObject {
             exposure: exposure,
             gamma: gamma,
             backgroundBrightness: backgroundBrightness,
+            lighting: RenderPreset.Lighting(
+                enabled: lightingEnabled,
+                positionX: lightPositionX,
+                positionY: lightPositionY,
+                positionZ: lightPositionZ,
+                intensity: lightIntensity,
+                colorRed: lightColorRed,
+                colorGreen: lightColorGreen,
+                colorBlue: lightColorBlue
+            ),
             quality: conversionQuality,
             toggles: RenderPreset.Toggles(
                 sortingEnabled: sortingEnabled,
@@ -520,6 +554,14 @@ final class Mesh2SplatAppState: ObservableObject {
         exposure = preset.exposure
         gamma = preset.gamma
         backgroundBrightness = preset.backgroundBrightness
+        lightingEnabled = preset.lighting.enabled
+        lightPositionX = preset.lighting.positionX
+        lightPositionY = preset.lighting.positionY
+        lightPositionZ = preset.lighting.positionZ
+        lightIntensity = preset.lighting.intensity
+        lightColorRed = preset.lighting.colorRed
+        lightColorGreen = preset.lighting.colorGreen
+        lightColorBlue = preset.lighting.colorBlue
         conversionQuality = preset.quality
         sortingEnabled = preset.toggles.sortingEnabled
         meshRenderingEnabled = preset.toggles.meshRenderingEnabled

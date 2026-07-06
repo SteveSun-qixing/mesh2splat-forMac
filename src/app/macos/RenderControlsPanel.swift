@@ -57,6 +57,75 @@ struct RenderControlsPanel: View {
 
             Divider()
 
+            RenderControlSection("Lighting") {
+                Toggle("Enabled", isOn: $appState.lightingEnabled)
+
+                Group {
+                    RenderControlSlider(
+                        title: "Light X",
+                        value: $appState.lightPositionX,
+                        range: -10.0...10.0,
+                        format: "%.1f"
+                    )
+                    RenderControlSlider(
+                        title: "Light Y",
+                        value: $appState.lightPositionY,
+                        range: -10.0...10.0,
+                        format: "%.1f"
+                    )
+                    RenderControlSlider(
+                        title: "Light Z",
+                        value: $appState.lightPositionZ,
+                        range: -10.0...10.0,
+                        format: "%.1f"
+                    )
+                    RenderControlSlider(
+                        title: "Intensity",
+                        value: $appState.lightIntensity,
+                        range: 0.0...8.0,
+                        format: "%.2f"
+                    )
+
+                    HStack {
+                        Text("Color")
+                        Spacer(minLength: 12)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color(
+                                red: appState.lightColorRed.clamped(to: 0.0...1.0),
+                                green: appState.lightColorGreen.clamped(to: 0.0...1.0),
+                                blue: appState.lightColorBlue.clamped(to: 0.0...1.0)
+                            ))
+                            .frame(width: 28, height: 16)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .stroke(.secondary.opacity(0.35), lineWidth: 1)
+                            )
+                    }
+
+                    RenderControlSlider(
+                        title: "Red",
+                        value: $appState.lightColorRed,
+                        range: 0.0...2.0,
+                        format: "%.2f"
+                    )
+                    RenderControlSlider(
+                        title: "Green",
+                        value: $appState.lightColorGreen,
+                        range: 0.0...2.0,
+                        format: "%.2f"
+                    )
+                    RenderControlSlider(
+                        title: "Blue",
+                        value: $appState.lightColorBlue,
+                        range: 0.0...2.0,
+                        format: "%.2f"
+                    )
+                }
+                .disabled(!appState.lightingEnabled)
+            }
+
+            Divider()
+
             RenderControlSection("Conversion") {
                 Picker("Quality", selection: $appState.conversionQuality) {
                     ForEach(ConversionQuality.allCases) { quality in
@@ -132,5 +201,11 @@ private struct RenderControlSlider: View {
 
             Slider(value: $value, in: range)
         }
+    }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }

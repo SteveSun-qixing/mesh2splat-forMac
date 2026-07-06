@@ -97,6 +97,14 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) float exposure;
 @property (nonatomic, assign) float gamma;
 @property (nonatomic, assign) float backgroundBrightness;
+@property (nonatomic, assign) BOOL lightingEnabled;
+@property (nonatomic, assign) float lightPositionX;
+@property (nonatomic, assign) float lightPositionY;
+@property (nonatomic, assign) float lightPositionZ;
+@property (nonatomic, assign) float lightIntensity;
+@property (nonatomic, assign) float lightColorRed;
+@property (nonatomic, assign) float lightColorGreen;
+@property (nonatomic, assign) float lightColorBlue;
 @property (nonatomic, assign) uint32_t debugFlags;
 @property (nonatomic, assign) NSUInteger viewMode;
 @property (nonatomic, assign) NSUInteger gaussianVisualizationMode;

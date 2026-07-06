@@ -682,6 +682,10 @@ struct MetalRenderer::Impl {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    bool lightingEnabled = true;
+    float lightPosition[3] = {3.0f, 4.0f, 2.5f};
+    float lightIntensity = 1.0f;
+    float lightColor[3] = {1.0f, 0.95f, 0.85f};
     uint32_t debugFlags = 0;
     uint32_t conversionSamplesPerTriangle = kDefaultMetalConversionSamplesPerTriangle;
     uint32_t convertedGaussianCount = 0;
@@ -1577,6 +1581,14 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     m_impl->exposure = clampedFinite(request.exposure, 0.0f, 16.0f, 1.0f);
     m_impl->gamma = clampedFinite(request.gamma, 0.1f, 4.0f, 2.2f);
     m_impl->backgroundBrightness = clampedFinite(request.backgroundBrightness, 0.0f, 1.0f, 0.04f);
+    m_impl->lightingEnabled = request.lightingEnabled;
+    m_impl->lightPosition[0] = clampedFinite(request.lightPosition[0], -100.0f, 100.0f, 3.0f);
+    m_impl->lightPosition[1] = clampedFinite(request.lightPosition[1], -100.0f, 100.0f, 4.0f);
+    m_impl->lightPosition[2] = clampedFinite(request.lightPosition[2], -100.0f, 100.0f, 2.5f);
+    m_impl->lightIntensity = clampedFinite(request.lightIntensity, 0.0f, 16.0f, 1.0f);
+    m_impl->lightColor[0] = clampedFinite(request.lightColor[0], 0.0f, 4.0f, 1.0f);
+    m_impl->lightColor[1] = clampedFinite(request.lightColor[1], 0.0f, 4.0f, 0.95f);
+    m_impl->lightColor[2] = clampedFinite(request.lightColor[2], 0.0f, 4.0f, 0.85f);
     m_impl->debugFlags = request.debugFlags & core::kKnownRenderDebugFlags;
     m_impl->gaussianSortingEnabled = request.gaussianSortingEnabled;
     m_impl->meshToGaussianConversionEnabled = request.meshToGaussianConversionEnabled;
@@ -1593,6 +1605,14 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     result.exposure = m_impl->exposure;
     result.gamma = m_impl->gamma;
     result.backgroundBrightness = m_impl->backgroundBrightness;
+    result.lightingEnabled = m_impl->lightingEnabled;
+    result.lightPosition[0] = m_impl->lightPosition[0];
+    result.lightPosition[1] = m_impl->lightPosition[1];
+    result.lightPosition[2] = m_impl->lightPosition[2];
+    result.lightIntensity = m_impl->lightIntensity;
+    result.lightColor[0] = m_impl->lightColor[0];
+    result.lightColor[1] = m_impl->lightColor[1];
+    result.lightColor[2] = m_impl->lightColor[2];
     result.debugFlags = m_impl->debugFlags;
     result.gaussianSortingEnabled = m_impl->gaussianSortingEnabled;
     result.meshToGaussianConversionEnabled = m_impl->meshToGaussianConversionEnabled;
@@ -1678,6 +1698,14 @@ mesh2splat::renderer::RendererRenderSettingsSummary MetalRenderer::renderSetting
     settings.exposure = m_impl->exposure;
     settings.gamma = m_impl->gamma;
     settings.backgroundBrightness = m_impl->backgroundBrightness;
+    settings.lightingEnabled = m_impl->lightingEnabled;
+    settings.lightPosition[0] = m_impl->lightPosition[0];
+    settings.lightPosition[1] = m_impl->lightPosition[1];
+    settings.lightPosition[2] = m_impl->lightPosition[2];
+    settings.lightIntensity = m_impl->lightIntensity;
+    settings.lightColor[0] = m_impl->lightColor[0];
+    settings.lightColor[1] = m_impl->lightColor[1];
+    settings.lightColor[2] = m_impl->lightColor[2];
     settings.debugFlags = m_impl->debugFlags;
     settings.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
     settings.meshRenderingEnabled = settings.viewMode != RenderViewMode::GaussianOnly;
@@ -1830,6 +1858,14 @@ void MetalRenderer::draw(
     m_impl->frameUniforms.gaussianParams[1] = m_impl->exposure;
     m_impl->frameUniforms.gaussianParams[2] = m_impl->gamma;
     m_impl->frameUniforms.gaussianParams[3] = m_impl->backgroundBrightness;
+    m_impl->frameUniforms.lightPositionIntensity[0] = m_impl->lightPosition[0];
+    m_impl->frameUniforms.lightPositionIntensity[1] = m_impl->lightPosition[1];
+    m_impl->frameUniforms.lightPositionIntensity[2] = m_impl->lightPosition[2];
+    m_impl->frameUniforms.lightPositionIntensity[3] = m_impl->lightIntensity;
+    m_impl->frameUniforms.lightColorFlags[0] = m_impl->lightColor[0];
+    m_impl->frameUniforms.lightColorFlags[1] = m_impl->lightColor[1];
+    m_impl->frameUniforms.lightColorFlags[2] = m_impl->lightColor[2];
+    m_impl->frameUniforms.lightColorFlags[3] = m_impl->lightingEnabled ? 1.0f : 0.0f;
     if (m_impl->frameUniformBuffer == nullptr ||
         !m_impl->frameUniformBuffer->update(frameResourceIndex, m_impl->frameUniforms)) {
         m_impl->recordDiagnostic(

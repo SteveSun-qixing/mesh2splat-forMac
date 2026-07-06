@@ -30,7 +30,7 @@ constant constexpr uint kM2SGaussianRotationSlot = 4u;
 constant constexpr uint kM2SGaussianPbrSlot = 5u;
 
 constant constexpr uint kM2SMatrix4ByteSize = 64u;
-constant constexpr uint kM2SFrameUniformsByteSize = 352u;
+constant constexpr uint kM2SFrameUniformsByteSize = 400u;
 constant constexpr uint kM2SMeshMaterialByteSize = 48u;
 constant constexpr uint kM2SMeshDrawRangeByteSize = 16u;
 constant constexpr uint kM2SMeshConversionParamsByteSize = 32u;
@@ -117,6 +117,9 @@ struct M2SFrameUniforms {
     uint renderMode;
     uint flags;
     uint reserved;
+    float4 frameTiming;
+    float4 lightPositionIntensity;
+    float4 lightColorFlags;
 };
 
 struct M2SGaussianRecord {

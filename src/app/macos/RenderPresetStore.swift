@@ -1,6 +1,41 @@
 import Foundation
 
 struct RenderPreset: Codable, Equatable {
+    struct Lighting: Codable, Equatable {
+        var enabled: Bool
+        var positionX: Double
+        var positionY: Double
+        var positionZ: Double
+        var intensity: Double
+        var colorRed: Double
+        var colorGreen: Double
+        var colorBlue: Double
+
+        static let defaults = Lighting(
+            enabled: true,
+            positionX: 3.0,
+            positionY: 4.0,
+            positionZ: 2.5,
+            intensity: 1.0,
+            colorRed: 1.0,
+            colorGreen: 0.95,
+            colorBlue: 0.85
+        )
+
+        var normalized: Lighting {
+            Lighting(
+                enabled: enabled,
+                positionX: positionX.clamped(to: -100.0...100.0),
+                positionY: positionY.clamped(to: -100.0...100.0),
+                positionZ: positionZ.clamped(to: -100.0...100.0),
+                intensity: intensity.clamped(to: 0.0...16.0),
+                colorRed: colorRed.clamped(to: 0.0...4.0),
+                colorGreen: colorGreen.clamped(to: 0.0...4.0),
+                colorBlue: colorBlue.clamped(to: 0.0...4.0)
+            )
+        }
+    }
+
     struct Toggles: Codable, Equatable {
         var sortingEnabled: Bool
         var meshRenderingEnabled: Bool
@@ -21,11 +56,12 @@ struct RenderPreset: Codable, Equatable {
         exposure: 1.0,
         gamma: 2.2,
         backgroundBrightness: 0.04,
+        lighting: .defaults,
         quality: .balanced,
         toggles: .defaults
     )
 
-    private static let currentVersion = 1
+    private static let currentVersion = 2
 
     private var version: Int
     private var renderModeRawValue: Int
@@ -33,6 +69,7 @@ struct RenderPreset: Codable, Equatable {
     var exposure: Double
     var gamma: Double
     var backgroundBrightness: Double
+    var lighting: Lighting
     private var qualityRawValue: Int
     var toggles: Toggles
 
@@ -52,6 +89,7 @@ struct RenderPreset: Codable, Equatable {
         exposure: Double,
         gamma: Double,
         backgroundBrightness: Double,
+        lighting: Lighting,
         quality: ConversionQuality,
         toggles: Toggles
     ) {
@@ -61,6 +99,7 @@ struct RenderPreset: Codable, Equatable {
         self.exposure = exposure.clamped(to: 0.0...16.0)
         self.gamma = gamma.clamped(to: 0.1...4.0)
         self.backgroundBrightness = backgroundBrightness.clamped(to: 0.0...1.0)
+        self.lighting = lighting.normalized
         self.qualityRawValue = quality.rawValue
         self.toggles = toggles
     }
@@ -72,6 +111,7 @@ struct RenderPreset: Codable, Equatable {
             exposure: exposure,
             gamma: gamma,
             backgroundBrightness: backgroundBrightness,
+            lighting: lighting,
             quality: quality,
             toggles: toggles
         )

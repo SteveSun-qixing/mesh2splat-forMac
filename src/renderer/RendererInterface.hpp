@@ -155,6 +155,9 @@ struct RendererRenderSettingsSummary {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    float lightPosition[3] = {3.0f, 4.0f, 2.5f};
+    float lightIntensity = 1.0f;
+    float lightColor[3] = {1.0f, 0.95f, 0.85f};
     uint32_t debugFlags = 0;
     uint32_t conversionSamplesPerTriangle = 1;
     bool meshRenderingEnabled = true;
@@ -249,6 +252,10 @@ struct RendererModeRequest {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    bool lightingEnabled = true;
+    float lightPosition[3] = {3.0f, 4.0f, 2.5f};
+    float lightIntensity = 1.0f;
+    float lightColor[3] = {1.0f, 0.95f, 0.85f};
     uint32_t debugFlags = 0;
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
@@ -263,6 +270,10 @@ struct RendererModeResult {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    bool lightingEnabled = true;
+    float lightPosition[3] = {3.0f, 4.0f, 2.5f};
+    float lightIntensity = 1.0f;
+    float lightColor[3] = {1.0f, 0.95f, 0.85f};
     uint32_t debugFlags = 0;
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;

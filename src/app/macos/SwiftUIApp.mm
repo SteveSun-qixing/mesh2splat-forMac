@@ -77,18 +77,47 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           BOOL meshRenderingEnabled,
                                           BOOL gaussianRenderingEnabled,
                                           BOOL conversionEnabled,
+                                          BOOL lightingEnabled,
+                                          double lightPositionX,
+                                          double lightPositionY,
+                                          double lightPositionZ,
+                                          double lightIntensity,
+                                          double lightColorRed,
+                                          double lightColorGreen,
+                                          double lightColorBlue,
                                           uint32_t debugFlags)
 {
     if (![view isKindOfClass:Mesh2SplatMetalView.class]) {
         return;
     }
 
-    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:debugFlags:");
+    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:lightingEnabled:lightPositionX:lightPositionY:lightPositionZ:lightIntensity:lightColorRed:lightColorGreen:lightColorBlue:debugFlags:");
     if (![view respondsToSelector:selector]) {
         return;
     }
 
-    using ApplySettingsMessage = void (*)(id, SEL, NSInteger, double, double, double, double, NSInteger, BOOL, BOOL, BOOL, BOOL, uint32_t);
+    using ApplySettingsMessage = void (*)(
+        id,
+        SEL,
+        NSInteger,
+        double,
+        double,
+        double,
+        double,
+        NSInteger,
+        BOOL,
+        BOOL,
+        BOOL,
+        BOOL,
+        BOOL,
+        double,
+        double,
+        double,
+        double,
+        double,
+        double,
+        double,
+        uint32_t);
     ApplySettingsMessage message = reinterpret_cast<ApplySettingsMessage>(objc_msgSend);
     message(view,
             selector,
@@ -102,5 +131,13 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
             meshRenderingEnabled,
             gaussianRenderingEnabled,
             conversionEnabled,
+            lightingEnabled,
+            lightPositionX,
+            lightPositionY,
+            lightPositionZ,
+            lightIntensity,
+            lightColorRed,
+            lightColorGreen,
+            lightColorBlue,
             debugFlags);
 }

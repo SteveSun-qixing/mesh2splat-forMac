@@ -20,6 +20,9 @@ struct FrameUniforms {
     uint renderMode;
     uint flags;
     uint reserved;
+    float4 frameTiming;
+    float4 lightPositionIntensity;
+    float4 lightColorFlags;
 };
 
 struct GaussianRecord {

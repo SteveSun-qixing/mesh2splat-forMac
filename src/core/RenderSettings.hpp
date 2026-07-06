@@ -45,6 +45,13 @@ constexpr float kDefaultGaussianScale = 1.0f;
 constexpr float kDefaultExposure = 1.0f;
 constexpr float kDefaultGamma = 2.2f;
 constexpr float kDefaultBackgroundBrightness = 0.04f;
+constexpr float kDefaultLightPositionX = 3.0f;
+constexpr float kDefaultLightPositionY = 4.0f;
+constexpr float kDefaultLightPositionZ = 2.5f;
+constexpr float kDefaultLightIntensity = 1.0f;
+constexpr float kDefaultLightColorRed = 1.0f;
+constexpr float kDefaultLightColorGreen = 0.95f;
+constexpr float kDefaultLightColorBlue = 0.85f;
 constexpr RenderDebugFlags kNoRenderDebugFlags = 0;
 constexpr RenderDebugFlags kKnownRenderDebugFlags =
     static_cast<RenderDebugFlags>(RenderDebugFlag::ShowBounds) |
@@ -65,6 +72,12 @@ struct RenderSettingsLimits {
     float maxGamma = 4.0f;
     float minBackgroundBrightness = 0.0f;
     float maxBackgroundBrightness = 1.0f;
+    float minLightPosition = -100.0f;
+    float maxLightPosition = 100.0f;
+    float minLightIntensity = 0.0f;
+    float maxLightIntensity = 16.0f;
+    float minLightColor = 0.0f;
+    float maxLightColor = 4.0f;
     uint32_t minConversionSamplesPerTriangle = kLowConversionSamplesPerTriangle;
     uint32_t maxConversionSamplesPerTriangle = kUltraConversionSamplesPerTriangle;
     uint32_t maxEffectiveConversionSamplesPerTriangle = kMaxEffectiveConversionSamplesPerTriangle;
@@ -81,6 +94,18 @@ struct RenderSettings {
     float exposure = kDefaultExposure;
     float gamma = kDefaultGamma;
     float backgroundBrightness = kDefaultBackgroundBrightness;
+    bool enableLighting = true;
+    float lightPosition[3] = {
+        kDefaultLightPositionX,
+        kDefaultLightPositionY,
+        kDefaultLightPositionZ,
+    };
+    float lightIntensity = kDefaultLightIntensity;
+    float lightColor[3] = {
+        kDefaultLightColorRed,
+        kDefaultLightColorGreen,
+        kDefaultLightColorBlue,
+    };
     RenderDebugFlags debugFlags = kNoRenderDebugFlags;
     uint32_t conversionSamplesPerTriangle = kDefaultConversionSamplesPerTriangle;
 };
@@ -96,6 +121,18 @@ struct RenderSettingsSnapshot {
     float exposure = kDefaultExposure;
     float gamma = kDefaultGamma;
     float backgroundBrightness = kDefaultBackgroundBrightness;
+    bool lightingEnabled = true;
+    float lightPosition[3] = {
+        kDefaultLightPositionX,
+        kDefaultLightPositionY,
+        kDefaultLightPositionZ,
+    };
+    float lightIntensity = kDefaultLightIntensity;
+    float lightColor[3] = {
+        kDefaultLightColorRed,
+        kDefaultLightColorGreen,
+        kDefaultLightColorBlue,
+    };
     RenderDebugFlags debugFlags = kNoRenderDebugFlags;
     uint32_t requestedConversionSamplesPerTriangle = kDefaultConversionSamplesPerTriangle;
     uint32_t conversionSamplesPerTriangle = kDefaultConversionSamplesPerTriangle;
@@ -137,6 +174,12 @@ enum class RenderSettingsValidationFlag : uint32_t {
     ConversionSamplesRequireNormalization = 1u << 11,
     NonFiniteBackgroundBrightness = 1u << 12,
     BackgroundBrightnessOutOfRange = 1u << 13,
+    NonFiniteLightPosition = 1u << 14,
+    LightPositionOutOfRange = 1u << 15,
+    NonFiniteLightIntensity = 1u << 16,
+    LightIntensityOutOfRange = 1u << 17,
+    NonFiniteLightColor = 1u << 18,
+    LightColorOutOfRange = 1u << 19,
 };
 
 using RenderSettingsValidationFlags = uint32_t;
@@ -347,6 +390,41 @@ inline RenderSettings clampRenderSettings(RenderSettings settings, const RenderS
         limits.minBackgroundBrightness,
         limits.maxBackgroundBrightness,
         kDefaultBackgroundBrightness);
+    settings.lightPosition[0] = clampFinite(
+        settings.lightPosition[0],
+        limits.minLightPosition,
+        limits.maxLightPosition,
+        kDefaultLightPositionX);
+    settings.lightPosition[1] = clampFinite(
+        settings.lightPosition[1],
+        limits.minLightPosition,
+        limits.maxLightPosition,
+        kDefaultLightPositionY);
+    settings.lightPosition[2] = clampFinite(
+        settings.lightPosition[2],
+        limits.minLightPosition,
+        limits.maxLightPosition,
+        kDefaultLightPositionZ);
+    settings.lightIntensity = clampFinite(
+        settings.lightIntensity,
+        limits.minLightIntensity,
+        limits.maxLightIntensity,
+        kDefaultLightIntensity);
+    settings.lightColor[0] = clampFinite(
+        settings.lightColor[0],
+        limits.minLightColor,
+        limits.maxLightColor,
+        kDefaultLightColorRed);
+    settings.lightColor[1] = clampFinite(
+        settings.lightColor[1],
+        limits.minLightColor,
+        limits.maxLightColor,
+        kDefaultLightColorGreen);
+    settings.lightColor[2] = clampFinite(
+        settings.lightColor[2],
+        limits.minLightColor,
+        limits.maxLightColor,
+        kDefaultLightColorBlue);
     settings.debugFlags &= kKnownRenderDebugFlags;
     settings.conversionSamplesPerTriangle =
         clampConversionSamplesPerTriangle(settings.conversionSamplesPerTriangle, limits);
@@ -382,6 +460,14 @@ inline RenderSettingsSnapshot makeRenderSettingsSnapshot(
     snapshot.exposure = clampedSettings.exposure;
     snapshot.gamma = clampedSettings.gamma;
     snapshot.backgroundBrightness = clampedSettings.backgroundBrightness;
+    snapshot.lightingEnabled = clampedSettings.enableLighting;
+    snapshot.lightPosition[0] = clampedSettings.lightPosition[0];
+    snapshot.lightPosition[1] = clampedSettings.lightPosition[1];
+    snapshot.lightPosition[2] = clampedSettings.lightPosition[2];
+    snapshot.lightIntensity = clampedSettings.lightIntensity;
+    snapshot.lightColor[0] = clampedSettings.lightColor[0];
+    snapshot.lightColor[1] = clampedSettings.lightColor[1];
+    snapshot.lightColor[2] = clampedSettings.lightColor[2];
     snapshot.debugFlags = clampedSettings.debugFlags;
     snapshot.requestedConversionSamplesPerTriangle = conversionSettings.requestedSamplesPerTriangle;
     snapshot.conversionSamplesPerTriangle = conversionSettings.effectiveSamplesPerTriangle;
@@ -453,6 +539,55 @@ inline RenderSettingsValidation validateRenderSettings(
         limits.maxBackgroundBrightness,
         RenderSettingsValidationFlag::NonFiniteBackgroundBrightness,
         RenderSettingsValidationFlag::BackgroundBrightnessOutOfRange);
+    validateFiniteRenderValue(
+        validation,
+        settings.lightPosition[0],
+        limits.minLightPosition,
+        limits.maxLightPosition,
+        RenderSettingsValidationFlag::NonFiniteLightPosition,
+        RenderSettingsValidationFlag::LightPositionOutOfRange);
+    validateFiniteRenderValue(
+        validation,
+        settings.lightPosition[1],
+        limits.minLightPosition,
+        limits.maxLightPosition,
+        RenderSettingsValidationFlag::NonFiniteLightPosition,
+        RenderSettingsValidationFlag::LightPositionOutOfRange);
+    validateFiniteRenderValue(
+        validation,
+        settings.lightPosition[2],
+        limits.minLightPosition,
+        limits.maxLightPosition,
+        RenderSettingsValidationFlag::NonFiniteLightPosition,
+        RenderSettingsValidationFlag::LightPositionOutOfRange);
+    validateFiniteRenderValue(
+        validation,
+        settings.lightIntensity,
+        limits.minLightIntensity,
+        limits.maxLightIntensity,
+        RenderSettingsValidationFlag::NonFiniteLightIntensity,
+        RenderSettingsValidationFlag::LightIntensityOutOfRange);
+    validateFiniteRenderValue(
+        validation,
+        settings.lightColor[0],
+        limits.minLightColor,
+        limits.maxLightColor,
+        RenderSettingsValidationFlag::NonFiniteLightColor,
+        RenderSettingsValidationFlag::LightColorOutOfRange);
+    validateFiniteRenderValue(
+        validation,
+        settings.lightColor[1],
+        limits.minLightColor,
+        limits.maxLightColor,
+        RenderSettingsValidationFlag::NonFiniteLightColor,
+        RenderSettingsValidationFlag::LightColorOutOfRange);
+    validateFiniteRenderValue(
+        validation,
+        settings.lightColor[2],
+        limits.minLightColor,
+        limits.maxLightColor,
+        RenderSettingsValidationFlag::NonFiniteLightColor,
+        RenderSettingsValidationFlag::LightColorOutOfRange);
 
     const NumericRange<uint32_t> conversionSamplesRange =
         orderedRange(limits.minConversionSamplesPerTriangle, limits.maxConversionSamplesPerTriangle);

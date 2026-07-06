@@ -28,6 +28,14 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           BOOL meshRenderingEnabled,
                                           BOOL gaussianRenderingEnabled,
                                           BOOL conversionEnabled,
+                                          BOOL lightingEnabled,
+                                          double lightPositionX,
+                                          double lightPositionY,
+                                          double lightPositionZ,
+                                          double lightIntensity,
+                                          double lightColorRed,
+                                          double lightColorGreen,
+                                          double lightColorBlue,
                                           uint32_t debugFlags);
 
 #ifdef __cplusplus

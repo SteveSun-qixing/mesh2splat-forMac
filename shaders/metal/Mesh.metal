@@ -38,6 +38,9 @@ struct M2SMeshShaderFrameUniforms {
     uint renderMode;
     uint flags;
     uint reserved;
+    float4 frameTiming;
+    float4 lightPositionIntensity;
+    float4 lightColorFlags;
 };
 
 struct M2SMeshShaderMaterial {
@@ -63,7 +66,7 @@ struct M2SMeshShaderVertexOut {
 };
 
 static_assert(sizeof(M2SMeshShaderMatrix4) == 64, "Mesh matrix ABI must remain four float4 columns.");
-static_assert(sizeof(M2SMeshShaderFrameUniforms) == 352, "Mesh frame uniforms must match FrameUniforms.");
+static_assert(sizeof(M2SMeshShaderFrameUniforms) == 400, "Mesh frame uniforms must match FrameUniforms.");
 static_assert(sizeof(M2SMeshShaderMaterial) == 48, "Mesh material must match MetalMeshMaterial.");
 
 static bool m2sMeshShaderFinite(float value)
@@ -206,22 +209,34 @@ static float3 m2sMeshShaderNormalFromTexture(
 static float3 m2sMeshShaderLitPreviewColor(
     float3 baseColor,
     float3 normal,
+    float3 worldPosition,
     float3 viewDirection,
     float metallic,
     float roughness,
     float occlusion,
-    float3 emissive)
+    float3 emissive,
+    constant M2SMeshShaderFrameUniforms& frame)
 {
-    const float3 lightDirection = normalize(float3(0.35f, 0.8f, 0.45f));
+    const float3 fallbackLightDirection = normalize(float3(0.35f, 0.8f, 0.45f));
+    const float3 lightDirection = m2sMeshShaderSafeNormalize(
+        frame.lightPositionIntensity.xyz - worldPosition,
+        fallbackLightDirection);
     const float3 resolvedViewDirection = m2sMeshShaderSafeNormalize(viewDirection, float3(0.0f, 0.0f, 1.0f));
     const float3 halfVector = m2sMeshShaderSafeNormalize(lightDirection + resolvedViewDirection, lightDirection);
+    if (frame.lightColorFlags.w <= 0.5f || frame.lightPositionIntensity.w <= 0.0f) {
+        return baseColor * occlusion + emissive;
+    }
+
+    const float3 lightColor = max(frame.lightColorFlags.xyz, float3(0.0f));
+    const float lightIntensity = max(frame.lightPositionIntensity.w, 0.0f);
     const float diffuse = saturate(dot(normal, lightDirection)) * 0.8f + 0.2f;
     const float specularPower = mix(96.0f, 4.0f, roughness);
     const float specular = pow(saturate(dot(normal, halfVector)), specularPower) *
         mix(0.04f, 0.45f, metallic) *
         (1.0f - roughness * 0.65f);
     const float diffuseWeight = mix(1.0f, 0.6f, metallic);
-    return baseColor * ((diffuse * diffuseWeight + 0.08f) * occlusion) + specular + emissive;
+    return (baseColor * ((diffuse * diffuseWeight + 0.08f) * occlusion) + specular) *
+        lightColor * lightIntensity + emissive;
 }
 
 static float3 m2sMeshShaderToneMappedColor(float3 color, constant M2SMeshShaderFrameUniforms& frame)
@@ -356,11 +371,13 @@ fragment float4 meshFragment(
         const float3 litColor = m2sMeshShaderLitPreviewColor(
             baseColor.rgb,
             normal,
+            in.worldPosition,
             in.viewDirection,
             metallic,
             roughness,
             occlusion,
-            emissive);
+            emissive,
+            frame);
         return float4(m2sMeshShaderToneMappedColor(litColor, frame), baseColor.a);
     }
 

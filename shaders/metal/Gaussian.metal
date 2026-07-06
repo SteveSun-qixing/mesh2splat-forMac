@@ -20,6 +20,9 @@ struct FrameUniforms {
     uint renderMode;
     uint flags;
     uint reserved;
+    float4 frameTiming;
+    float4 lightPositionIntensity;
+    float4 lightColorFlags;
 };
 
 struct GaussianRecord {
@@ -327,19 +330,30 @@ static float3 finalPreviewColor(GaussianVertexOut in, constant FrameUniforms& fr
 {
     const float3 baseColor = max(in.color.rgb, float3(0.0));
     const float3 normal = safeNormalize(in.normal, float3(0.0, 1.0, 0.0));
-    const float3 lightDirection = normalize(float3(0.35, 0.8, 0.45));
+    const float3 fallbackLightDirection = normalize(float3(0.35, 0.8, 0.45));
+    const float3 lightDirection = safeNormalize(
+        frame.lightPositionIntensity.xyz - in.worldPosition,
+        fallbackLightDirection);
     const float3 viewDirection = safeNormalize(frame.cameraPosition.xyz - in.worldPosition, float3(0.0, 0.0, 1.0));
     const float3 halfVector = safeNormalize(lightDirection + viewDirection, lightDirection);
     const float metallic = clamp(in.pbr.x, 0.0, 1.0);
     const float roughness = clamp(in.pbr.y, 0.04, 1.0);
     const float occlusion = clamp(in.pbr.z, 0.0, 1.0);
     const float emissiveStrength = clamp(in.pbr.w, 0.0, 4.0);
+    const float3 emissive = baseColor * emissiveStrength;
+    if (frame.lightColorFlags.w <= 0.5 || frame.lightPositionIntensity.w <= 0.0) {
+        return baseColor * occlusion + emissive;
+    }
+
+    const float3 lightColor = max(frame.lightColorFlags.xyz, float3(0.0));
+    const float lightIntensity = max(frame.lightPositionIntensity.w, 0.0);
     const float diffuse = saturate(dot(normal, lightDirection)) * 0.8 + 0.2;
     const float specularPower = mix(96.0, 4.0, roughness);
     const float specular = pow(saturate(dot(normal, halfVector)), specularPower) *
         mix(0.04, 0.45, metallic) * (1.0 - roughness * 0.65);
     const float diffuseWeight = mix(1.0, 0.6, metallic);
-    return baseColor * ((diffuse * diffuseWeight + 0.08) * occlusion) + specular + baseColor * emissiveStrength;
+    return (baseColor * ((diffuse * diffuseWeight + 0.08) * occlusion) + specular) *
+        lightColor * lightIntensity + emissive;
 }
 
 static float3 toneMappedColor(float3 color, constant FrameUniforms& frame)

@@ -104,6 +104,14 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     BOOL meshRenderingEnabled,
     BOOL gaussianRenderingEnabled,
     BOOL conversionEnabled,
+    BOOL lightingEnabled,
+    double lightPositionX,
+    double lightPositionY,
+    double lightPositionZ,
+    double lightIntensity,
+    double lightColorRed,
+    double lightColorGreen,
+    double lightColorBlue,
     uint32_t debugFlags)
 {
     mesh2splat::core::RenderSettings settings;
@@ -116,6 +124,14 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     settings.exposure = static_cast<float>(exposure);
     settings.gamma = static_cast<float>(gamma);
     settings.backgroundBrightness = static_cast<float>(backgroundBrightness);
+    settings.enableLighting = lightingEnabled;
+    settings.lightPosition[0] = static_cast<float>(lightPositionX);
+    settings.lightPosition[1] = static_cast<float>(lightPositionY);
+    settings.lightPosition[2] = static_cast<float>(lightPositionZ);
+    settings.lightIntensity = static_cast<float>(lightIntensity);
+    settings.lightColor[0] = static_cast<float>(lightColorRed);
+    settings.lightColor[1] = static_cast<float>(lightColorGreen);
+    settings.lightColor[2] = static_cast<float>(lightColorBlue);
     settings.debugFlags = debugFlags;
     settings.conversionSamplesPerTriangle = conversionSamplesPerTriangle <= 0
         ? 0
@@ -494,6 +510,14 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     request.exposure = settings.exposure;
     request.gamma = settings.gamma;
     request.backgroundBrightness = settings.backgroundBrightness;
+    request.lightingEnabled = settings.lightingEnabled;
+    request.lightPosition[0] = settings.lightPosition[0];
+    request.lightPosition[1] = settings.lightPosition[1];
+    request.lightPosition[2] = settings.lightPosition[2];
+    request.lightIntensity = settings.lightIntensity;
+    request.lightColor[0] = settings.lightColor[0];
+    request.lightColor[1] = settings.lightColor[1];
+    request.lightColor[2] = settings.lightColor[2];
     request.debugFlags = settings.debugFlags;
     request.gaussianSortingEnabled = settings.gaussianSortingEnabled;
     request.meshToGaussianConversionEnabled = settings.meshToGaussianConversionEnabled;
@@ -669,6 +693,14 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.exposure = renderSettings.exposure;
     summary.gamma = renderSettings.gamma;
     summary.backgroundBrightness = renderSettings.backgroundBrightness;
+    summary.lightingEnabled = renderSettings.lightingEnabled;
+    summary.lightPositionX = renderSettings.lightPosition[0];
+    summary.lightPositionY = renderSettings.lightPosition[1];
+    summary.lightPositionZ = renderSettings.lightPosition[2];
+    summary.lightIntensity = renderSettings.lightIntensity;
+    summary.lightColorRed = renderSettings.lightColor[0];
+    summary.lightColorGreen = renderSettings.lightColor[1];
+    summary.lightColorBlue = renderSettings.lightColor[2];
     summary.debugFlags = renderSettings.debugFlags;
     summary.conversionProgress = diagnostics.progress;
     summary.conversionSamplesPerTriangle = renderSettings.conversionSamplesPerTriangle;
@@ -1189,6 +1221,14 @@ conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
    meshRenderingEnabled:(BOOL)meshRenderingEnabled
 gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
       conversionEnabled:(BOOL)conversionEnabled
+        lightingEnabled:(BOOL)lightingEnabled
+         lightPositionX:(double)lightPositionX
+         lightPositionY:(double)lightPositionY
+         lightPositionZ:(double)lightPositionZ
+         lightIntensity:(double)lightIntensity
+          lightColorRed:(double)lightColorRed
+        lightColorGreen:(double)lightColorGreen
+         lightColorBlue:(double)lightColorBlue
              debugFlags:(uint32_t)debugFlags
 {
     const mesh2splat::core::RenderSettingsSnapshot settings =
@@ -1203,6 +1243,14 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
             meshRenderingEnabled,
             gaussianRenderingEnabled,
             conversionEnabled,
+            lightingEnabled,
+            lightPositionX,
+            lightPositionY,
+            lightPositionZ,
+            lightIntensity,
+            lightColorRed,
+            lightColorGreen,
+            lightColorBlue,
             debugFlags);
 
     _bridgeRenderMode = static_cast<NSInteger>(settings.mode);
@@ -1613,6 +1661,14 @@ conversionSamplesPerTriangle:static_cast<NSInteger>(command.conversionSamplesPer
          meshRenderingEnabled:command.meshRenderingEnabled
      gaussianRenderingEnabled:command.gaussianRenderingEnabled
             conversionEnabled:command.meshToGaussianConversionEnabled
+             lightingEnabled:command.lightingEnabled
+              lightPositionX:command.lightPositionX
+              lightPositionY:command.lightPositionY
+              lightPositionZ:command.lightPositionZ
+              lightIntensity:command.lightIntensity
+               lightColorRed:command.lightColorRed
+             lightColorGreen:command.lightColorGreen
+              lightColorBlue:command.lightColorBlue
                   debugFlags:command.debugFlags];
         result.completed = true;
         result.message = "Render settings updated.";

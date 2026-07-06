@@ -24,6 +24,14 @@ conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
    meshRenderingEnabled:(BOOL)meshRenderingEnabled
 gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
       conversionEnabled:(BOOL)conversionEnabled
+        lightingEnabled:(BOOL)lightingEnabled
+         lightPositionX:(double)lightPositionX
+         lightPositionY:(double)lightPositionY
+         lightPositionZ:(double)lightPositionZ
+         lightIntensity:(double)lightIntensity
+          lightColorRed:(double)lightColorRed
+        lightColorGreen:(double)lightColorGreen
+         lightColorBlue:(double)lightColorBlue
              debugFlags:(uint32_t)debugFlags;
 - (mesh2splat::macos::MacBridgeRendererStatusSummary)bridgeStatusSummary;
 - (mesh2splat::macos::MacBridgeActionResult)performBridgeCommand:(const mesh2splat::macos::MacBridgeUiCommand&)command;

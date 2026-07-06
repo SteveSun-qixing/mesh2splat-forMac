@@ -98,9 +98,12 @@ struct alignas(16) FrameUniforms {
     uint32_t flags = 0;
     uint32_t reserved = 0;
     float frameTiming[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float lightPositionIntensity[4] = {3.0f, 4.0f, 2.5f, 1.0f};
+    float lightColorFlags[4] = {1.0f, 0.95f, 0.85f, 1.0f};
 };
 
 static_assert(sizeof(FrameUniforms) % 16 == 0, "FrameUniforms must stay 16-byte aligned for GPU constant buffers.");
+static_assert(sizeof(FrameUniforms) == 400, "FrameUniforms must match the Metal shader ABI.");
 
 inline ViewportState makeViewportState(uint32_t width, uint32_t height)
 {
