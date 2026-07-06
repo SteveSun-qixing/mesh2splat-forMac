@@ -47,7 +47,7 @@ struct ExportWorkflowPanel: View {
                     Button {
                         appState.openImportPanel()
                     } label: {
-                        Label("Import Mesh", systemImage: "square.and.arrow.down")
+                        Label("Import Scene", systemImage: "square.and.arrow.down")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -104,8 +104,8 @@ struct ExportWorkflowPanel: View {
                 isSatisfied: viewportReady
             ),
             ExportPreflightItem(
-                title: "Mesh imported",
-                detail: appState.importedFileName ?? "Import a source mesh first.",
+                title: "Scene imported",
+                detail: appState.importedFileName ?? "Import a source scene first.",
                 isSatisfied: hasImportedMesh
             ),
             ExportPreflightItem(
@@ -198,7 +198,7 @@ struct ExportWorkflowPanel: View {
 
     private var importDetail: String {
         guard let importedFileName = appState.importedFileName, !importedFileName.isEmpty else {
-            return "Choose a GLB or GLTF mesh."
+            return "Choose a GLB, GLTF, or Gaussian PLY scene."
         }
 
         return "\(importedFileName) - \(sceneInventoryDetail)"

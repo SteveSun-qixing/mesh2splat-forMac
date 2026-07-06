@@ -5,7 +5,7 @@ struct Mesh2SplatCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("Import Mesh...") {
+            Button("Import Scene...") {
                 appState.openImportPanel()
             }
             .keyboardShortcut("o", modifiers: .command)

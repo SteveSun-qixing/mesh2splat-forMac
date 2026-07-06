@@ -12,7 +12,7 @@ struct SceneWorkflowPanel: View {
                 VStack(alignment: .leading, spacing: 8) {
                     WorkflowValueRow(
                         title: "Input",
-                        value: appState.importedFileName ?? "No mesh",
+                        value: appState.importedFileName ?? "No scene",
                         symbolName: "doc"
                     )
 
@@ -162,7 +162,7 @@ struct SceneWorkflowPanel: View {
         }
 
         if appState.importedFileName == nil {
-            return "No mesh imported"
+            return "No scene imported"
         }
 
         if !hasGaussians {

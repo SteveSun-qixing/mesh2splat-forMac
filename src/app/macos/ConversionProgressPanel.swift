@@ -181,7 +181,7 @@ struct ConversionProgressPanel: View {
                 return "On; waiting for the renderer to start."
             }
 
-            return "On; import a mesh to start."
+            return "On; import a GLB or GLTF mesh to start conversion."
         }
 
         if hasGaussians {

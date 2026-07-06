@@ -188,8 +188,13 @@ final class Mesh2SplatAppState: ObservableObject {
             lastError = nil
             statusText = "Loaded \(url.lastPathComponent)"
             importStatus = "Import: loaded \(url.lastPathComponent)"
-            conversionStatus = "Conversion: running"
-            exportStatus = "Export: waiting"
+            if isGaussianPlyScene(url) {
+                conversionStatus = "Conversion: ready"
+                exportStatus = "Export: ready"
+            } else {
+                conversionStatus = "Conversion: running"
+                exportStatus = "Export: waiting"
+            }
             Mesh2SplatFocusMetalView(metalView)
         } else {
             lastError = "Could not load \(url.lastPathComponent)."
@@ -372,6 +377,10 @@ final class Mesh2SplatAppState: ObservableObject {
 
     private var defaultExportFileName: String {
         environment.exportFileName(forImportedFileName: importedFileName)
+    }
+
+    private func isGaussianPlyScene(_ url: URL) -> Bool {
+        url.pathExtension.caseInsensitiveCompare("ply") == .orderedSame
     }
 
     private func startRendererStatusLoop() {

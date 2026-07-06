@@ -37,7 +37,7 @@ private struct SidebarView: View {
                 Button {
                     appState.openImportPanel()
                 } label: {
-                    Label("Import Mesh", systemImage: "square.and.arrow.down")
+                    Label("Import Scene", systemImage: "square.and.arrow.down")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

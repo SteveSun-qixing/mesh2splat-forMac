@@ -67,7 +67,7 @@ struct SceneDropZone: View {
     }
 
     private var dropTitle: String {
-        isDropTargeted ? "Release to Import" : "Drop Scene Mesh"
+        isDropTargeted ? "Release to Import" : "Drop Scene File"
     }
 
     private var dropSubtitle: String {
@@ -75,7 +75,7 @@ struct SceneDropZone: View {
             return importedFileName
         }
 
-        return "GLB or GLTF"
+        return "GLB, GLTF, or PLY"
     }
 
     private var importAvailabilityMessage: String {
@@ -119,5 +119,5 @@ struct SceneDropZone: View {
         supportedSceneExtensions.contains(url.pathExtension.lowercased())
     }
 
-    private static let supportedSceneExtensions: Set<String> = ["glb", "gltf"]
+    private static let supportedSceneExtensions: Set<String> = ["glb", "gltf", "ply"]
 }
