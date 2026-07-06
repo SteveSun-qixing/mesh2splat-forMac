@@ -1,5 +1,7 @@
 #include "MetalRenderer.hpp"
 
+#include "core/AssetFileTypes.hpp"
+#include "core/ConversionSettings.hpp"
 #include "core/FrameData.hpp"
 #include "core/GaussianData.hpp"
 #include "core/CameraController.hpp"
@@ -44,7 +46,7 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t kDefaultMetalConversionSamplesPerTriangle = 4;
+constexpr uint32_t kDefaultMetalConversionSamplesPerTriangle = core::kDefaultConversionSamplesPerTriangle;
 constexpr float kCompletedProgress = 1.0f;
 
 const char* rendererStateName(mesh2splat::renderer::RendererRuntimeState state)
@@ -83,40 +85,11 @@ mesh2splat::renderer::RendererDiagnosticSeverity severityForState(
 
 bool sceneKindCanLoadAsMesh(mesh2splat::renderer::RendererSceneKind requestedKind, const std::string& filePath)
 {
-    if (requestedKind == mesh2splat::renderer::RendererSceneKind::Mesh) {
-        return true;
-    }
     if (requestedKind == mesh2splat::renderer::RendererSceneKind::GaussianPly) {
         return false;
     }
 
-    const std::string::size_type separator = filePath.find_last_of("/\\");
-    const std::string::size_type filenameStart =
-        separator == std::string::npos ? 0 : separator + 1;
-    const std::string::size_type dot = filePath.find_last_of('.');
-    if (dot == std::string::npos || dot < filenameStart || dot + 1 >= filePath.size()) {
-        return false;
-    }
-
-    const std::string_view extension(filePath.data() + dot + 1, filePath.size() - dot - 1);
-    if (extension.size() != 3 && extension.size() != 4) {
-        return false;
-    }
-    auto equalsIgnoreCase = [](std::string_view lhs, std::string_view rhs) {
-        if (lhs.size() != rhs.size()) {
-            return false;
-        }
-        for (std::size_t index = 0; index < lhs.size(); ++index) {
-            const char lhsChar = lhs[index] >= 'A' && lhs[index] <= 'Z'
-                ? static_cast<char>(lhs[index] - 'A' + 'a')
-                : lhs[index];
-            if (lhsChar != rhs[index]) {
-                return false;
-            }
-        }
-        return true;
-    };
-    return equalsIgnoreCase(extension, "glb") || equalsIgnoreCase(extension, "gltf");
+    return core::assetFilePathSupportsIntent(filePath, core::AssetFileIntent::LoadMesh);
 }
 
 MetalRenderTargetDesc makeDrawableDepthTargetDesc(uint32_t width, uint32_t height)
@@ -245,13 +218,7 @@ bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary, std::string* d
 
 uint32_t normalizedConversionSamples(uint32_t samplesPerTriangle)
 {
-    if (samplesPerTriangle <= 1) {
-        return 1;
-    }
-    if (samplesPerTriangle <= 4) {
-        return 4;
-    }
-    return 9;
+    return core::normalizeConversionSamplesPerTriangle(samplesPerTriangle);
 }
 
 bool matrixApproximatelyEquals(

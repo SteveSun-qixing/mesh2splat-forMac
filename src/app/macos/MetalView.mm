@@ -1,6 +1,9 @@
 #include "MetalView.hpp"
 
+#include "core/AssetFileTypes.hpp"
 #include "core/InputState.hpp"
+#include "core/PathUtils.hpp"
+#include "core/RenderSettings.hpp"
 #include "renderer/event.hpp"
 #include "renderer/RendererInterface.hpp"
 
@@ -13,6 +16,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <string_view>
 
 @class Mesh2SplatMetalViewDelegate;
 
@@ -21,6 +25,16 @@ namespace {
 NSString* stringFromUtf8(const std::string& value)
 {
     return value.empty() ? @"" : [NSString stringWithUTF8String:value.c_str()];
+}
+
+NSString* stringFromUtf8View(std::string_view value)
+{
+    if (value.empty()) {
+        return @"";
+    }
+    return [[NSString alloc] initWithBytes:value.data()
+                                    length:value.size()
+                                  encoding:NSUTF8StringEncoding];
 }
 
 NSString* truncatedTitleComponent(NSString* value, NSUInteger maxLength)
@@ -35,13 +49,11 @@ NSString* truncatedTitleComponent(NSString* value, NSUInteger maxLength)
 NSArray<UTType*>* meshContentTypes()
 {
     NSMutableArray<UTType*>* contentTypes = [NSMutableArray array];
-    UTType* glbType = [UTType typeWithFilenameExtension:@"glb"];
-    UTType* gltfType = [UTType typeWithFilenameExtension:@"gltf"];
-    if (glbType != nil) {
-        [contentTypes addObject:glbType];
-    }
-    if (gltfType != nil) {
-        [contentTypes addObject:gltfType];
+    for (std::string_view extension : mesh2splat::core::kMeshAssetFileExtensions) {
+        UTType* contentType = [UTType typeWithFilenameExtension:stringFromUtf8View(extension)];
+        if (contentType != nil) {
+            [contentTypes addObject:contentType];
+        }
     }
     return contentTypes;
 }
@@ -62,21 +74,51 @@ NSString* defaultGaussianExportName(NSString* loadedMeshPath)
         return @"mesh2splat-gaussians.ply";
     }
 
-    NSString* stem = loadedMeshPath.lastPathComponent.stringByDeletingPathExtension;
-    if (stem.length == 0) {
-        stem = @"mesh2splat";
-    }
-    return [stem stringByAppendingString:@"-gaussians.ply"];
+    const char* utf8Path = loadedMeshPath.UTF8String;
+    const std::string stem = mesh2splat::core::pathDisplayName(
+        utf8Path == nullptr ? std::string_view{} : std::string_view(utf8Path),
+        "mesh2splat");
+    return stringFromUtf8(stem + "-gaussians.ply");
 }
 
 BOOL meshURLLooksSupported(NSURL* url)
 {
-    if (url == nil || !url.isFileURL) {
+    if (url == nil || !url.isFileURL || url.path.UTF8String == nullptr) {
         return NO;
     }
 
-    NSString* extension = url.pathExtension.lowercaseString;
-    return [extension isEqualToString:@"glb"] || [extension isEqualToString:@"gltf"];
+    return mesh2splat::core::assetFilePathSupportsIntent(
+        std::string_view(url.path.UTF8String),
+        mesh2splat::core::AssetFileIntent::LoadMesh) ? YES : NO;
+}
+
+mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
+    NSInteger renderMode,
+    double splatSize,
+    double exposure,
+    double gamma,
+    double backgroundBrightness,
+    NSInteger conversionSamplesPerTriangle,
+    BOOL sortingEnabled,
+    BOOL meshRenderingEnabled,
+    BOOL gaussianRenderingEnabled,
+    BOOL conversionEnabled)
+{
+    mesh2splat::core::RenderSettings settings;
+    settings.mode = static_cast<mesh2splat::core::RenderMode>(std::max<NSInteger>(0, renderMode));
+    settings.enableMeshRendering = meshRenderingEnabled;
+    settings.enableGaussianRendering = gaussianRenderingEnabled;
+    settings.enableGaussianSorting = sortingEnabled;
+    settings.enableMeshToGaussianConversion = conversionEnabled;
+    settings.gaussianScale = static_cast<float>(splatSize);
+    settings.exposure = static_cast<float>(exposure);
+    settings.gamma = static_cast<float>(gamma);
+    settings.backgroundBrightness = static_cast<float>(backgroundBrightness);
+    settings.conversionSamplesPerTriangle = conversionSamplesPerTriangle <= 0
+        ? 0
+        : static_cast<uint32_t>(conversionSamplesPerTriangle);
+
+    return mesh2splat::core::makeRenderSettingsSnapshot(settings);
 }
 
 NSURL* firstFileURLFromDraggingInfo(id<NSDraggingInfo> draggingInfo)
@@ -1044,26 +1086,39 @@ conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
 gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
       conversionEnabled:(BOOL)conversionEnabled
 {
-    _bridgeRenderMode = renderMode;
-    _bridgeExposure = std::clamp(exposure, 0.0, 16.0);
-    _bridgeGamma = std::clamp(gamma, 0.1, 4.0);
-    _bridgeBackgroundBrightness = std::clamp(backgroundBrightness, 0.0, 1.0);
-    _bridgeSortingEnabled = sortingEnabled;
-    _bridgeMeshRenderingEnabled = meshRenderingEnabled;
-    _bridgeGaussianRenderingEnabled = gaussianRenderingEnabled;
-    _bridgeConversionEnabled = conversionEnabled;
+    const mesh2splat::core::RenderSettingsSnapshot settings =
+        renderSettingsSnapshotFromBridge(
+            renderMode,
+            splatSize,
+            exposure,
+            gamma,
+            backgroundBrightness,
+            conversionSamplesPerTriangle,
+            sortingEnabled,
+            meshRenderingEnabled,
+            gaussianRenderingEnabled,
+            conversionEnabled);
+
+    _bridgeRenderMode = static_cast<NSInteger>(settings.mode);
+    _bridgeExposure = settings.exposure;
+    _bridgeGamma = settings.gamma;
+    _bridgeBackgroundBrightness = settings.backgroundBrightness;
+    _bridgeSortingEnabled = settings.gaussianSortingEnabled;
+    _bridgeMeshRenderingEnabled = settings.meshRenderingEnabled;
+    _bridgeGaussianRenderingEnabled = settings.gaussianRenderingEnabled;
+    _bridgeConversionEnabled = settings.meshToGaussianConversionEnabled;
 
     const double clear = _bridgeBackgroundBrightness;
     self.clearColor = MTLClearColorMake(clear * 0.75, clear, clear * 1.25, 1.0);
 
-    [self.meshDelegate setViewMode:rendererViewModeFromRenderMode(renderMode,
-                                                                  meshRenderingEnabled,
-                                                                  gaussianRenderingEnabled)];
-    [self.meshDelegate setGaussianVisualizationMode:gaussianVisualizationModeFromRenderMode(renderMode)];
-    [self.meshDelegate setGaussianScale:static_cast<float>(std::clamp(splatSize, 0.1, 8.0))];
+    [self.meshDelegate setViewMode:rendererViewModeFromRenderMode(_bridgeRenderMode,
+                                                                  _bridgeMeshRenderingEnabled,
+                                                                  _bridgeGaussianRenderingEnabled)];
+    [self.meshDelegate setGaussianVisualizationMode:gaussianVisualizationModeFromRenderMode(_bridgeRenderMode)];
+    [self.meshDelegate setGaussianScale:settings.gaussianScale];
 
-    if (conversionEnabled && conversionSamplesPerTriangle > 0) {
-        [self.meshDelegate setConversionSamplesPerTriangle:static_cast<uint32_t>(conversionSamplesPerTriangle)];
+    if (settings.meshToGaussianConversionEnabled && settings.conversionSamplesPerTriangle > 0) {
+        [self.meshDelegate setConversionSamplesPerTriangle:settings.conversionSamplesPerTriangle];
     }
 
     [self refreshRendererStatus];
