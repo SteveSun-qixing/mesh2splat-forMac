@@ -84,8 +84,8 @@ struct RenderControlsPanel: View {
                     RenderControlSlider(
                         title: "Intensity",
                         value: $appState.lightIntensity,
-                        range: 0.0...8.0,
-                        format: "%.2f"
+                        range: 0.0...1000.0,
+                        format: "%.0f"
                     )
 
                     HStack {

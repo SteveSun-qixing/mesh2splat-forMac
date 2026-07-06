@@ -1587,7 +1587,7 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     m_impl->lightPosition[0] = clampedFinite(request.lightPosition[0], -100.0f, 100.0f, 3.0f);
     m_impl->lightPosition[1] = clampedFinite(request.lightPosition[1], -100.0f, 100.0f, 4.0f);
     m_impl->lightPosition[2] = clampedFinite(request.lightPosition[2], -100.0f, 100.0f, 2.5f);
-    m_impl->lightIntensity = clampedFinite(request.lightIntensity, 0.0f, 16.0f, 1.0f);
+    m_impl->lightIntensity = clampedFinite(request.lightIntensity, 0.0f, 1000.0f, 1.0f);
     m_impl->lightColor[0] = clampedFinite(request.lightColor[0], 0.0f, 4.0f, 1.0f);
     m_impl->lightColor[1] = clampedFinite(request.lightColor[1], 0.0f, 4.0f, 0.95f);
     m_impl->lightColor[2] = clampedFinite(request.lightColor[2], 0.0f, 4.0f, 0.85f);

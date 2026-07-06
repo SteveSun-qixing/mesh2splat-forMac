@@ -19,6 +19,7 @@ constant constexpr uint kM2SMeshShaderDebugFlagDisableToneMapping = 1u << 6u;
 
 constant constexpr float kM2SMeshShaderMinimumLengthSquared = 1.0e-12f;
 constant constexpr float kM2SMeshShaderAlphaDiscardThreshold = 1.0e-4f;
+constant constexpr float kM2SMeshShaderPi = 3.14159265358979323846f;
 
 struct M2SMeshShaderMatrix4 {
     float4 columns[4];
@@ -177,6 +178,37 @@ static float m2sMeshShaderExponentialDepth(float viewDepth, float2 nearFar)
     return clamp(exp(-20.0f * normalizedDepth), 0.0f, 1.0f);
 }
 
+static float3 m2sMeshShaderFresnelSchlick(float cosTheta, float3 f0)
+{
+    return f0 + (1.0f - f0) * pow(clamp(1.0f - cosTheta, 0.0f, 1.0f), 5.0f);
+}
+
+static float m2sMeshShaderDistributionGGX(float3 normal, float3 halfVector, float roughness)
+{
+    const float resolvedRoughness = clamp(roughness, 0.04f, 1.0f);
+    const float a = resolvedRoughness * resolvedRoughness;
+    const float a2 = a * a;
+    const float nDotH = saturate(dot(normal, halfVector));
+    const float nDotH2 = nDotH * nDotH;
+    const float denom = nDotH2 * (a2 - 1.0f) + 1.0f;
+    return a2 / max(kM2SMeshShaderPi * denom * denom, 1.0e-5f);
+}
+
+static float m2sMeshShaderGeometrySchlickGGX(float nDotV, float roughness)
+{
+    const float r = roughness + 1.0f;
+    const float k = (r * r) * 0.125f;
+    return nDotV / max(nDotV * (1.0f - k) + k, 1.0e-5f);
+}
+
+static float m2sMeshShaderGeometrySmith(float3 normal, float3 viewDirection, float3 lightDirection, float roughness)
+{
+    const float nDotV = saturate(dot(normal, viewDirection));
+    const float nDotL = saturate(dot(normal, lightDirection));
+    return m2sMeshShaderGeometrySchlickGGX(nDotV, roughness) *
+        m2sMeshShaderGeometrySchlickGGX(nDotL, roughness);
+}
+
 static float3 m2sMeshShaderNormalFromTexture(
     M2SMeshShaderVertexOut in,
     M2SMeshShaderMaterial material,
@@ -218,9 +250,8 @@ static float3 m2sMeshShaderLitPreviewColor(
     constant M2SMeshShaderFrameUniforms& frame)
 {
     const float3 fallbackLightDirection = normalize(float3(0.35f, 0.8f, 0.45f));
-    const float3 lightDirection = m2sMeshShaderSafeNormalize(
-        frame.lightPositionIntensity.xyz - worldPosition,
-        fallbackLightDirection);
+    const float3 lightVector = frame.lightPositionIntensity.xyz - worldPosition;
+    const float3 lightDirection = m2sMeshShaderSafeNormalize(lightVector, fallbackLightDirection);
     const float3 resolvedViewDirection = m2sMeshShaderSafeNormalize(viewDirection, float3(0.0f, 0.0f, 1.0f));
     const float3 halfVector = m2sMeshShaderSafeNormalize(lightDirection + resolvedViewDirection, lightDirection);
     if (frame.lightColorFlags.w <= 0.5f || frame.lightPositionIntensity.w <= 0.0f) {
@@ -229,14 +260,21 @@ static float3 m2sMeshShaderLitPreviewColor(
 
     const float3 lightColor = max(frame.lightColorFlags.xyz, float3(0.0f));
     const float lightIntensity = max(frame.lightPositionIntensity.w, 0.0f);
-    const float diffuse = saturate(dot(normal, lightDirection)) * 0.8f + 0.2f;
-    const float specularPower = mix(96.0f, 4.0f, roughness);
-    const float specular = pow(saturate(dot(normal, halfVector)), specularPower) *
-        mix(0.04f, 0.45f, metallic) *
-        (1.0f - roughness * 0.65f);
-    const float diffuseWeight = mix(1.0f, 0.6f, metallic);
-    return (baseColor * ((diffuse * diffuseWeight + 0.08f) * occlusion) + specular) *
-        lightColor * lightIntensity + emissive;
+    const float attenuation = 1.0f / max(dot(lightVector, lightVector), 1.0f);
+    const float3 radiance = lightColor * lightIntensity * attenuation;
+    const float3 f0 = mix(float3(0.04f), baseColor, metallic);
+    const float3 fresnel = m2sMeshShaderFresnelSchlick(saturate(dot(halfVector, resolvedViewDirection)), f0);
+    const float normalDistribution = m2sMeshShaderDistributionGGX(normal, halfVector, roughness);
+    const float geometry = m2sMeshShaderGeometrySmith(normal, resolvedViewDirection, lightDirection, roughness);
+    const float denominator = max(
+        4.0f * saturate(dot(normal, resolvedViewDirection)) * saturate(dot(normal, lightDirection)),
+        1.0e-4f);
+    const float3 specular = (normalDistribution * geometry * fresnel) / denominator;
+    const float3 diffuseWeight = (1.0f - fresnel) * (1.0f - metallic);
+    const float nDotL = saturate(dot(normal, lightDirection));
+    const float3 direct = (diffuseWeight * baseColor / kM2SMeshShaderPi + specular) * radiance * nDotL;
+    const float3 ambient = 0.3f * baseColor * occlusion;
+    return ambient + direct + emissive;
 }
 
 static float3 m2sMeshShaderToneMappedColor(float3 color, constant M2SMeshShaderFrameUniforms& frame)

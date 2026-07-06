@@ -72,6 +72,7 @@ constant constexpr float kCovarianceLowPassPixels = 0.3;
 constant constexpr float kMinimumAxisPixels = 0.75;
 constant constexpr float kMaximumAxisPixels = 512.0;
 constant constexpr float kAlphaDiscardThreshold = 1.0e-4;
+constant constexpr float kPi = 3.14159265358979323846;
 constant constexpr uint kRenderModeAlbedo = 0u;
 constant constexpr uint kRenderModeDepth = 1u;
 constant constexpr uint kRenderModeNormal = 2u;
@@ -326,14 +327,43 @@ static float exponentialDepth(float viewDepth, float2 nearFar)
     return clamp(exp(-20.0 * normalizedDepth), 0.0, 1.0);
 }
 
+static float3 fresnelSchlick(float cosTheta, float3 f0)
+{
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+static float distributionGGX(float3 normal, float3 halfVector, float roughness)
+{
+    const float resolvedRoughness = clamp(roughness, 0.04, 1.0);
+    const float a = resolvedRoughness * resolvedRoughness;
+    const float a2 = a * a;
+    const float nDotH = saturate(dot(normal, halfVector));
+    const float nDotH2 = nDotH * nDotH;
+    const float denom = nDotH2 * (a2 - 1.0) + 1.0;
+    return a2 / max(kPi * denom * denom, 1.0e-5);
+}
+
+static float geometrySchlickGGX(float nDotV, float roughness)
+{
+    const float r = roughness + 1.0;
+    const float k = (r * r) * 0.125;
+    return nDotV / max(nDotV * (1.0 - k) + k, 1.0e-5);
+}
+
+static float geometrySmith(float3 normal, float3 viewDirection, float3 lightDirection, float roughness)
+{
+    const float nDotV = saturate(dot(normal, viewDirection));
+    const float nDotL = saturate(dot(normal, lightDirection));
+    return geometrySchlickGGX(nDotV, roughness) * geometrySchlickGGX(nDotL, roughness);
+}
+
 static float3 finalPreviewColor(GaussianVertexOut in, constant FrameUniforms& frame)
 {
     const float3 baseColor = max(in.color.rgb, float3(0.0));
     const float3 normal = safeNormalize(in.normal, float3(0.0, 1.0, 0.0));
     const float3 fallbackLightDirection = normalize(float3(0.35, 0.8, 0.45));
-    const float3 lightDirection = safeNormalize(
-        frame.lightPositionIntensity.xyz - in.worldPosition,
-        fallbackLightDirection);
+    const float3 lightVector = frame.lightPositionIntensity.xyz - in.worldPosition;
+    const float3 lightDirection = safeNormalize(lightVector, fallbackLightDirection);
     const float3 viewDirection = safeNormalize(frame.cameraPosition.xyz - in.worldPosition, float3(0.0, 0.0, 1.0));
     const float3 halfVector = safeNormalize(lightDirection + viewDirection, lightDirection);
     const float metallic = clamp(in.pbr.x, 0.0, 1.0);
@@ -347,13 +377,19 @@ static float3 finalPreviewColor(GaussianVertexOut in, constant FrameUniforms& fr
 
     const float3 lightColor = max(frame.lightColorFlags.xyz, float3(0.0));
     const float lightIntensity = max(frame.lightPositionIntensity.w, 0.0);
-    const float diffuse = saturate(dot(normal, lightDirection)) * 0.8 + 0.2;
-    const float specularPower = mix(96.0, 4.0, roughness);
-    const float specular = pow(saturate(dot(normal, halfVector)), specularPower) *
-        mix(0.04, 0.45, metallic) * (1.0 - roughness * 0.65);
-    const float diffuseWeight = mix(1.0, 0.6, metallic);
-    return (baseColor * ((diffuse * diffuseWeight + 0.08) * occlusion) + specular) *
-        lightColor * lightIntensity + emissive;
+    const float attenuation = 1.0 / max(dot(lightVector, lightVector), 1.0);
+    const float3 radiance = lightColor * lightIntensity * attenuation;
+    const float3 f0 = mix(float3(0.04), baseColor, metallic);
+    const float3 fresnel = fresnelSchlick(saturate(dot(halfVector, viewDirection)), f0);
+    const float normalDistribution = distributionGGX(normal, halfVector, roughness);
+    const float geometry = geometrySmith(normal, viewDirection, lightDirection, roughness);
+    const float denominator = max(4.0 * saturate(dot(normal, viewDirection)) * saturate(dot(normal, lightDirection)), 1.0e-4);
+    const float3 specular = (normalDistribution * geometry * fresnel) / denominator;
+    const float3 diffuseWeight = (1.0 - fresnel) * (1.0 - metallic);
+    const float nDotL = saturate(dot(normal, lightDirection));
+    const float3 direct = (diffuseWeight * baseColor / kPi + specular) * radiance * nDotL;
+    const float3 ambient = 0.3 * baseColor * occlusion;
+    return ambient + direct + emissive;
 }
 
 static float3 toneMappedColor(float3 color, constant FrameUniforms& frame)

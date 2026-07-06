@@ -75,7 +75,7 @@ struct RenderSettingsLimits {
     float minLightPosition = -100.0f;
     float maxLightPosition = 100.0f;
     float minLightIntensity = 0.0f;
-    float maxLightIntensity = 16.0f;
+    float maxLightIntensity = 1000.0f;
     float minLightColor = 0.0f;
     float maxLightColor = 4.0f;
     uint32_t minConversionSamplesPerTriangle = kLowConversionSamplesPerTriangle;

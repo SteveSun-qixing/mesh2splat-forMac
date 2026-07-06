@@ -260,7 +260,7 @@ final class Mesh2SplatAppState: ObservableObject {
             lightPositionX.clamped(to: -100.0...100.0),
             lightPositionY.clamped(to: -100.0...100.0),
             lightPositionZ.clamped(to: -100.0...100.0),
-            lightIntensity.clamped(to: 0.0...16.0),
+            lightIntensity.clamped(to: 0.0...1000.0),
             lightColorRed.clamped(to: 0.0...4.0),
             lightColorGreen.clamped(to: 0.0...4.0),
             lightColorBlue.clamped(to: 0.0...4.0),

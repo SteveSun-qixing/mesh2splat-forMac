@@ -28,7 +28,7 @@ struct RenderPreset: Codable, Equatable {
                 positionX: positionX.clamped(to: -100.0...100.0),
                 positionY: positionY.clamped(to: -100.0...100.0),
                 positionZ: positionZ.clamped(to: -100.0...100.0),
-                intensity: intensity.clamped(to: 0.0...16.0),
+                intensity: intensity.clamped(to: 0.0...1000.0),
                 colorRed: colorRed.clamped(to: 0.0...4.0),
                 colorGreen: colorGreen.clamped(to: 0.0...4.0),
                 colorBlue: colorBlue.clamped(to: 0.0...4.0)
