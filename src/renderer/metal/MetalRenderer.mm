@@ -1485,7 +1485,10 @@ mesh2splat::renderer::RendererDiagnostics MetalRenderer::diagnostics() const
     diagnostics.lastError = m_impl->lastErrorMessage;
     diagnostics.loadedScene = loadedSceneSnapshot();
     diagnostics.loadedScenePath = diagnostics.loadedScene.filePath;
-    diagnostics.progress = conversionProgress();
+    diagnostics.sceneCounts = sceneCounts();
+    diagnostics.renderSettings = renderSettingsSummary();
+    diagnostics.conversion = conversionState();
+    diagnostics.progress = diagnostics.conversion.progress;
     diagnostics.convertedGaussianCount = convertedGaussianCount();
     diagnostics.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
     diagnostics.viewMode = viewMode();
@@ -1495,6 +1498,7 @@ mesh2splat::renderer::RendererDiagnostics MetalRenderer::diagnostics() const
     diagnostics.hasScene = diagnostics.loadedScene.loaded ||
         (m_impl->sceneResources != nullptr && m_impl->sceneResources->isValid());
     diagnostics.hasGaussians = convertedGaussianCount() > 0;
+    diagnostics.hasVisibleMesh = diagnostics.sceneCounts.hasVisibleMesh();
     if (diagnostics.message.empty()) {
         const mesh2splat::renderer::RendererAssetSessionSnapshot session = m_impl->assetSession.snapshot();
         diagnostics.message = session.statusText.empty()

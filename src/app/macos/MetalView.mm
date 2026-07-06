@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -253,7 +254,7 @@ mesh2splat::macos::MacBridgeRendererRuntimeState macRuntimeStateFromRenderer(mes
     case mesh2splat::renderer::RendererRuntimeState::Failed:
         return mesh2splat::macos::MacBridgeRendererRuntimeState::Failed;
     case mesh2splat::renderer::RendererRuntimeState::Exporting:
-        return mesh2splat::macos::MacBridgeRendererRuntimeState::Rendering;
+        return mesh2splat::macos::MacBridgeRendererRuntimeState::Exporting;
     }
     return mesh2splat::macos::MacBridgeRendererRuntimeState::Unknown;
 }
@@ -511,8 +512,9 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
         return @"Mesh2Splat Metal";
     }
 
+    const mesh2splat::renderer::RendererDiagnostics diagnostics = _renderer->diagnostics();
     NSString* mode = @"Combined";
-    switch (_renderer->viewMode()) {
+    switch (diagnostics.viewMode) {
     case mesh2splat::renderer::RenderViewMode::Combined:
         mode = @"Combined";
         break;
@@ -525,21 +527,23 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     }
 
     NSString* assetName = @"Preview";
-    const std::string& loadedPath = _renderer->loadedMeshPath();
-    if (!loadedPath.empty()) {
-        assetName = [[NSString stringWithUTF8String:loadedPath.c_str()] lastPathComponent];
+    const std::string& displayName = diagnostics.loadedScene.displayName;
+    if (!displayName.empty()) {
+        assetName = stringFromUtf8(displayName);
+    } else if (!diagnostics.loadedScenePath.empty()) {
+        assetName = [stringFromUtf8(diagnostics.loadedScenePath) lastPathComponent];
     }
 
-    const mesh2splat::renderer::RendererStats stats = _renderer->rendererStats();
-    NSString* conversionState = _renderer->isConvertingGaussians() ? @"converting" : @"ready";
+    const mesh2splat::renderer::RendererStats& stats = diagnostics.stats;
+    NSString* conversionState = diagnostics.converting ? @"converting" : @"ready";
 
     return [NSString stringWithFormat:@"Mesh2Splat Metal - %@ - %@ - %@ - %u gaussians - scale x%.2f - quality %ux - %.1f/%.1f ms",
                                       truncatedTitleComponent(assetName, 44),
                                       mode,
                                       conversionState,
-                                      _renderer->convertedGaussianCount(),
-                                      _renderer->gaussianScale(),
-                                      _renderer->conversionSamplesPerTriangle(),
+                                      diagnostics.convertedGaussianCount,
+                                      diagnostics.gaussianScale,
+                                      diagnostics.conversionSamplesPerTriangle,
                                       stats.lastFrameCpuEncodeMs,
                                       stats.lastFrameGpuMs];
 }
@@ -593,6 +597,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 
     const mesh2splat::renderer::RendererDiagnostics diagnostics = _renderer->diagnostics();
     const mesh2splat::renderer::RendererStats& stats = diagnostics.stats;
+    const mesh2splat::renderer::RendererSceneCounts& sceneCounts = diagnostics.sceneCounts;
     summary.runtimeState = macRuntimeStateFromRenderer(diagnostics.state);
     summary.diagnosticSeverity = macSeverityFromRenderer(diagnostics.severity);
     summary.viewMode = macViewModeFromRenderer(diagnostics.viewMode);
@@ -630,6 +635,15 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.gaussianSortResourceBytes = stats.gaussianSortResourceBytes;
     summary.pendingConversionResourceBytes = stats.pendingConversionResourceBytes;
     summary.trackedResourceBytes = stats.trackedResourceBytes;
+    summary.meshCount = static_cast<std::uint32_t>(std::min<std::uint64_t>(
+        sceneCounts.meshCount,
+        std::numeric_limits<std::uint32_t>::max()));
+    summary.materialCount = static_cast<std::uint32_t>(std::min<std::uint64_t>(
+        sceneCounts.materialCount,
+        std::numeric_limits<std::uint32_t>::max()));
+    summary.textureCount = static_cast<std::uint32_t>(std::min<std::uint64_t>(
+        sceneCounts.textureCount,
+        std::numeric_limits<std::uint32_t>::max()));
     summary.hasScene = diagnostics.hasScene;
     summary.hasGaussians = diagnostics.hasGaussians;
     summary.isConverting = diagnostics.converting;
@@ -652,6 +666,9 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.resources.gaussianSortBytes = stats.gaussianSortResourceBytes;
     summary.resources.pendingConversionBytes = stats.pendingConversionResourceBytes;
     summary.resources.trackedBytes = stats.trackedResourceBytes;
+    summary.resources.meshCount = summary.meshCount;
+    summary.resources.materialCount = summary.materialCount;
+    summary.resources.textureCount = summary.textureCount;
     summary.resources.gaussianCount = diagnostics.convertedGaussianCount;
     summary.conversion.active = diagnostics.converting;
     summary.conversion.progress = diagnostics.progress;
@@ -668,8 +685,11 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.diagnostics.message = summary.diagnosticMessage;
     summary.diagnostics.lastError = summary.lastError;
 
-    NSString* title = [self rendererStatusTitle];
-    summary.statusText = title.length > 0 ? std::string(title.UTF8String) : std::string();
+    summary.statusText = diagnostics.statusText.empty() ? diagnostics.message : diagnostics.statusText;
+    if (summary.statusText.empty()) {
+        NSString* title = [self rendererStatusTitle];
+        summary.statusText = title.length > 0 ? std::string(title.UTF8String) : std::string();
+    }
     return summary;
 }
 
