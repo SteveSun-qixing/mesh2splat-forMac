@@ -11,6 +11,7 @@
 #include "MetalCommandScheduler.hpp"
 #include "MetalConversionPass.hpp"
 #include "MetalDeviceContext.hpp"
+#include "MetalFrameCapture.hpp"
 #include "MetalFrameUniformBuffer.hpp"
 #include "MetalFrameResources.hpp"
 #include "MetalGaussianBuffer.hpp"
@@ -33,8 +34,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <mutex>
 #include <string>
@@ -215,6 +218,168 @@ bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary, std::string* d
     appendDiagnostic(diagnostics, compileError);
     setDiagnostic(diagnostic, diagnostics);
     return false;
+}
+
+std::string environmentString(const char* name)
+{
+    const char* value = std::getenv(name);
+    return value == nullptr ? std::string{} : std::string(value);
+}
+
+bool environmentFlagEnabled(const char* name)
+{
+    const std::string value = environmentString(name);
+    if (value.empty() ||
+        value == "0" ||
+        value == "false" ||
+        value == "FALSE" ||
+        value == "no" ||
+        value == "NO" ||
+        value == "off" ||
+        value == "OFF") {
+        return false;
+    }
+    return true;
+}
+
+uint64_t environmentUInt64(const char* name, uint64_t fallback, bool* parsed = nullptr)
+{
+    if (parsed != nullptr) {
+        *parsed = false;
+    }
+
+    const std::string value = environmentString(name);
+    if (value.empty()) {
+        return fallback;
+    }
+
+    char* end = nullptr;
+    errno = 0;
+    const unsigned long long result = std::strtoull(value.c_str(), &end, 10);
+    if (errno != 0 || end == value.c_str() || (end != nullptr && *end != '\0')) {
+        return fallback;
+    }
+
+    if (parsed != nullptr) {
+        *parsed = true;
+    }
+    return static_cast<uint64_t>(result);
+}
+
+MetalFrameCaptureScope captureScopeFromEnvironment()
+{
+    const std::string value = environmentString("MESH2SPLAT_METAL_CAPTURE_SCOPE");
+    if (value == "pass" || value == "PASS") {
+        return MetalFrameCaptureScope::Pass;
+    }
+    if (value == "command-buffer" ||
+        value == "command_buffer" ||
+        value == "commandBuffer" ||
+        value == "COMMAND_BUFFER") {
+        return MetalFrameCaptureScope::CommandBuffer;
+    }
+    return MetalFrameCaptureScope::Frame;
+}
+
+MetalFrameCaptureRequest captureRequestFromEnvironment()
+{
+    if (!environmentFlagEnabled("MESH2SPLAT_METAL_CAPTURE")) {
+        return {};
+    }
+
+    bool parsedFrameIndex = false;
+    const uint64_t frameIndex = environmentUInt64(
+        "MESH2SPLAT_METAL_CAPTURE_FRAME",
+        MetalFrameCapture::kAnyFrameIndex,
+        &parsedFrameIndex);
+    std::string reason = environmentString("MESH2SPLAT_METAL_CAPTURE_REASON");
+    if (reason.empty()) {
+        reason = "environment request";
+    }
+    std::string label = environmentString("MESH2SPLAT_METAL_CAPTURE_LABEL");
+    if (label.empty()) {
+        label = "Mesh2Splat Metal Frame";
+    }
+
+    return makeMetalFrameCaptureRequest(
+        parsedFrameIndex ? frameIndex : MetalFrameCapture::kAnyFrameIndex,
+        std::move(reason),
+        true,
+        captureScopeFromEnvironment(),
+        std::move(label));
+}
+
+NSString* stringFromStdString(const std::string& value)
+{
+    return [NSString stringWithUTF8String:value.c_str()];
+}
+
+std::string captureRequestDescription(const MetalFrameCaptureRequest& request)
+{
+    std::string description = "Metal frame capture armed";
+    description += " scope=";
+    description += metalFrameCaptureScopeName(request.scope);
+    if (request.hasSpecificFrame()) {
+        description += " frame=" + std::to_string(request.frameIndex);
+    } else {
+        description += " frame=next";
+    }
+    if (!request.reason.empty()) {
+        description += " reason=" + request.reason;
+    }
+    return description;
+}
+
+bool startMetalCapture(
+    id<MTLCommandQueue> commandQueue,
+    const MetalFrameCaptureMarkerMetadata& marker,
+    std::string* diagnostic)
+{
+    if (commandQueue == nil) {
+        if (diagnostic != nullptr) {
+            *diagnostic = "Cannot start Metal capture: command queue is unavailable.";
+        }
+        return false;
+    }
+
+    MTLCaptureDescriptor* descriptor = [[MTLCaptureDescriptor alloc] init];
+    descriptor.captureObject = commandQueue;
+
+    const std::string outputPath = environmentString("MESH2SPLAT_METAL_CAPTURE_PATH");
+    if (!outputPath.empty()) {
+        descriptor.destination = MTLCaptureDestinationGPUTraceDocument;
+        descriptor.outputURL = [NSURL fileURLWithPath:stringFromStdString(outputPath)];
+    } else {
+        descriptor.destination = MTLCaptureDestinationDeveloperTools;
+    }
+
+    NSError* error = nil;
+    if (![[MTLCaptureManager sharedCaptureManager] startCaptureWithDescriptor:descriptor error:&error]) {
+        if (diagnostic != nullptr) {
+            *diagnostic = "Cannot start Metal capture";
+            if (error != nil && error.localizedDescription.UTF8String != nullptr) {
+                *diagnostic += ": ";
+                *diagnostic += error.localizedDescription.UTF8String;
+            }
+        }
+        return false;
+    }
+
+    if (diagnostic != nullptr) {
+        *diagnostic = "Started Metal capture for " + marker.debugGroupLabel();
+        if (!outputPath.empty()) {
+            *diagnostic += " -> " + outputPath;
+        }
+    }
+    return true;
+}
+
+void stopMetalCapture()
+{
+    MTLCaptureManager* captureManager = [MTLCaptureManager sharedCaptureManager];
+    if (captureManager.isCapturing) {
+        [captureManager stopCapture];
+    }
 }
 
 uint32_t normalizedConversionSamples(uint32_t samplesPerTriangle)
@@ -485,6 +650,7 @@ struct MetalRenderer::Impl {
     std::unique_ptr<MetalGaussianSortPass> gaussianSortPass;
     std::unique_ptr<MetalMeshRenderPass> meshRenderPass;
     std::unique_ptr<MetalRenderTarget> drawableDepthTarget;
+    MetalFrameCapture frameCapture;
     core::FrameUniforms frameUniforms;
     core::Matrix4 lastSortedViewMatrix;
     core::CameraController camera;
@@ -980,6 +1146,12 @@ bool MetalRenderer::initialize()
         appendRendererDiagnostic("Failed to initialize Metal device context.");
         m_impl->markFailed("Failed to initialize Metal device context.");
         return false;
+    }
+
+    MetalFrameCaptureRequest frameCaptureRequest = captureRequestFromEnvironment();
+    if (frameCaptureRequest.requested) {
+        appendRendererDiagnostic(captureRequestDescription(frameCaptureRequest));
+        m_impl->frameCapture.setRequest(std::move(frameCaptureRequest));
     }
 
     m_impl->frameSemaphore = dispatch_semaphore_create(m_impl->frameResources->frameCount());
@@ -1595,7 +1767,8 @@ void MetalRenderer::draw(
         return;
     }
 
-    MetalCommandScheduler commandScheduler(m_impl->deviceContext->nativeCommandQueue());
+    void* nativeCommandQueue = m_impl->deviceContext->nativeCommandQueue();
+    MetalCommandScheduler commandScheduler(nativeCommandQueue);
     id<MTLCommandBuffer> commandBuffer =
         (__bridge id<MTLCommandBuffer>)commandScheduler.createCommandBuffer("Mesh2Splat Metal Frame");
     if (commandBuffer == nil) {
@@ -1605,6 +1778,48 @@ void MetalRenderer::draw(
         dispatch_semaphore_signal(m_impl->frameSemaphore);
         return;
     }
+    const uint64_t logicalFrameIndex = m_impl->timingState == nullptr
+        ? static_cast<uint64_t>(frameResourceIndex)
+        : m_impl->timingState->snapshot().submittedFrameCount;
+    const MetalFrameCaptureDecision captureBegin =
+        m_impl->frameCapture.beginDecision(logicalFrameIndex, "Mesh2Splat Metal Frame");
+    bool captureStartedThisFrame = false;
+    bool captureDebugGroupPushed = false;
+    if (captureBegin.shouldStart) {
+        std::string captureDiagnostic;
+        captureStartedThisFrame = startMetalCapture(
+            (__bridge id<MTLCommandQueue>)nativeCommandQueue,
+            captureBegin.marker,
+            &captureDiagnostic);
+        m_impl->recordDiagnostic(captureDiagnostic);
+        if (!captureStartedThisFrame) {
+            m_impl->frameCapture.clearRequest();
+        } else if (captureBegin.shouldMark) {
+            [commandBuffer pushDebugGroup:stringFromStdString(captureBegin.marker.debugGroupLabel())];
+            captureDebugGroupPushed = true;
+        }
+    }
+    auto closeCaptureDebugGroup = [&]() {
+        if (captureDebugGroupPushed) {
+            [commandBuffer popDebugGroup];
+            captureDebugGroupPushed = false;
+        }
+    };
+
+    auto finishFrameCapture = [&](bool completedFrame) {
+        if (!captureStartedThisFrame) {
+            return;
+        }
+        closeCaptureDebugGroup();
+
+        const MetalFrameCaptureDecision captureEnd =
+            m_impl->frameCapture.endDecision(logicalFrameIndex, "Mesh2Splat Metal Frame");
+        stopMetalCapture();
+        captureStartedThisFrame = false;
+        m_impl->recordDiagnostic(
+            std::string(completedFrame ? "Completed Metal capture for " : "Stopped Metal capture after failed frame for ") +
+            captureEnd.marker.debugGroupLabel());
+    };
     dispatch_semaphore_t frameSemaphore = m_impl->frameSemaphore;
     std::shared_ptr<MetalRendererTimingState> frameTimingState = m_impl->timingState;
     std::shared_ptr<MetalFrameResources> frameResources = m_impl->frameResources;
@@ -1650,6 +1865,7 @@ void MetalRenderer::draw(
     id<MTLRenderCommandEncoder> encoder = [commandBuffer renderCommandEncoderWithDescriptor:descriptor];
     if (encoder == nil) {
         m_impl->recordDiagnostic("Cannot draw Metal frame: failed to create render command encoder.");
+        finishFrameCapture(false);
         m_impl->recordFrameEncodeFailure(frameCpuStart, sortedGaussiansThisFrame, false, false);
         m_impl->renderingFrame = false;
         dispatch_semaphore_signal(m_impl->frameSemaphore);
@@ -1689,6 +1905,7 @@ void MetalRenderer::draw(
 
     if (!MetalCommandScheduler::presentDrawable((__bridge void*)commandBuffer, (__bridge void*)metalDrawable)) {
         m_impl->recordDiagnostic("Cannot draw Metal frame: failed to schedule drawable presentation.");
+        finishFrameCapture(false);
         m_impl->recordFrameEncodeFailure(
             frameCpuStart,
             sortedGaussiansThisFrame,
@@ -1699,7 +1916,9 @@ void MetalRenderer::draw(
         return;
     }
 
+    closeCaptureDebugGroup();
     if (commandScheduler.commit((__bridge void*)commandBuffer)) {
+        finishFrameCapture(true);
         if (frameTimingState != nullptr) {
             frameTimingState->recordFrameSubmitted(
                 elapsedMilliseconds(frameCpuStart, Clock::now()),
@@ -1712,6 +1931,7 @@ void MetalRenderer::draw(
         m_impl->renderingFrame = false;
     } else {
         m_impl->recordDiagnostic("Cannot draw Metal frame: failed to commit command buffer.");
+        finishFrameCapture(false);
         m_impl->recordFrameEncodeFailure(
             frameCpuStart,
             sortedGaussiansThisFrame,
