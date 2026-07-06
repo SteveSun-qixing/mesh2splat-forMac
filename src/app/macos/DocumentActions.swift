@@ -9,7 +9,7 @@ struct Mesh2SplatDocumentActions {
 
     func importMesh() {
         let panel = NSOpenPanel()
-        panel.title = "Import Mesh"
+        panel.title = "Import Scene"
         panel.prompt = "Import"
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -47,7 +47,7 @@ struct Mesh2SplatDocumentActions {
     }
 
     private static var meshContentTypes: [UTType] {
-        ["glb", "gltf"].compactMap { UTType(filenameExtension: $0) }
+        ["glb", "gltf", "ply"].compactMap { UTType(filenameExtension: $0) }
     }
 
     private static var plyContentTypes: [UTType] {

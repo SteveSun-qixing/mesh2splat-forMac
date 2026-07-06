@@ -56,6 +56,10 @@ NSArray<UTType*>* meshContentTypes()
             [contentTypes addObject:contentType];
         }
     }
+    UTType* plyType = [UTType typeWithFilenameExtension:@"ply"];
+    if (plyType != nil) {
+        [contentTypes addObject:plyType];
+    }
     return contentTypes;
 }
 
@@ -88,9 +92,19 @@ BOOL meshURLLooksSupported(NSURL* url)
         return NO;
     }
 
-    return mesh2splat::core::assetFilePathSupportsIntent(
-        std::string_view(url.path.UTF8String),
-        mesh2splat::core::AssetFileIntent::LoadMesh) ? YES : NO;
+    const std::string_view path(url.path.UTF8String);
+    return mesh2splat::core::assetFilePathSupportsIntent(path, mesh2splat::core::AssetFileIntent::LoadMesh) ||
+        mesh2splat::core::assetFileKindFromPath(path) == mesh2splat::core::AssetFileKind::Ply ? YES : NO;
+}
+
+BOOL urlLooksLikeGaussianPly(NSURL* url)
+{
+    if (url == nil || !url.isFileURL || url.path.UTF8String == nullptr) {
+        return NO;
+    }
+
+    return mesh2splat::core::assetFileKindFromPath(std::string_view(url.path.UTF8String)) ==
+        mesh2splat::core::AssetFileKind::Ply ? YES : NO;
 }
 
 mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
@@ -447,7 +461,12 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
         return NO;
     }
 
-    return _renderer->loadMeshFile(std::string(path.UTF8String)) ? YES : NO;
+    mesh2splat::renderer::RendererSceneLoadRequest request;
+    request.filePath = std::string(path.UTF8String);
+    request.kind = mesh2splat::renderer::RendererSceneKind::Auto;
+    request.replaceCurrentScene = true;
+    const mesh2splat::renderer::RendererSceneLoadResult result = _renderer->loadScene(request);
+    return result.loaded ? YES : NO;
 }
 
 - (mesh2splat::renderer::RendererExportPlyResult)exportPlyAtPath:(NSString*)path
@@ -1127,11 +1146,12 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 - (BOOL)openMeshAtURL:(NSURL*)url
 {
     if (!meshURLLooksSupported(url)) {
-        self.lastDiagnosticMessage = @"Choose a .glb or .gltf mesh file.";
+        self.lastDiagnosticMessage = @"Choose a .glb, .gltf, or .ply scene file.";
         [self refreshRendererStatus];
         return NO;
     }
 
+    const BOOL loadingGaussianPly = urlLooksLikeGaussianPly(url);
     const BOOL hasSecurityScope = [url startAccessingSecurityScopedResource];
     const BOOL loaded = [self.meshDelegate loadMeshAtPath:url.path];
     if (hasSecurityScope) {
@@ -1151,8 +1171,13 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 
     self.lastDiagnosticMessage = nil;
     self.lastImportStatus = [NSString stringWithFormat:@"Import: loaded %@", url.lastPathComponent];
-    self.lastConversionStatus = @"Conversion: running";
-    self.lastExportStatus = @"Export: waiting";
+    if (loadingGaussianPly) {
+        self.lastConversionStatus = [NSString stringWithFormat:@"Conversion: %u gaussians", [self.meshDelegate convertedGaussianCount]];
+        self.lastExportStatus = @"Export: ready";
+    } else {
+        self.lastConversionStatus = @"Conversion: running";
+        self.lastExportStatus = @"Export: waiting";
+    }
     [self.meshDelegate resetFrameClock];
     [self refreshRendererStatus];
     return YES;

@@ -8,6 +8,7 @@
 #include "core/PrimitiveMeshFactory.hpp"
 #include "core/RenderSettings.hpp"
 #include "io/GltfLoader.hpp"
+#include "io/PlyReader.hpp"
 #include "io/PlyWriter.hpp"
 #include "MetalCommandScheduler.hpp"
 #include "MetalConversionPass.hpp"
@@ -96,6 +97,29 @@ bool sceneKindCanLoadAsMesh(mesh2splat::renderer::RendererSceneKind requestedKin
     }
 
     return core::assetFilePathSupportsIntent(filePath, core::AssetFileIntent::LoadMesh);
+}
+
+bool sceneKindCanLoadAsGaussianPly(mesh2splat::renderer::RendererSceneKind requestedKind, const std::string& filePath)
+{
+    if (requestedKind == mesh2splat::renderer::RendererSceneKind::Mesh) {
+        return false;
+    }
+
+    return core::assetFileKindFromPath(filePath) == core::AssetFileKind::Ply;
+}
+
+core::MeshBounds meshBoundsFromGaussianBounds(const MetalGaussianBounds& bounds)
+{
+    core::MeshBounds meshBounds;
+    if (!bounds.valid) {
+        return meshBounds;
+    }
+
+    for (int axis = 0; axis < 3; ++axis) {
+        meshBounds.min[axis] = bounds.min[axis];
+        meshBounds.max[axis] = bounds.max[axis];
+    }
+    return meshBounds;
 }
 
 MetalRenderTargetDesc makeDrawableDepthTargetDesc(uint32_t width, uint32_t height)
@@ -1355,6 +1379,88 @@ bool MetalRenderer::loadMeshFile(const std::string& filePath)
     return true;
 }
 
+bool MetalRenderer::loadGaussianPlyFile(const std::string& filePath)
+{
+    if (!filePath.empty()) {
+        m_impl->assetSession.importStarted(filePath);
+    }
+    if (m_impl->deviceContext == nullptr || !m_impl->deviceContext->isValid() || filePath.empty()) {
+        const std::string message = filePath.empty()
+            ? "Cannot load Metal gaussian scene: PLY file path is empty."
+            : "Cannot load Metal gaussian scene: device context is invalid.";
+        m_impl->assetSession.importFailed(message);
+        m_impl->markFailed(message);
+        return false;
+    }
+
+    m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Loading);
+    std::vector<core::GaussianRecord> gaussians;
+    io::GaussianPlyReadResult readResult;
+    if (!io::readGaussianPly(filePath, gaussians, io::GaussianPlyReadOptions{}, &readResult)) {
+        const std::string message =
+            readResult.error.empty()
+                ? "Failed to load Gaussian PLY: " + filePath
+                : "Failed to load Gaussian PLY: " + readResult.error;
+        m_impl->assetSession.importFailed(message);
+        m_impl->markFailed(message);
+        return false;
+    }
+    if (gaussians.empty()) {
+        std::string message = "Failed to load Gaussian PLY: file contains no renderable gaussians.";
+        if (!readResult.warning.empty()) {
+            message += "\n" + readResult.warning;
+        }
+        m_impl->assetSession.importFailed(message);
+        m_impl->markFailed(message);
+        return false;
+    }
+
+    auto nextGaussianBuffer = std::make_unique<MetalGaussianBuffer>(*m_impl->deviceContext);
+    if (!nextGaussianBuffer->upload(gaussians, "Mesh2Splat Imported Gaussian PLY Buffer")) {
+        const std::string message =
+            nextGaussianBuffer->lastErrorMessage().empty()
+                ? "Failed to upload Gaussian PLY to Metal buffers."
+                : "Failed to upload Gaussian PLY to Metal buffers: " + nextGaussianBuffer->lastErrorMessage();
+        m_impl->assetSession.importFailed(message);
+        m_impl->markFailed(message);
+        return false;
+    }
+
+    auto nextSortBuffer = std::make_unique<MetalGaussianSortBuffer>(*m_impl->deviceContext);
+    if (!nextSortBuffer->create(gaussians.size(), "Mesh2Splat Imported Gaussian PLY Sort") ||
+        !nextSortBuffer->setCount(static_cast<uint32_t>(gaussians.size()))) {
+        const std::string message = "Failed to allocate Gaussian PLY sort buffers.";
+        m_impl->assetSession.importFailed(message);
+        m_impl->markFailed(message);
+        return false;
+    }
+
+    m_impl->pendingConversion.reset();
+    m_impl->sceneResources.reset();
+    m_impl->gaussianBuffer = std::move(nextGaussianBuffer);
+    m_impl->gaussianSortBuffer = std::move(nextSortBuffer);
+    m_impl->loadedMeshPath = filePath;
+    m_impl->convertedGaussianCount = static_cast<uint32_t>(gaussians.size());
+    m_impl->hasSortedGaussianDepths = false;
+    const MetalGaussianBounds gaussianBounds = m_impl->gaussianBuffer->bounds();
+    if (gaussianBounds.valid) {
+        m_impl->camera.frameBounds(meshBoundsFromGaussianBounds(gaussianBounds));
+    }
+
+    m_impl->assetSession.importSucceeded(filePath);
+    m_impl->assetSession.conversionSubmitted();
+    m_impl->assetSession.conversionCompleted(m_impl->convertedGaussianCount > 0);
+    std::string diagnostic =
+        "Loaded " + std::to_string(m_impl->convertedGaussianCount) +
+        " gaussians from PLY: " + filePath;
+    if (!readResult.warning.empty()) {
+        diagnostic += "\n" + readResult.warning;
+    }
+    m_impl->recordDiagnostic(diagnostic);
+    m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
+    return true;
+}
+
 void MetalRenderer::resize(const mesh2splat::renderer::RendererResizeRequest& request)
 {
     m_impl->backingScale = request.backingScale > 0.0f ? request.backingScale : 1.0f;
@@ -1512,8 +1618,10 @@ mesh2splat::renderer::RendererLoadedSceneSnapshot MetalRenderer::loadedSceneSnap
     const mesh2splat::renderer::RendererAssetSessionSnapshot session = m_impl->assetSession.snapshot();
     mesh2splat::renderer::RendererLoadedSceneSnapshot loadedScene;
     loadedScene.loaded = session.hasScene || !m_impl->loadedMeshPath.empty();
-    loadedScene.kind = mesh2splat::renderer::RendererSceneKind::Mesh;
     loadedScene.filePath = session.sourcePath.empty() ? m_impl->loadedMeshPath : session.sourcePath;
+    loadedScene.kind = core::assetFileKindFromPath(loadedScene.filePath) == core::AssetFileKind::Ply
+        ? mesh2splat::renderer::RendererSceneKind::GaussianPly
+        : mesh2splat::renderer::RendererSceneKind::Mesh;
     loadedScene.displayName = session.displayName.empty()
         ? mesh2splat::renderer::Renderer::rendererDisplayNameFromPath(loadedScene.filePath)
         : session.displayName;
@@ -1525,6 +1633,9 @@ mesh2splat::renderer::RendererSceneLoadResult MetalRenderer::loadScene(
     const mesh2splat::renderer::RendererSceneLoadRequest& request)
 {
     mesh2splat::renderer::RendererSceneLoadResult result;
+    result.requestId = request.requestId;
+    result.kind = request.kind;
+    result.filePath = request.filePath;
     result.accepted = !request.filePath.empty();
     if (!result.accepted) {
         result.diagnostic = "Scene file path is empty.";
@@ -1536,16 +1647,31 @@ mesh2splat::renderer::RendererSceneLoadResult MetalRenderer::loadScene(
         m_impl->recordDiagnostic(result.diagnostic);
         return result;
     }
-    if (!sceneKindCanLoadAsMesh(request.kind, request.filePath)) {
-        result.accepted = false;
-        result.diagnostic = "Metal renderer scene loading currently supports .glb/.gltf meshes only.";
-        m_impl->recordDiagnostic(result.diagnostic);
+
+    if (sceneKindCanLoadAsMesh(request.kind, request.filePath)) {
+        result.kind = mesh2splat::renderer::RendererSceneKind::Mesh;
+        result.loaded = loadMeshFile(request.filePath);
+        result.displayName = loadedSceneSnapshot().displayName;
+        result.sceneCounts = sceneCounts();
+        result.diagnostic = lastDiagnostic();
         return result;
     }
 
-    result.loaded = loadMeshFile(request.filePath);
-    result.diagnostic = lastDiagnostic();
-    return result;
+    if (sceneKindCanLoadAsGaussianPly(request.kind, request.filePath)) {
+        result.kind = mesh2splat::renderer::RendererSceneKind::GaussianPly;
+        result.loaded = loadGaussianPlyFile(request.filePath);
+        result.displayName = loadedSceneSnapshot().displayName;
+        result.sceneCounts = sceneCounts();
+        result.diagnostic = lastDiagnostic();
+        return result;
+    }
+
+    {
+        result.accepted = false;
+        result.diagnostic = "Metal renderer scene loading supports .glb/.gltf meshes and .ply gaussian files.";
+        m_impl->recordDiagnostic(result.diagnostic);
+        return result;
+    }
 }
 
 mesh2splat::renderer::RendererConversionResult MetalRenderer::startConversion(

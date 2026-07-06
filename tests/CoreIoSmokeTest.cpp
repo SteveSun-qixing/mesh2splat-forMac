@@ -5,6 +5,7 @@
 #include "core/PrimitiveMeshFactory.hpp"
 #include "core/SceneData.hpp"
 #include "io/GltfLoader.hpp"
+#include "io/PlyReader.hpp"
 #include "io/PlyWriter.hpp"
 
 #include <cmath>
@@ -31,6 +32,11 @@ bool isFiniteMatrix(const mesh2splat::core::Matrix4& matrix)
         }
     }
     return true;
+}
+
+bool nearlyEqual(float lhs, float rhs, float epsilon = 1.0e-5f)
+{
+    return std::fabs(lhs - rhs) <= epsilon;
 }
 
 std::string readHeader(const std::filesystem::path& path)
@@ -125,12 +131,40 @@ int main()
     }
 
     const std::string header = readHeader(outputPath);
-    std::filesystem::remove(outputPath);
     if (header.find("element vertex 1") == std::string::npos ||
         header.find("property float metallicFactor") == std::string::npos ||
         header.find("property float roughnessFactor") == std::string::npos) {
+        std::filesystem::remove(outputPath);
         return fail("PLY writer emitted an unexpected PBR header");
     }
+
+    std::vector<core::GaussianRecord> readGaussians;
+    io::GaussianPlyReadResult readResult;
+    if (!io::readGaussianPly(outputPath.string(), readGaussians, io::GaussianPlyReadOptions{}, &readResult)) {
+        std::filesystem::remove(outputPath);
+        return fail("PLY reader failed: " + readResult.error);
+    }
+    if (readResult.vertexCount != 1 || readResult.readCount != 1 || readGaussians.size() != 1) {
+        std::filesystem::remove(outputPath);
+        return fail("PLY reader result counters are not stable");
+    }
+    const core::GaussianRecord& readGaussian = readGaussians.front();
+    if (!nearlyEqual(readGaussian.position[0], gaussian.position[0]) ||
+        !nearlyEqual(readGaussian.position[1], gaussian.position[1]) ||
+        !nearlyEqual(readGaussian.position[2], gaussian.position[2]) ||
+        !nearlyEqual(readGaussian.color[0], gaussian.color[0]) ||
+        !nearlyEqual(readGaussian.color[1], gaussian.color[1]) ||
+        !nearlyEqual(readGaussian.color[2], gaussian.color[2]) ||
+        !nearlyEqual(readGaussian.color[3], gaussian.color[3]) ||
+        !nearlyEqual(readGaussian.scale[0], gaussian.scale[0]) ||
+        !nearlyEqual(readGaussian.scale[1], gaussian.scale[1]) ||
+        !nearlyEqual(readGaussian.scale[2], gaussian.scale[2]) ||
+        !nearlyEqual(readGaussian.pbr[0], gaussian.pbr[0]) ||
+        !nearlyEqual(readGaussian.pbr[1], gaussian.pbr[1])) {
+        std::filesystem::remove(outputPath);
+        return fail("PLY reader did not round-trip the PBR gaussian record");
+    }
+    std::filesystem::remove(outputPath);
 
     io::GaussianPlyWriteOptions invalidPlyOptions;
     invalidPlyOptions.format = static_cast<io::GaussianPlyFormat>(99);

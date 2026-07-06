@@ -22,6 +22,7 @@ public:
 
     bool initialize() override;
     bool loadMeshFile(const std::string& filePath) override;
+    bool loadGaussianPlyFile(const std::string& filePath);
     void resize(const mesh2splat::renderer::RendererResizeRequest& request) override;
     void resize(uint32_t width, uint32_t height) override;
     void setViewMode(RenderViewMode mode) override;

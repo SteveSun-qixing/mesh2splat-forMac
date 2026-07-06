@@ -88,6 +88,7 @@ add_executable(CoreIoSmokeTest
     ${CMAKE_SOURCE_DIR}/src/core/CameraController.cpp
     ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.cpp
     ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/PlyReader.cpp
     ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.cpp
     ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp
     ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
@@ -188,6 +189,8 @@ if(APPLE)
     set(MACOS_APP_IO_SOURCES
         ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.cpp
         ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.hpp
+        ${CMAKE_SOURCE_DIR}/src/io/PlyReader.cpp
+        ${CMAKE_SOURCE_DIR}/src/io/PlyReader.hpp
         ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.cpp
         ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.hpp
         ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
