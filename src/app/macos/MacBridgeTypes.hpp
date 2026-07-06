@@ -48,6 +48,7 @@ struct MacBridgeUiCommand {
     bool meshRenderingEnabled = true;
     bool gaussianRenderingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
+    bool depthTestEnabled = true;
     std::uint64_t commandId = 0;
 };
 
@@ -243,6 +244,7 @@ struct MacBridgeRendererStatusSummary {
     bool gaussianRenderingEnabled = true;
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
+    bool depthTestEnabled = true;
     bool lastFrameRenderedMesh = false;
     bool lastFrameRenderedGaussians = false;
     bool lastFrameSortedGaussians = false;

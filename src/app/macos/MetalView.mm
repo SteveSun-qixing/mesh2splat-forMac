@@ -104,6 +104,7 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     BOOL meshRenderingEnabled,
     BOOL gaussianRenderingEnabled,
     BOOL conversionEnabled,
+    BOOL depthTestEnabled,
     BOOL lightingEnabled,
     double lightPositionX,
     double lightPositionY,
@@ -120,6 +121,7 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     settings.enableGaussianRendering = gaussianRenderingEnabled;
     settings.enableGaussianSorting = sortingEnabled;
     settings.enableMeshToGaussianConversion = conversionEnabled;
+    settings.enableDepthTest = depthTestEnabled;
     settings.gaussianScale = static_cast<float>(splatSize);
     settings.exposure = static_cast<float>(exposure);
     settings.gamma = static_cast<float>(gamma);
@@ -519,6 +521,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     request.lightColor[1] = settings.lightColor[1];
     request.lightColor[2] = settings.lightColor[2];
     request.debugFlags = settings.debugFlags;
+    request.depthTestEnabled = settings.depthTestEnabled;
     request.gaussianSortingEnabled = settings.gaussianSortingEnabled;
     request.meshToGaussianConversionEnabled = settings.meshToGaussianConversionEnabled;
     const bool hadGaussians = _renderer->convertedGaussianCount() > 0;
@@ -702,6 +705,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.lightColorGreen = renderSettings.lightColor[1];
     summary.lightColorBlue = renderSettings.lightColor[2];
     summary.debugFlags = renderSettings.debugFlags;
+    summary.depthTestEnabled = renderSettings.depthTestEnabled;
     summary.conversionProgress = diagnostics.progress;
     summary.conversionSamplesPerTriangle = renderSettings.conversionSamplesPerTriangle;
     summary.submittedConversionCount = stats.submittedConversionCount;
@@ -1221,6 +1225,7 @@ conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
    meshRenderingEnabled:(BOOL)meshRenderingEnabled
 gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
       conversionEnabled:(BOOL)conversionEnabled
+       depthTestEnabled:(BOOL)depthTestEnabled
         lightingEnabled:(BOOL)lightingEnabled
          lightPositionX:(double)lightPositionX
          lightPositionY:(double)lightPositionY
@@ -1243,6 +1248,7 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
             meshRenderingEnabled,
             gaussianRenderingEnabled,
             conversionEnabled,
+            depthTestEnabled,
             lightingEnabled,
             lightPositionX,
             lightPositionY,
@@ -1661,6 +1667,7 @@ conversionSamplesPerTriangle:static_cast<NSInteger>(command.conversionSamplesPer
          meshRenderingEnabled:command.meshRenderingEnabled
      gaussianRenderingEnabled:command.gaussianRenderingEnabled
             conversionEnabled:command.meshToGaussianConversionEnabled
+            depthTestEnabled:command.depthTestEnabled
              lightingEnabled:command.lightingEnabled
               lightPositionX:command.lightPositionX
               lightPositionY:command.lightPositionY

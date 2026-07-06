@@ -38,12 +38,14 @@ struct RenderPreset: Codable, Equatable {
 
     struct Toggles: Codable, Equatable {
         var sortingEnabled: Bool
+        var depthTestEnabled: Bool
         var meshRenderingEnabled: Bool
         var gaussianRenderingEnabled: Bool
         var conversionEnabled: Bool
 
         static let defaults = Toggles(
             sortingEnabled: true,
+            depthTestEnabled: true,
             meshRenderingEnabled: true,
             gaussianRenderingEnabled: true,
             conversionEnabled: true
@@ -61,7 +63,7 @@ struct RenderPreset: Codable, Equatable {
         toggles: .defaults
     )
 
-    private static let currentVersion = 2
+    private static let currentVersion = 3
 
     private var version: Int
     private var renderModeRawValue: Int

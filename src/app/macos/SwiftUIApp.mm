@@ -77,6 +77,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           BOOL meshRenderingEnabled,
                                           BOOL gaussianRenderingEnabled,
                                           BOOL conversionEnabled,
+                                          BOOL depthTestEnabled,
                                           BOOL lightingEnabled,
                                           double lightPositionX,
                                           double lightPositionY,
@@ -91,7 +92,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
         return;
     }
 
-    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:lightingEnabled:lightPositionX:lightPositionY:lightPositionZ:lightIntensity:lightColorRed:lightColorGreen:lightColorBlue:debugFlags:");
+    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:depthTestEnabled:lightingEnabled:lightPositionX:lightPositionY:lightPositionZ:lightIntensity:lightColorRed:lightColorGreen:lightColorBlue:debugFlags:");
     if (![view respondsToSelector:selector]) {
         return;
     }
@@ -105,6 +106,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
         double,
         double,
         NSInteger,
+        BOOL,
         BOOL,
         BOOL,
         BOOL,
@@ -131,6 +133,7 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
             meshRenderingEnabled,
             gaussianRenderingEnabled,
             conversionEnabled,
+            depthTestEnabled,
             lightingEnabled,
             lightPositionX,
             lightPositionY,

@@ -98,6 +98,7 @@ std::string noDrawableRangesDiagnostic(const MetalMeshRenderPassDiagnostics& dia
 struct MetalMeshRenderPass::Impl {
     void* renderPipelineState = nullptr;
     void* depthStencilState = nullptr;
+    void* depthDisabledState = nullptr;
     void* samplerState = nullptr;
     MetalTextureFormat colorFormat = MetalTextureFormat::BGRA8Unorm;
     MetalTextureFormat depthFormat = MetalTextureFormat::Depth32Float;
@@ -111,6 +112,7 @@ struct MetalMeshRenderPass::Impl {
     {
         renderPipelineState = nullptr;
         depthStencilState = nullptr;
+        depthDisabledState = nullptr;
         samplerState = nullptr;
     }
 
@@ -127,7 +129,10 @@ struct MetalMeshRenderPass::Impl {
         }
     }
 
-    void beginEncodeDiagnostics(const MetalSceneResources& sceneResources, bool ready) const
+    void beginEncodeDiagnostics(
+        const MetalSceneResources& sceneResources,
+        bool ready,
+        bool requestedDepthTestEnabled) const
     {
         lastEncodeDiagnostics = {};
         lastEncodeDiagnostics.ready = ready;
@@ -138,8 +143,8 @@ struct MetalMeshRenderPass::Impl {
         lastEncodeDiagnostics.totalMaterialCount = sceneResources.totalMaterialCount();
         lastEncodeDiagnostics.totalTextureCount = sceneResources.totalTextureCount();
         lastEncodeDiagnostics.emptyScene = sceneLooksEmpty(sceneResources);
-        lastEncodeDiagnostics.depthEnabled = depthEnabled;
-        lastEncodeDiagnostics.depthWriteEnabled = depthWriteEnabled;
+        lastEncodeDiagnostics.depthEnabled = depthEnabled && requestedDepthTestEnabled;
+        lastEncodeDiagnostics.depthWriteEnabled = depthWriteEnabled && requestedDepthTestEnabled;
         lastEncodeDiagnostics.colorFormat = textureFormatName(colorFormat);
         lastEncodeDiagnostics.depthFormat = textureFormatName(depthFormat);
         lastEncodeDiagnostics.debugLabel = debugLabel;
@@ -213,6 +218,22 @@ bool MetalMeshRenderPass::initialize(
         return false;
     }
 
+    MetalDepthStencilDesc depthDisabledDesc;
+    depthDisabledDesc.label = "Mesh Preview Depth Disabled";
+    depthDisabledDesc.depthTestEnabled = false;
+    depthDisabledDesc.depthWriteEnabled = false;
+    depthDisabledDesc.depthCompareFunction = MetalCompareFunction::Always;
+    m_impl->depthDisabledState = renderStateCache.depthStencilState(depthDisabledDesc, &depthError);
+    if (m_impl->depthDisabledState == nullptr) {
+        std::string message = "Failed to initialize mesh render disabled-depth state.";
+        if (!depthError.empty()) {
+            message += " " + depthError;
+        }
+        m_impl->recordDiagnostic(message);
+        setErrorMessage(errorMessage, std::move(message));
+        return false;
+    }
+
     MetalSamplerDesc samplerDesc;
     samplerDesc.label = "Mesh Base Color Sampler";
     samplerDesc.minFilter = MetalSamplerFilter::Linear;
@@ -242,6 +263,7 @@ bool MetalMeshRenderPass::isReady() const
 {
     return m_impl != nullptr &&
         m_impl->renderPipelineState != nullptr && m_impl->depthStencilState != nullptr &&
+        m_impl->depthDisabledState != nullptr &&
         m_impl->samplerState != nullptr;
 }
 
@@ -267,14 +289,15 @@ MetalMeshRenderPassDiagnostics MetalMeshRenderPass::lastEncodeDiagnostics() cons
 void MetalMeshRenderPass::encode(
     void* renderCommandEncoder,
     const MetalSceneResources& sceneResources,
-    void* frameUniformBuffer) const
+    void* frameUniformBuffer,
+    bool depthTestEnabled) const
 {
     if (m_impl == nullptr) {
         return;
     }
 
     const bool ready = isReady();
-    m_impl->beginEncodeDiagnostics(sceneResources, ready);
+    m_impl->beginEncodeDiagnostics(sceneResources, ready, depthTestEnabled);
     if (!ready) {
         m_impl->recordDiagnostic("Metal mesh render pass skipped: pass is not ready.");
         return;
@@ -298,7 +321,8 @@ void MetalMeshRenderPass::encode(
 
     id<MTLRenderCommandEncoder> encoder = (__bridge id<MTLRenderCommandEncoder>)renderCommandEncoder;
     id<MTLRenderPipelineState> pipelineState = (__bridge id<MTLRenderPipelineState>)m_impl->renderPipelineState;
-    id<MTLDepthStencilState> depthStencilState = (__bridge id<MTLDepthStencilState>)m_impl->depthStencilState;
+    id<MTLDepthStencilState> depthStencilState = (__bridge id<MTLDepthStencilState>)(
+        depthTestEnabled ? m_impl->depthStencilState : m_impl->depthDisabledState);
     id<MTLSamplerState> samplerState = (__bridge id<MTLSamplerState>)m_impl->samplerState;
     id<MTLBuffer> frameBuffer = (__bridge id<MTLBuffer>)frameUniformBuffer;
     if (encoder == nil || pipelineState == nil || depthStencilState == nil || samplerState == nil ||

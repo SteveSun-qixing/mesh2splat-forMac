@@ -69,19 +69,22 @@ public:
     void encode(
         void* renderCommandEncoder,
         const MetalGaussianBuffer& gaussianBuffer,
-        void* frameUniformBuffer) const;
+        void* frameUniformBuffer,
+        bool depthTestEnabled = true) const;
     void encode(
         void* renderCommandEncoder,
         const MetalGaussianBuffer& gaussianBuffer,
         const MetalGaussianSortBuffer& sortBuffer,
-        void* frameUniformBuffer) const;
+        void* frameUniformBuffer,
+        bool depthTestEnabled = true) const;
 
 private:
     void encodeImpl(
         void* renderCommandEncoder,
         const MetalGaussianBuffer& gaussianBuffer,
         const MetalGaussianSortBuffer* sortBuffer,
-        void* frameUniformBuffer) const;
+        void* frameUniformBuffer,
+        bool depthTestEnabled) const;
 
     struct Impl;
     std::unique_ptr<Impl> m_impl;

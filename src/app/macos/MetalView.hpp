@@ -24,6 +24,7 @@ conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
    meshRenderingEnabled:(BOOL)meshRenderingEnabled
 gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
       conversionEnabled:(BOOL)conversionEnabled
+       depthTestEnabled:(BOOL)depthTestEnabled
         lightingEnabled:(BOOL)lightingEnabled
          lightPositionX:(double)lightPositionX
          lightPositionY:(double)lightPositionY

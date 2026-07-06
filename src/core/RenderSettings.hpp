@@ -90,6 +90,7 @@ struct RenderSettings {
     bool enableGaussianRendering = true;
     bool enableGaussianSorting = true;
     bool enableMeshToGaussianConversion = true;
+    bool enableDepthTest = true;
     float gaussianScale = kDefaultGaussianScale;
     float exposure = kDefaultExposure;
     float gamma = kDefaultGamma;
@@ -117,6 +118,7 @@ struct RenderSettingsSnapshot {
     bool gaussianRenderingEnabled = true;
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
+    bool depthTestEnabled = true;
     float gaussianScale = kDefaultGaussianScale;
     float exposure = kDefaultExposure;
     float gamma = kDefaultGamma;
@@ -456,6 +458,7 @@ inline RenderSettingsSnapshot makeRenderSettingsSnapshot(
     snapshot.gaussianRenderingEnabled = clampedSettings.enableGaussianRendering;
     snapshot.gaussianSortingEnabled = clampedSettings.enableGaussianSorting;
     snapshot.meshToGaussianConversionEnabled = clampedSettings.enableMeshToGaussianConversion;
+    snapshot.depthTestEnabled = clampedSettings.enableDepthTest;
     snapshot.gaussianScale = clampedSettings.gaussianScale;
     snapshot.exposure = clampedSettings.exposure;
     snapshot.gamma = clampedSettings.gamma;

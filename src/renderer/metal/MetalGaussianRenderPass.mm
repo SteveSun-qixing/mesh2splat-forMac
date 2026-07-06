@@ -73,6 +73,7 @@ struct MetalGaussianRenderPass::Impl {
     id<MTLDevice> device = nil;
     void* renderPipelineState = nullptr;
     void* depthStencilState = nullptr;
+    void* depthDisabledState = nullptr;
     void* samplerState = nullptr;
     id<MTLBuffer> identityIndexBuffer = nil;
     std::size_t identityIndexCapacity = 0;
@@ -86,6 +87,7 @@ struct MetalGaussianRenderPass::Impl {
     {
         renderPipelineState = nullptr;
         depthStencilState = nullptr;
+        depthDisabledState = nullptr;
         samplerState = nullptr;
     }
 
@@ -105,13 +107,14 @@ struct MetalGaussianRenderPass::Impl {
     void beginEncodeDiagnostics(
         const MetalGaussianBuffer& gaussianBuffer,
         const MetalGaussianSortBuffer* sortBuffer,
-        bool ready) const
+        bool ready,
+        bool requestedDepthTestEnabled) const
     {
         lastEncodeDiagnostics = {};
         lastEncodeDiagnostics.ready = ready;
         lastEncodeDiagnostics.gaussianBufferValid = gaussianBuffer.isValid();
         lastEncodeDiagnostics.sortBufferValid = sortBuffer != nullptr && sortBuffer->isValid();
-        lastEncodeDiagnostics.depthTestEnabled = true;
+        lastEncodeDiagnostics.depthTestEnabled = requestedDepthTestEnabled;
         lastEncodeDiagnostics.depthWriteEnabled = false;
         lastEncodeDiagnostics.gaussianCapacity = gaussianBuffer.capacity();
         lastEncodeDiagnostics.gaussianCount = gaussianBuffer.count();
@@ -256,6 +259,22 @@ bool MetalGaussianRenderPass::initialize(
         return false;
     }
 
+    MetalDepthStencilDesc depthDisabledDesc;
+    depthDisabledDesc.label = "Gaussian Preview Depth Disabled";
+    depthDisabledDesc.depthTestEnabled = false;
+    depthDisabledDesc.depthWriteEnabled = false;
+    depthDisabledDesc.depthCompareFunction = MetalCompareFunction::Always;
+    m_impl->depthDisabledState = renderStateCache.depthStencilState(depthDisabledDesc, &depthDiagnostic);
+    if (m_impl->depthDisabledState == nullptr) {
+        std::string message = "Failed to initialize gaussian render disabled-depth state.";
+        if (!depthDiagnostic.empty()) {
+            message += " " + depthDiagnostic;
+        }
+        m_impl->recordDiagnostic(message);
+        setErrorMessage(errorMessage, std::move(message));
+        return false;
+    }
+
     MetalSamplerDesc samplerDesc;
     samplerDesc.label = "Gaussian Preview Sampler";
     samplerDesc.minFilter = MetalSamplerFilter::Linear;
@@ -285,6 +304,7 @@ bool MetalGaussianRenderPass::isReady() const
 {
     return m_impl != nullptr &&
         m_impl->renderPipelineState != nullptr && m_impl->depthStencilState != nullptr &&
+        m_impl->depthDisabledState != nullptr &&
         m_impl->samplerState != nullptr;
 }
 
@@ -310,32 +330,35 @@ MetalGaussianRenderPassDiagnostics MetalGaussianRenderPass::lastEncodeDiagnostic
 void MetalGaussianRenderPass::encode(
     void* renderCommandEncoder,
     const MetalGaussianBuffer& gaussianBuffer,
-    void* frameUniformBuffer) const
+    void* frameUniformBuffer,
+    bool depthTestEnabled) const
 {
-    encodeImpl(renderCommandEncoder, gaussianBuffer, nullptr, frameUniformBuffer);
+    encodeImpl(renderCommandEncoder, gaussianBuffer, nullptr, frameUniformBuffer, depthTestEnabled);
 }
 
 void MetalGaussianRenderPass::encode(
     void* renderCommandEncoder,
     const MetalGaussianBuffer& gaussianBuffer,
     const MetalGaussianSortBuffer& sortBuffer,
-    void* frameUniformBuffer) const
+    void* frameUniformBuffer,
+    bool depthTestEnabled) const
 {
-    encodeImpl(renderCommandEncoder, gaussianBuffer, &sortBuffer, frameUniformBuffer);
+    encodeImpl(renderCommandEncoder, gaussianBuffer, &sortBuffer, frameUniformBuffer, depthTestEnabled);
 }
 
 void MetalGaussianRenderPass::encodeImpl(
     void* renderCommandEncoder,
     const MetalGaussianBuffer& gaussianBuffer,
     const MetalGaussianSortBuffer* sortBuffer,
-    void* frameUniformBuffer) const
+    void* frameUniformBuffer,
+    bool depthTestEnabled) const
 {
     if (m_impl == nullptr) {
         return;
     }
 
     const bool ready = isReady();
-    m_impl->beginEncodeDiagnostics(gaussianBuffer, sortBuffer, ready);
+    m_impl->beginEncodeDiagnostics(gaussianBuffer, sortBuffer, ready, depthTestEnabled);
     if (!ready) {
         m_impl->recordDiagnostic("Metal gaussian render pass skipped: pass is not ready.");
         return;
@@ -402,7 +425,8 @@ void MetalGaussianRenderPass::encodeImpl(
 
     id<MTLRenderCommandEncoder> encoder = (__bridge id<MTLRenderCommandEncoder>)renderCommandEncoder;
     id<MTLRenderPipelineState> pipelineState = (__bridge id<MTLRenderPipelineState>)m_impl->renderPipelineState;
-    id<MTLDepthStencilState> depthStencilState = (__bridge id<MTLDepthStencilState>)m_impl->depthStencilState;
+    id<MTLDepthStencilState> depthStencilState = (__bridge id<MTLDepthStencilState>)(
+        depthTestEnabled ? m_impl->depthStencilState : m_impl->depthDisabledState);
     id<MTLSamplerState> samplerState = (__bridge id<MTLSamplerState>)m_impl->samplerState;
     id<MTLBuffer> gaussianBufferHandle = (__bridge id<MTLBuffer>)gaussianBuffer.nativeBuffer();
     id<MTLBuffer> frameBuffer = (__bridge id<MTLBuffer>)frameUniformBuffer;

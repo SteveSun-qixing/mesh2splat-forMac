@@ -21,6 +21,7 @@ struct RenderControlsPanel: View {
                 }
 
                 Toggle("Sort gaussians", isOn: $appState.sortingEnabled)
+                Toggle("Depth test", isOn: $appState.depthTestEnabled)
                 Toggle("Centers", isOn: $appState.showGaussianCenters)
                 Toggle("Sort order", isOn: $appState.showSortOrder)
 

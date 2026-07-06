@@ -60,7 +60,11 @@ public:
     bool isReady() const;
     const std::string& lastDiagnostic() const;
     MetalMeshRenderPassDiagnostics lastEncodeDiagnostics() const;
-    void encode(void* renderCommandEncoder, const MetalSceneResources& sceneResources, void* frameUniformBuffer) const;
+    void encode(
+        void* renderCommandEncoder,
+        const MetalSceneResources& sceneResources,
+        void* frameUniformBuffer,
+        bool depthTestEnabled = true) const;
 
 private:
     struct Impl;

@@ -675,6 +675,7 @@ struct MetalRenderer::Impl {
     bool hasSortedGaussianDepths = false;
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
+    bool depthTestEnabled = true;
     bool initialized = false;
     bool renderingFrame = false;
     bool exportPending = false;
@@ -1581,6 +1582,7 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     m_impl->exposure = clampedFinite(request.exposure, 0.0f, 16.0f, 1.0f);
     m_impl->gamma = clampedFinite(request.gamma, 0.1f, 4.0f, 2.2f);
     m_impl->backgroundBrightness = clampedFinite(request.backgroundBrightness, 0.0f, 1.0f, 0.04f);
+    m_impl->depthTestEnabled = request.depthTestEnabled;
     m_impl->lightingEnabled = request.lightingEnabled;
     m_impl->lightPosition[0] = clampedFinite(request.lightPosition[0], -100.0f, 100.0f, 3.0f);
     m_impl->lightPosition[1] = clampedFinite(request.lightPosition[1], -100.0f, 100.0f, 4.0f);
@@ -1605,6 +1607,7 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     result.exposure = m_impl->exposure;
     result.gamma = m_impl->gamma;
     result.backgroundBrightness = m_impl->backgroundBrightness;
+    result.depthTestEnabled = m_impl->depthTestEnabled;
     result.lightingEnabled = m_impl->lightingEnabled;
     result.lightPosition[0] = m_impl->lightPosition[0];
     result.lightPosition[1] = m_impl->lightPosition[1];
@@ -1698,6 +1701,7 @@ mesh2splat::renderer::RendererRenderSettingsSummary MetalRenderer::renderSetting
     settings.exposure = m_impl->exposure;
     settings.gamma = m_impl->gamma;
     settings.backgroundBrightness = m_impl->backgroundBrightness;
+    settings.depthTestEnabled = m_impl->depthTestEnabled;
     settings.lightingEnabled = m_impl->lightingEnabled;
     settings.lightPosition[0] = m_impl->lightPosition[0];
     settings.lightPosition[1] = m_impl->lightPosition[1];
@@ -2020,7 +2024,8 @@ void MetalRenderer::draw(
         m_impl->meshRenderPass->encode(
             (__bridge void*)encoder,
             *m_impl->sceneResources,
-            m_impl->frameUniformBuffer->buffer(frameResourceIndex));
+            m_impl->frameUniformBuffer->buffer(frameResourceIndex),
+            m_impl->depthTestEnabled);
         m_impl->recordDiagnostic(m_impl->meshRenderPass->lastDiagnostic());
         renderedMeshThisFrame =
             m_impl->meshRenderPass->lastEncodeDiagnostics().encodedDrawRangeCount > 0;
@@ -2035,7 +2040,8 @@ void MetalRenderer::draw(
             (__bridge void*)encoder,
             *m_impl->gaussianBuffer,
             *m_impl->gaussianSortBuffer,
-            m_impl->frameUniformBuffer->buffer(frameResourceIndex));
+            m_impl->frameUniformBuffer->buffer(frameResourceIndex),
+            m_impl->depthTestEnabled);
         m_impl->recordDiagnostic(m_impl->gaussianRenderPass->lastDiagnostic());
         renderedGaussiansThisFrame =
             m_impl->gaussianRenderPass->lastEncodeDiagnostics().instanceCount > 0;

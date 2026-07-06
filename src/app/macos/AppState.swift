@@ -110,6 +110,7 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var lightColorBlue = 0.85 { didSet { submitRenderSettings() } }
     @Published var conversionQuality: ConversionQuality = .balanced { didSet { submitRenderSettings() } }
     @Published var sortingEnabled = true { didSet { submitRenderSettings() } }
+    @Published var depthTestEnabled = true { didSet { submitRenderSettings() } }
     @Published var meshRenderingEnabled = true { didSet { submitRenderSettings() } }
     @Published var gaussianRenderingEnabled = true { didSet { submitRenderSettings() } }
     @Published var conversionEnabled = true { didSet { submitRenderSettings() } }
@@ -253,6 +254,7 @@ final class Mesh2SplatAppState: ObservableObject {
             meshRenderingEnabled,
             gaussianRenderingEnabled,
             conversionEnabled,
+            depthTestEnabled,
             lightingEnabled,
             lightPositionX.clamped(to: -100.0...100.0),
             lightPositionY.clamped(to: -100.0...100.0),
@@ -477,6 +479,7 @@ final class Mesh2SplatAppState: ObservableObject {
         lightColorGreen = Double(status.lightColorGreen)
         lightColorBlue = Double(status.lightColorBlue)
         sortingEnabled = status.gaussianSortingEnabled
+        depthTestEnabled = status.depthTestEnabled
         meshRenderingEnabled = status.meshRenderingEnabled
         gaussianRenderingEnabled = status.gaussianRenderingEnabled
         conversionEnabled = status.meshToGaussianConversionEnabled
@@ -540,6 +543,7 @@ final class Mesh2SplatAppState: ObservableObject {
             quality: conversionQuality,
             toggles: RenderPreset.Toggles(
                 sortingEnabled: sortingEnabled,
+                depthTestEnabled: depthTestEnabled,
                 meshRenderingEnabled: meshRenderingEnabled,
                 gaussianRenderingEnabled: gaussianRenderingEnabled,
                 conversionEnabled: conversionEnabled
@@ -564,6 +568,7 @@ final class Mesh2SplatAppState: ObservableObject {
         lightColorBlue = preset.lighting.colorBlue
         conversionQuality = preset.quality
         sortingEnabled = preset.toggles.sortingEnabled
+        depthTestEnabled = preset.toggles.depthTestEnabled
         meshRenderingEnabled = preset.toggles.meshRenderingEnabled
         gaussianRenderingEnabled = preset.toggles.gaussianRenderingEnabled
         conversionEnabled = preset.toggles.conversionEnabled

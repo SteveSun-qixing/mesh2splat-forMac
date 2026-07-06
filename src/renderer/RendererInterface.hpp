@@ -252,6 +252,7 @@ struct RendererModeRequest {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    bool depthTestEnabled = true;
     bool lightingEnabled = true;
     float lightPosition[3] = {3.0f, 4.0f, 2.5f};
     float lightIntensity = 1.0f;
@@ -270,6 +271,7 @@ struct RendererModeResult {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    bool depthTestEnabled = true;
     bool lightingEnabled = true;
     float lightPosition[3] = {3.0f, 4.0f, 2.5f};
     float lightIntensity = 1.0f;

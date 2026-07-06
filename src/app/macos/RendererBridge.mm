@@ -196,6 +196,7 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.gaussianRenderingEnabled = summary.gaussianRenderingEnabled;
     status.gaussianSortingEnabled = summary.gaussianSortingEnabled;
     status.meshToGaussianConversionEnabled = summary.meshToGaussianConversionEnabled;
+    status.depthTestEnabled = summary.depthTestEnabled;
     status.frameStats = frameStats;
     status.backendStatus = bridgeBackendStatus(summary);
     status.resourceStats = resourceStats;
