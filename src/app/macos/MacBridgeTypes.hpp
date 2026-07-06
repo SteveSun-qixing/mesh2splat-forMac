@@ -165,6 +165,8 @@ struct MacBridgeRendererStatusSummary {
     MacBridgeConversionStatus conversion;
     MacBridgeDiagnosticStatus diagnostics;
     std::string loadedScenePath;
+    std::string loadedSceneDisplayName;
+    std::string exportPath;
     std::string statusText;
     std::string diagnosticMessage;
     std::string lastError;
@@ -200,7 +202,14 @@ struct MacBridgeRendererStatusSummary {
     std::uint32_t textureCount = 0;
     bool hasScene = false;
     bool hasGaussians = false;
+    bool hasVisibleMesh = false;
     bool isConverting = false;
+    bool canImportScene = false;
+    bool canStartConversion = false;
+    bool canExportGaussians = false;
+    bool exportMatchesCurrentConversion = false;
+    bool meshRenderingEnabled = true;
+    bool gaussianRenderingEnabled = true;
     bool lastFrameRenderedMesh = false;
     bool lastFrameRenderedGaussians = false;
     bool lastFrameSortedGaussians = false;

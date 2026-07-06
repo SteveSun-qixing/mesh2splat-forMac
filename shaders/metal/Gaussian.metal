@@ -60,24 +60,24 @@ struct GaussianScreenBasis {
     bool valid;
 };
 
-constexpr float kFiniteGuard = 1.0e20;
-constexpr float kMinimumClipW = 1.0e-5;
-constexpr float kMinimumViewDepth = 1.0e-5;
-constexpr float kMinimumGaussianScale = 1.0e-7;
-constexpr float kGaussianExtentSigma = 3.0;
-constexpr float kCovarianceLowPassPixels = 0.3;
-constexpr float kMinimumAxisPixels = 0.75;
-constexpr float kMaximumAxisPixels = 512.0;
-constexpr float kAlphaDiscardThreshold = 1.0e-4;
-constexpr uint kRenderModeAlbedo = 0u;
-constexpr uint kRenderModeDepth = 1u;
-constexpr uint kRenderModeNormal = 2u;
-constexpr uint kRenderModeGeometry = 3u;
-constexpr uint kRenderModeOverdraw = 4u;
-constexpr uint kRenderModePbr = 5u;
-constexpr uint kRenderModeFinal = 6u;
-constexpr uint kDebugFlagShowGaussianCenters = 1u << 2u;
-constexpr uint kDebugFlagShowSortOrder = 1u << 4u;
+constant constexpr float kFiniteGuard = 1.0e20;
+constant constexpr float kMinimumClipW = 1.0e-5;
+constant constexpr float kMinimumViewDepth = 1.0e-5;
+constant constexpr float kMinimumGaussianScale = 1.0e-7;
+constant constexpr float kGaussianExtentSigma = 3.0;
+constant constexpr float kCovarianceLowPassPixels = 0.3;
+constant constexpr float kMinimumAxisPixels = 0.75;
+constant constexpr float kMaximumAxisPixels = 512.0;
+constant constexpr float kAlphaDiscardThreshold = 1.0e-4;
+constant constexpr uint kRenderModeAlbedo = 0u;
+constant constexpr uint kRenderModeDepth = 1u;
+constant constexpr uint kRenderModeNormal = 2u;
+constant constexpr uint kRenderModeGeometry = 3u;
+constant constexpr uint kRenderModeOverdraw = 4u;
+constant constexpr uint kRenderModePbr = 5u;
+constant constexpr uint kRenderModeFinal = 6u;
+constant constexpr uint kDebugFlagShowGaussianCenters = 1u << 2u;
+constant constexpr uint kDebugFlagShowSortOrder = 1u << 4u;
 
 static bool isFiniteFloat(float value)
 {

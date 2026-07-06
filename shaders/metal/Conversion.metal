@@ -35,19 +35,19 @@ static_assert(sizeof(MeshMaterial) == 48u, "MeshMaterial must match MetalMeshMat
 static_assert(sizeof(GaussianRecord) == 96u, "GaussianRecord must remain six float4 slots.");
 static_assert(sizeof(MeshConversionParams) == 32u, "MeshConversionParams must stay 32 bytes.");
 
-constexpr uint kConversionMeshVertexFloatStride = 17u;
-constexpr uint kConversionMeshVertexPositionOffset = 0u;
-constexpr uint kConversionMeshVertexNormalOffset = 3u;
-constexpr uint kConversionMeshVertexTangentOffset = 6u;
-constexpr uint kConversionMeshVertexTangentWOffset = 9u;
-constexpr uint kConversionMeshVertexUvOffset = 10u;
-constexpr uint kConversionMeshVertexNormalizedUvOffset = 12u;
-constexpr uint kConversionMeshVertexScaleOffset = 14u;
-constexpr uint kConversionMaxUint = 0xffffffffu;
-constexpr float kConversionMinimumLengthSquared = 1.0e-12;
-constexpr float kConversionMinimumGaussianAxisScale = 1.0e-7;
-constexpr float kConversionMaximumGaussianAxisScale = 1.0e7;
-constexpr float kConversionCapacityCeilBias = 1.0e-5;
+constant constexpr uint kConversionMeshVertexFloatStride = 17u;
+constant constexpr uint kConversionMeshVertexPositionOffset = 0u;
+constant constexpr uint kConversionMeshVertexNormalOffset = 3u;
+constant constexpr uint kConversionMeshVertexTangentOffset = 6u;
+constant constexpr uint kConversionMeshVertexTangentWOffset = 9u;
+constant constexpr uint kConversionMeshVertexUvOffset = 10u;
+constant constexpr uint kConversionMeshVertexNormalizedUvOffset = 12u;
+constant constexpr uint kConversionMeshVertexScaleOffset = 14u;
+constant constexpr uint kConversionMaxUint = 0xffffffffu;
+constant constexpr float kConversionMinimumLengthSquared = 1.0e-12;
+constant constexpr float kConversionMinimumGaussianAxisScale = 1.0e-7;
+constant constexpr float kConversionMaximumGaussianAxisScale = 1.0e7;
+constant constexpr float kConversionCapacityCeilBias = 1.0e-5;
 
 static bool conversionFinite(float value)
 {

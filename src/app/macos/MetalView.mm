@@ -606,7 +606,13 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.backend.initialized = true;
     summary.backend.shaderLibraryReady = true;
     summary.backend.pipelineCacheReady = true;
-    summary.loadedScenePath = diagnostics.loadedScenePath;
+    summary.loadedScenePath = diagnostics.loadedScenePath.empty()
+        ? diagnostics.assetSession.sourcePath
+        : diagnostics.loadedScenePath;
+    summary.loadedSceneDisplayName = diagnostics.loadedScene.displayName.empty()
+        ? diagnostics.assetSession.displayName
+        : diagnostics.loadedScene.displayName;
+    summary.exportPath = diagnostics.assetSession.exportPath;
     summary.diagnosticMessage = diagnosticOverride.length > 0 ?
         std::string(diagnosticOverride.UTF8String) :
         diagnostics.message;
@@ -646,7 +652,32 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
         std::numeric_limits<std::uint32_t>::max()));
     summary.hasScene = diagnostics.hasScene;
     summary.hasGaussians = diagnostics.hasGaussians;
+    summary.hasVisibleMesh = diagnostics.hasVisibleMesh;
     summary.isConverting = diagnostics.converting;
+    summary.meshRenderingEnabled = diagnostics.renderSettings.meshRenderingEnabled;
+    summary.gaussianRenderingEnabled = diagnostics.renderSettings.gaussianRenderingEnabled;
+    summary.exportMatchesCurrentConversion = diagnostics.assetSession.exportMatchesCurrentConversion;
+    const bool rendererFailed =
+        diagnostics.state == mesh2splat::renderer::RendererRuntimeState::Failed ||
+        diagnostics.severity == mesh2splat::renderer::RendererDiagnosticSeverity::Error;
+    const bool rendererExporting =
+        diagnostics.state == mesh2splat::renderer::RendererRuntimeState::Exporting ||
+        diagnostics.assetSession.exportState == mesh2splat::renderer::RendererAssetExportState::Pending ||
+        diagnostics.assetSession.exportState == mesh2splat::renderer::RendererAssetExportState::Exporting;
+    const bool rendererLoading =
+        diagnostics.state == mesh2splat::renderer::RendererRuntimeState::Loading;
+    summary.canImportScene = !rendererLoading && !rendererExporting && !diagnostics.converting;
+    summary.canStartConversion =
+        !rendererFailed &&
+        !rendererExporting &&
+        !diagnostics.converting &&
+        diagnostics.hasScene &&
+        diagnostics.hasVisibleMesh;
+    summary.canExportGaussians =
+        !rendererFailed &&
+        !rendererExporting &&
+        !diagnostics.converting &&
+        diagnostics.hasGaussians;
     summary.lastFrameRenderedMesh = stats.lastFrameRenderedMesh;
     summary.lastFrameRenderedGaussians = stats.lastFrameRenderedGaussians;
     summary.lastFrameSortedGaussians = stats.lastFrameSortedGaussians;
@@ -1464,10 +1495,13 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
 {
     NSRect backingBounds = [self convertRectToBacking:self.bounds];
     NSString* diagnostic = self.lastDiagnosticMessage.length > 0 ? self.lastDiagnosticMessage : nil;
-    return [self.meshDelegate rendererStatusSummaryWithDrawableWidth:static_cast<uint32_t>(std::max<CGFloat>(1.0, std::round(NSWidth(backingBounds))))
-                                                      drawableHeight:static_cast<uint32_t>(std::max<CGFloat>(1.0, std::round(NSHeight(backingBounds))))
-                                                        backingScale:backingScaleForView(self)
-                                                   diagnosticOverride:diagnostic];
+    mesh2splat::macos::MacBridgeRendererStatusSummary summary =
+        [self.meshDelegate rendererStatusSummaryWithDrawableWidth:static_cast<uint32_t>(std::max<CGFloat>(1.0, std::round(NSWidth(backingBounds))))
+                                                   drawableHeight:static_cast<uint32_t>(std::max<CGFloat>(1.0, std::round(NSHeight(backingBounds))))
+                                                     backingScale:backingScaleForView(self)
+                                                diagnosticOverride:diagnostic];
+    summary.canStartConversion = summary.canStartConversion && _bridgeConversionEnabled;
+    return summary;
 }
 
 - (mesh2splat::macos::MacBridgeActionResult)performBridgeCommand:(const mesh2splat::macos::MacBridgeUiCommand&)command

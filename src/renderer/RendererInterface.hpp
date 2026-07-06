@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/InputState.hpp"
+#include "renderer/RendererAssetSession.hpp"
 #include "renderer/event.hpp"
 
 #include <cstdint>
@@ -326,6 +327,7 @@ struct RendererDiagnostics {
     bool hasGaussians = false;
     uint64_t revision = 0;
     RendererLoadedSceneSnapshot loadedScene;
+    RendererAssetSessionSnapshot assetSession;
     RendererSceneCounts sceneCounts;
     RendererRenderSettingsSummary renderSettings;
     RendererConversionState conversion;
@@ -537,6 +539,11 @@ public:
         diagnostics.lastError = lastDiagnostic();
         diagnostics.loadedScenePath = loadedMeshPath();
         diagnostics.loadedScene = loadedSceneSnapshot();
+        diagnostics.assetSession.sourcePath = diagnostics.loadedScene.filePath;
+        diagnostics.assetSession.displayName = diagnostics.loadedScene.displayName;
+        diagnostics.assetSession.statusText = lastDiagnostic();
+        diagnostics.assetSession.hasScene = diagnostics.loadedScene.loaded;
+        diagnostics.assetSession.hasGaussians = convertedGaussianCount() > 0;
         diagnostics.sceneCounts = sceneCounts();
         diagnostics.renderSettings = renderSettingsSummary();
         diagnostics.conversion = conversionState();

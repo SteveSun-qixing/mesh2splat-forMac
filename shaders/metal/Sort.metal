@@ -45,12 +45,12 @@ struct RadixSortParams {
     uint outputCapacity;
 };
 
-constexpr uint kRadixBinCount = 16;
-constexpr uint kRadixMask = kRadixBinCount - 1u;
-constexpr uint kInvalidRadixBin = kRadixBinCount;
-constexpr uint kMaxRadixShift = 28;
-constexpr uint kRadixSortThreadCount = 256;
-constexpr float kMaxSortableDepth = 3.402823466e+38f;
+constant constexpr uint kRadixBinCount = 16;
+constant constexpr uint kRadixMask = kRadixBinCount - 1u;
+constant constexpr uint kInvalidRadixBin = kRadixBinCount;
+constant constexpr uint kMaxRadixShift = 28;
+constant constexpr uint kRadixSortThreadCount = 256;
+constant constexpr float kMaxSortableDepth = 3.402823466e+38f;
 
 static float4 transformPoint(Matrix4 matrix, float3 position)
 {

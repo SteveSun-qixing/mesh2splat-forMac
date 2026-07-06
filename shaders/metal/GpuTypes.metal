@@ -8,96 +8,96 @@ using namespace metal;
 // all bundled .metal files. The active pass shaders currently carry local struct
 // names, so these shared definitions are staged here without colliding with them.
 
-constexpr uint kM2SDefaultMaxGaussianCount = 7000000u;
-constexpr float kM2SSphericalHarmonicC0 = 0.28209479177387814f;
+constant constexpr uint kM2SDefaultMaxGaussianCount = 7000000u;
+constant constexpr float kM2SSphericalHarmonicC0 = 0.28209479177387814f;
 
-constexpr uint kM2SMeshVertexFloatCount = 17u;
-constexpr uint kM2SMeshVertexByteSize = 68u;
-constexpr uint kM2SMeshVertexPositionOffset = 0u;
-constexpr uint kM2SMeshVertexNormalOffset = 3u;
-constexpr uint kM2SMeshVertexTangentOffset = 6u;
-constexpr uint kM2SMeshVertexUvOffset = 10u;
-constexpr uint kM2SMeshVertexNormalizedUvOffset = 12u;
-constexpr uint kM2SMeshVertexScaleOffset = 14u;
+constant constexpr uint kM2SMeshVertexFloatCount = 17u;
+constant constexpr uint kM2SMeshVertexByteSize = 68u;
+constant constexpr uint kM2SMeshVertexPositionOffset = 0u;
+constant constexpr uint kM2SMeshVertexNormalOffset = 3u;
+constant constexpr uint kM2SMeshVertexTangentOffset = 6u;
+constant constexpr uint kM2SMeshVertexUvOffset = 10u;
+constant constexpr uint kM2SMeshVertexNormalizedUvOffset = 12u;
+constant constexpr uint kM2SMeshVertexScaleOffset = 14u;
 
-constexpr uint kM2SGaussianFloat4SlotCount = 6u;
-constexpr uint kM2SGaussianRecordByteSize = 96u;
-constexpr uint kM2SGaussianPositionSlot = 0u;
-constexpr uint kM2SGaussianColorSlot = 1u;
-constexpr uint kM2SGaussianScaleSlot = 2u;
-constexpr uint kM2SGaussianNormalSlot = 3u;
-constexpr uint kM2SGaussianRotationSlot = 4u;
-constexpr uint kM2SGaussianPbrSlot = 5u;
+constant constexpr uint kM2SGaussianFloat4SlotCount = 6u;
+constant constexpr uint kM2SGaussianRecordByteSize = 96u;
+constant constexpr uint kM2SGaussianPositionSlot = 0u;
+constant constexpr uint kM2SGaussianColorSlot = 1u;
+constant constexpr uint kM2SGaussianScaleSlot = 2u;
+constant constexpr uint kM2SGaussianNormalSlot = 3u;
+constant constexpr uint kM2SGaussianRotationSlot = 4u;
+constant constexpr uint kM2SGaussianPbrSlot = 5u;
 
-constexpr uint kM2SMatrix4ByteSize = 64u;
-constexpr uint kM2SFrameUniformsByteSize = 352u;
-constexpr uint kM2SMeshMaterialByteSize = 48u;
-constexpr uint kM2SMeshDrawRangeByteSize = 16u;
-constexpr uint kM2SMeshConversionParamsByteSize = 32u;
-constexpr uint kM2SGaussianSortParamsByteSize = 16u;
-constexpr uint kM2SRadixSortParamsByteSize = 16u;
+constant constexpr uint kM2SMatrix4ByteSize = 64u;
+constant constexpr uint kM2SFrameUniformsByteSize = 352u;
+constant constexpr uint kM2SMeshMaterialByteSize = 48u;
+constant constexpr uint kM2SMeshDrawRangeByteSize = 16u;
+constant constexpr uint kM2SMeshConversionParamsByteSize = 32u;
+constant constexpr uint kM2SGaussianSortParamsByteSize = 16u;
+constant constexpr uint kM2SRadixSortParamsByteSize = 16u;
 
-constexpr uint kM2SRadixBinCount = 16u;
-constexpr uint kM2SRadixPassCount = 8u;
-constexpr uint kM2SRadixSortThreadCount = 256u;
+constant constexpr uint kM2SRadixBinCount = 16u;
+constant constexpr uint kM2SRadixPassCount = 8u;
+constant constexpr uint kM2SRadixSortThreadCount = 256u;
 
-constexpr uint kM2SRenderModeColor = 0u;
-constexpr uint kM2SRenderModeDepth = 1u;
-constexpr uint kM2SRenderModeNormal = 2u;
-constexpr uint kM2SRenderModeGeometryColor = 3u;
-constexpr uint kM2SRenderModeDensity = 4u;
-constexpr uint kM2SRenderModePbr = 5u;
-constexpr uint kM2SRenderModeLitPreview = 6u;
+constant constexpr uint kM2SRenderModeColor = 0u;
+constant constexpr uint kM2SRenderModeDepth = 1u;
+constant constexpr uint kM2SRenderModeNormal = 2u;
+constant constexpr uint kM2SRenderModeGeometryColor = 3u;
+constant constexpr uint kM2SRenderModeDensity = 4u;
+constant constexpr uint kM2SRenderModePbr = 5u;
+constant constexpr uint kM2SRenderModeLitPreview = 6u;
 
-constexpr uint kM2SMeshVertexVerticesBufferIndex = 0u;
-constexpr uint kM2SMeshVertexFrameBufferIndex = 1u;
+constant constexpr uint kM2SMeshVertexVerticesBufferIndex = 0u;
+constant constexpr uint kM2SMeshVertexFrameBufferIndex = 1u;
 
-constexpr uint kM2SMeshFragmentMaterialsBufferIndex = 0u;
-constexpr uint kM2SMeshFragmentMaterialIndexBufferIndex = 1u;
+constant constexpr uint kM2SMeshFragmentMaterialsBufferIndex = 0u;
+constant constexpr uint kM2SMeshFragmentMaterialIndexBufferIndex = 1u;
 
-constexpr uint kM2SConversionVerticesBufferIndex = 0u;
-constexpr uint kM2SConversionMaterialsBufferIndex = 1u;
-constexpr uint kM2SConversionGaussiansBufferIndex = 2u;
-constexpr uint kM2SConversionParamsBufferIndex = 3u;
-constexpr uint kM2SConversionCounterBufferIndex = 4u;
+constant constexpr uint kM2SConversionVerticesBufferIndex = 0u;
+constant constexpr uint kM2SConversionMaterialsBufferIndex = 1u;
+constant constexpr uint kM2SConversionGaussiansBufferIndex = 2u;
+constant constexpr uint kM2SConversionParamsBufferIndex = 3u;
+constant constexpr uint kM2SConversionCounterBufferIndex = 4u;
 
-constexpr uint kM2SGaussianVertexGaussiansBufferIndex = 0u;
-constexpr uint kM2SGaussianVertexFrameBufferIndex = 1u;
-constexpr uint kM2SGaussianVertexIndicesBufferIndex = 2u;
-constexpr uint kM2SGaussianFragmentFrameBufferIndex = 0u;
+constant constexpr uint kM2SGaussianVertexGaussiansBufferIndex = 0u;
+constant constexpr uint kM2SGaussianVertexFrameBufferIndex = 1u;
+constant constexpr uint kM2SGaussianVertexIndicesBufferIndex = 2u;
+constant constexpr uint kM2SGaussianFragmentFrameBufferIndex = 0u;
 
-constexpr uint kM2SSortDepthGaussiansBufferIndex = 0u;
-constexpr uint kM2SSortDepthFrameBufferIndex = 1u;
-constexpr uint kM2SSortDepthKeysBufferIndex = 2u;
-constexpr uint kM2SSortDepthIndicesBufferIndex = 3u;
-constexpr uint kM2SSortDepthParamsBufferIndex = 4u;
+constant constexpr uint kM2SSortDepthGaussiansBufferIndex = 0u;
+constant constexpr uint kM2SSortDepthFrameBufferIndex = 1u;
+constant constexpr uint kM2SSortDepthKeysBufferIndex = 2u;
+constant constexpr uint kM2SSortDepthIndicesBufferIndex = 3u;
+constant constexpr uint kM2SSortDepthParamsBufferIndex = 4u;
 
-constexpr uint kM2SSortCountKeysBufferIndex = 0u;
-constexpr uint kM2SSortCountBlockCountsBufferIndex = 1u;
-constexpr uint kM2SSortCountGlobalOffsetsBufferIndex = 2u;
-constexpr uint kM2SSortCountParamsBufferIndex = 3u;
+constant constexpr uint kM2SSortCountKeysBufferIndex = 0u;
+constant constexpr uint kM2SSortCountBlockCountsBufferIndex = 1u;
+constant constexpr uint kM2SSortCountGlobalOffsetsBufferIndex = 2u;
+constant constexpr uint kM2SSortCountParamsBufferIndex = 3u;
 
-constexpr uint kM2SSortPrefixBlockCountsBufferIndex = 0u;
-constexpr uint kM2SSortPrefixGlobalOffsetsBufferIndex = 1u;
-constexpr uint kM2SSortPrefixParamsBufferIndex = 2u;
+constant constexpr uint kM2SSortPrefixBlockCountsBufferIndex = 0u;
+constant constexpr uint kM2SSortPrefixGlobalOffsetsBufferIndex = 1u;
+constant constexpr uint kM2SSortPrefixParamsBufferIndex = 2u;
 
-constexpr uint kM2SSortReorderSrcKeysBufferIndex = 0u;
-constexpr uint kM2SSortReorderSrcIndicesBufferIndex = 1u;
-constexpr uint kM2SSortReorderDstKeysBufferIndex = 2u;
-constexpr uint kM2SSortReorderDstIndicesBufferIndex = 3u;
-constexpr uint kM2SSortReorderBlockOffsetsBufferIndex = 4u;
-constexpr uint kM2SSortReorderGlobalOffsetsBufferIndex = 5u;
-constexpr uint kM2SSortReorderParamsBufferIndex = 6u;
+constant constexpr uint kM2SSortReorderSrcKeysBufferIndex = 0u;
+constant constexpr uint kM2SSortReorderSrcIndicesBufferIndex = 1u;
+constant constexpr uint kM2SSortReorderDstKeysBufferIndex = 2u;
+constant constexpr uint kM2SSortReorderDstIndicesBufferIndex = 3u;
+constant constexpr uint kM2SSortReorderBlockOffsetsBufferIndex = 4u;
+constant constexpr uint kM2SSortReorderGlobalOffsetsBufferIndex = 5u;
+constant constexpr uint kM2SSortReorderParamsBufferIndex = 6u;
 
-constexpr uint kM2SBaseColorTextureIndex = 0u;
-constexpr uint kM2SMetallicRoughnessTextureIndex = 1u;
-constexpr uint kM2SNormalTextureIndex = 2u;
-constexpr uint kM2SOcclusionTextureIndex = 3u;
-constexpr uint kM2SEmissiveTextureIndex = 4u;
-constexpr uint kM2SMaterialTextureSamplerIndex = 0u;
+constant constexpr uint kM2SBaseColorTextureIndex = 0u;
+constant constexpr uint kM2SMetallicRoughnessTextureIndex = 1u;
+constant constexpr uint kM2SNormalTextureIndex = 2u;
+constant constexpr uint kM2SOcclusionTextureIndex = 3u;
+constant constexpr uint kM2SEmissiveTextureIndex = 4u;
+constant constexpr uint kM2SMaterialTextureSamplerIndex = 0u;
 
-constexpr uint kM2SMetallicRoughnessRoughnessChannel = 1u;
-constexpr uint kM2SMetallicRoughnessMetallicChannel = 2u;
+constant constexpr uint kM2SMetallicRoughnessRoughnessChannel = 1u;
+constant constexpr uint kM2SMetallicRoughnessMetallicChannel = 2u;
 
 struct M2SMatrix4 {
     float4 columns[4];

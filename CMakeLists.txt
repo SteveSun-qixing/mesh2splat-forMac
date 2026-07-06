@@ -18,6 +18,13 @@ set(IGFD_DIR                ${THIRD_PARTY_DIR}/ImGuiFileDialog)
 set(IMGUIZMO_DIR            ${THIRD_PARTY_DIR}/imguizmo)
 set(XATLAS_DIR              ${THIRD_PARTY_DIR}/xatlas)
 
+if(APPLE)
+    set(MESH2SPLAT_BUILD_LEGACY_OPENGL_DEFAULT OFF)
+else()
+    set(MESH2SPLAT_BUILD_LEGACY_OPENGL_DEFAULT ON)
+endif()
+option(MESH2SPLAT_BUILD_LEGACY_OPENGL "Build the legacy OpenGL/GLFW/GLEW Mesh2Splat target" ${MESH2SPLAT_BUILD_LEGACY_OPENGL_DEFAULT})
+
 file(GLOB_RECURSE SOURCES 
         ${CMAKE_SOURCE_DIR}/src/*.cpp
         ${CMAKE_SOURCE_DIR}/src/*.hpp
@@ -59,20 +66,22 @@ else()
     set_source_files_properties(${THIRD_PARTY_SOURCES} PROPERTIES COMPILE_FLAGS "-w")
 endif()
 
-add_executable(Mesh2Splat ${SOURCES})
+if(MESH2SPLAT_BUILD_LEGACY_OPENGL)
+    add_executable(Mesh2Splat ${SOURCES})
 
-target_compile_definitions(Mesh2Splat PRIVATE GLEW_STATIC)
-target_include_directories(Mesh2Splat PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_include_directories(Mesh2Splat SYSTEM PRIVATE
-    ${GLFW_DIR}/include
-    ${GLEW_DIR}/include
-    ${GLM_DIR}
-    ${IMGUI_DIR}
-    ${IGFD_DIR}
-    ${IMGUIZMO_DIR}
-    ${XATLAS_DIR}
-    ${THIRD_PARTY_DIR}
-)
+    target_compile_definitions(Mesh2Splat PRIVATE GLEW_STATIC)
+    target_include_directories(Mesh2Splat PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_include_directories(Mesh2Splat SYSTEM PRIVATE
+        ${GLFW_DIR}/include
+        ${GLEW_DIR}/include
+        ${GLM_DIR}
+        ${IMGUI_DIR}
+        ${IGFD_DIR}
+        ${IMGUIZMO_DIR}
+        ${XATLAS_DIR}
+        ${THIRD_PARTY_DIR}
+    )
+endif()
 
 add_executable(CoreIoSmokeTest
     ${CMAKE_SOURCE_DIR}/tests/CoreIoSmokeTest.cpp
@@ -88,7 +97,7 @@ target_compile_features(CoreIoSmokeTest PRIVATE cxx_std_17)
 target_include_directories(CoreIoSmokeTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_include_directories(CoreIoSmokeTest SYSTEM PRIVATE ${THIRD_PARTY_DIR})
 
-if(MSVC)
+if(MESH2SPLAT_BUILD_LEGACY_OPENGL AND MSVC)
     target_compile_options(Mesh2Splat PRIVATE
         /wd4244   # conversion, possible loss of data
         /wd4267   # size_t to smaller integer conversion
@@ -101,42 +110,44 @@ if(MSVC)
     )
 endif()
 
-if (WIN32)
-    target_link_libraries(Mesh2Splat 
-        ${GLFW_DIR}/lib-vc2022/glfw3.lib 
-        ${GLEW_DIR}/lib/Release/x64/glew32s.lib 
-        opengl32)
-elseif (APPLE)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(GLFW REQUIRED glfw3)
-    pkg_check_modules(GLEW REQUIRED glew)
-    find_library(OPENGL_LIBRARY OpenGL REQUIRED)
+if(MESH2SPLAT_BUILD_LEGACY_OPENGL)
+    if(WIN32)
+        target_link_libraries(Mesh2Splat
+            ${GLFW_DIR}/lib-vc2022/glfw3.lib
+            ${GLEW_DIR}/lib/Release/x64/glew32s.lib
+            opengl32)
+    elseif(APPLE)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(GLFW REQUIRED glfw3)
+        pkg_check_modules(GLEW REQUIRED glew)
+        find_library(OPENGL_LIBRARY OpenGL REQUIRED)
 
-    target_include_directories(Mesh2Splat PRIVATE
-        ${GLFW_INCLUDE_DIRS}
-        ${GLEW_INCLUDE_DIRS}
+        target_include_directories(Mesh2Splat PRIVATE
+            ${GLFW_INCLUDE_DIRS}
+            ${GLEW_INCLUDE_DIRS}
+        )
+        target_link_directories(Mesh2Splat PRIVATE
+            ${GLFW_LIBRARY_DIRS}
+            ${GLEW_LIBRARY_DIRS}
+        )
+        target_link_libraries(Mesh2Splat
+            ${GLFW_LIBRARIES}
+            ${GLEW_LIBRARIES}
+            ${OPENGL_LIBRARY}
+        )
+    else()
+        target_link_libraries(Mesh2Splat glfw GLEW GL X11 Xrandr Xinerama Xcursor Xi Xxf86vm pthread dl) #todo
+    endif()
+
+    set_target_properties(Mesh2Splat PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin/Debug
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin/Release
+        ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/lib/Debug
+        ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib/Release
+        LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/lib/Debug
+        LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib/Release
     )
-    target_link_directories(Mesh2Splat PRIVATE
-        ${GLFW_LIBRARY_DIRS}
-        ${GLEW_LIBRARY_DIRS}
-    )
-    target_link_libraries(Mesh2Splat
-        ${GLFW_LIBRARIES}
-        ${GLEW_LIBRARIES}
-        ${OPENGL_LIBRARY}
-    )
-else()
-    target_link_libraries(Mesh2Splat glfw GLEW GL X11 Xrandr Xinerama Xcursor Xi Xxf86vm pthread dl) #todo
 endif()
-
-set_target_properties(Mesh2Splat PROPERTIES 
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin/Debug
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin/Release
-    ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/lib/Debug
-    ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib/Release
-    LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/lib/Debug
-    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib/Release
-)
 
 if(APPLE)
     set(MESH2SPLAT_ENABLE_SWIFTUI_APP OFF)

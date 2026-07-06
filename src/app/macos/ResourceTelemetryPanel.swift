@@ -52,10 +52,62 @@ struct ResourceTelemetryPanel: View {
                         tint: frameTint
                     )
                     ResourceTelemetryStatusRow(
+                        title: "Frame Failures",
+                        value: snapshot.frameFailureText,
+                        systemImage: "exclamationmark.triangle",
+                        tint: frameFailureTint,
+                        detail: "Failed command buffers"
+                    )
+                    ResourceTelemetryStatusRow(
                         title: "Timing",
                         value: snapshot.frameTimingText,
                         systemImage: "timer",
                         tint: timingTint
+                    )
+                }
+                .padding(.vertical, 4)
+            }
+
+            GroupBox("Conversion") {
+                VStack(alignment: .leading, spacing: 10) {
+                    ProgressView(value: snapshot.conversionProgress) {
+                        HStack {
+                            Text("Progress")
+                            Spacer()
+                            Text(snapshot.conversionProgressText)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        .font(.caption)
+                    }
+
+                    ResourceTelemetryStatusRow(
+                        title: "Submissions",
+                        value: snapshot.conversionCounterText,
+                        systemImage: "number",
+                        tint: conversionTint,
+                        detail: "Completed / submitted"
+                    )
+                    ResourceTelemetryStatusRow(
+                        title: "Sampling",
+                        value: snapshot.conversionSamplesText,
+                        systemImage: "circle.grid.3x3",
+                        tint: .purple,
+                        detail: "Per-triangle density"
+                    )
+                    ResourceTelemetryStatusRow(
+                        title: "Timing",
+                        value: snapshot.conversionTimingText,
+                        systemImage: "timer",
+                        tint: timingTint,
+                        detail: "CPU submit / GPU"
+                    )
+                    ResourceTelemetryStatusRow(
+                        title: "Pending Memory",
+                        value: snapshot.pendingConversionBytesText,
+                        systemImage: "arrow.triangle.2.circlepath",
+                        tint: pendingConversionTint,
+                        detail: "In-flight conversion buffers"
                     )
                 }
                 .padding(.vertical, 4)
@@ -113,32 +165,39 @@ struct ResourceTelemetryPanel: View {
     private var summaryMetrics: [ResourceTelemetryMetric] {
         [
             ResourceTelemetryMetric(
-                title: "Drawable",
-                value: snapshot.drawableStatus,
-                detail: drawableDetail,
-                systemImage: "rectangle.inset.filled",
-                tint: drawableTint
+                title: "Tracked Total",
+                value: snapshot.trackedBytesText,
+                detail: "Renderer-owned resources",
+                systemImage: "memorychip",
+                tint: trackedTint
             ),
             ResourceTelemetryMetric(
-                title: "Gaussians",
-                value: snapshot.gaussianCountText,
-                detail: gaussianDetail,
+                title: "Scene",
+                value: snapshot.sceneBytesText,
+                detail: sceneInventoryDetail,
+                systemImage: "cube",
+                tint: sceneTint
+            ),
+            ResourceTelemetryMetric(
+                title: "Gaussian Buffers",
+                value: snapshot.gaussianBytesText,
+                detail: "\(snapshot.gaussianCountText) splats",
                 systemImage: "circle.grid.cross",
                 tint: gaussianTint
             ),
             ResourceTelemetryMetric(
-                title: "Frames",
-                value: snapshot.frameCounterText,
-                detail: frameDetail,
-                systemImage: "rectangle.stack",
-                tint: frameTint
+                title: "Sort Workspace",
+                value: snapshot.gaussianSortBytesText,
+                detail: "Depth ordering buffers",
+                systemImage: "arrow.up.arrow.down",
+                tint: sortTint
             ),
             ResourceTelemetryMetric(
-                title: "Timing",
-                value: snapshot.frameTimingText,
-                detail: "CPU / GPU",
-                systemImage: "timer",
-                tint: timingTint
+                title: "Pending",
+                value: snapshot.pendingConversionBytesText,
+                detail: snapshot.conversionProgressText,
+                systemImage: "arrow.triangle.2.circlepath",
+                tint: pendingConversionTint
             )
         ]
     }
@@ -173,28 +232,44 @@ struct ResourceTelemetryPanel: View {
         hasDrawable ? .blue : .secondary
     }
 
+    private var trackedTint: Color {
+        hasTrackedResources ? .teal : .secondary
+    }
+
+    private var sceneTint: Color {
+        hasSceneResources ? .green : .secondary
+    }
+
     private var gaussianTint: Color {
         gaussianCount > 0 ? .purple : .secondary
+    }
+
+    private var sortTint: Color {
+        hasSortResources ? .orange : .secondary
+    }
+
+    private var pendingConversionTint: Color {
+        hasPendingConversionResources ? .accentColor : .secondary
+    }
+
+    private var conversionTint: Color {
+        snapshot.conversionProgress > 0 && snapshot.conversionProgress < 1 ? .accentColor : .secondary
     }
 
     private var frameTint: Color {
         hasSubmittedFrames ? .green : .secondary
     }
 
+    private var frameFailureTint: Color {
+        hasFrameFailures ? .red : .green
+    }
+
     private var timingTint: Color {
         hasSubmittedFrames ? .teal : .secondary
     }
 
-    private var drawableDetail: String {
-        hasDrawable ? "Active surface" : "No drawable"
-    }
-
-    private var gaussianDetail: String {
-        gaussianCount > 0 ? "Converted splats" : "No splats"
-    }
-
-    private var frameDetail: String {
-        hasSubmittedFrames ? "Completed / submitted" : "No frames"
+    private var sceneInventoryDetail: String {
+        "\(snapshot.meshCountText) meshes, \(snapshot.materialCountText) materials, \(snapshot.textureCountText) textures"
     }
 
     private var hasDrawable: Bool {
@@ -208,9 +283,43 @@ struct ResourceTelemetryPanel: View {
     private var hasSubmittedFrames: Bool {
         let parts = snapshot.frameCounterText
             .split(separator: "/")
-            .map { Int($0.trimmingCharacters(in: .whitespaces)) ?? 0 }
+            .map { integerValue(String($0)) }
         guard parts.count == 2 else { return false }
         return parts[0] > 0 || parts[1] > 0
+    }
+
+    private var hasTrackedResources: Bool {
+        !snapshot.trackedBytesText.hasPrefix("0 B")
+    }
+
+    private var hasSceneResources: Bool {
+        !snapshot.sceneBytesText.hasPrefix("0 B") ||
+            snapshot.meshCountText != "0" ||
+            snapshot.materialCountText != "0" ||
+            snapshot.textureCountText != "0"
+    }
+
+    private var hasSortResources: Bool {
+        !snapshot.gaussianSortBytesText.hasPrefix("0 B")
+    }
+
+    private var hasPendingConversionResources: Bool {
+        !snapshot.pendingConversionBytesText.hasPrefix("0 B")
+    }
+
+    private var hasFrameFailures: Bool {
+        !snapshot.frameFailureText.hasPrefix("0 ")
+    }
+
+    private func integerValue(_ text: String) -> Int {
+        let numericPrefix = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix { character in
+                character.isNumber || character == ","
+            }
+            .replacingOccurrences(of: ",", with: "")
+
+        return Int(numericPrefix) ?? 0
     }
 }
 
@@ -221,6 +330,20 @@ struct ResourceTelemetrySnapshot {
     let gaussianCountText: String
     let frameCounterText: String
     let frameTimingText: String
+    let frameFailureText: String
+    let conversionProgress: Double
+    let conversionProgressText: String
+    let conversionCounterText: String
+    let conversionTimingText: String
+    let conversionSamplesText: String
+    let sceneBytesText: String
+    let gaussianBytesText: String
+    let gaussianSortBytesText: String
+    let pendingConversionBytesText: String
+    let trackedBytesText: String
+    let meshCountText: String
+    let materialCountText: String
+    let textureCountText: String
     let bridgeResources: [ResourceTelemetryBridgeResource]
 
     init(
@@ -229,13 +352,41 @@ struct ResourceTelemetrySnapshot {
         gaussianCountText: String,
         frameCounterText: String,
         frameTimingText: String,
-        bridgeResources: [ResourceTelemetryBridgeResource] = []
+        bridgeResources: [ResourceTelemetryBridgeResource] = [],
+        frameFailureText: String = "0 failed",
+        conversionProgress: Double = 0,
+        conversionProgressText: String = "0%",
+        conversionCounterText: String = "0 / 0",
+        conversionTimingText: String = "Submit 0.0 ms / GPU 0.0 ms",
+        conversionSamplesText: String = "0 samples",
+        sceneBytesText: String = "0 B",
+        gaussianBytesText: String = "0 B",
+        gaussianSortBytesText: String = "0 B",
+        pendingConversionBytesText: String = "0 B",
+        trackedBytesText: String = "0 B",
+        meshCountText: String = "0",
+        materialCountText: String = "0",
+        textureCountText: String = "0"
     ) {
         self.runtimeStatus = runtimeStatus
         self.drawableStatus = drawableStatus
         self.gaussianCountText = gaussianCountText
         self.frameCounterText = frameCounterText
         self.frameTimingText = frameTimingText
+        self.frameFailureText = frameFailureText
+        self.conversionProgress = conversionProgress
+        self.conversionProgressText = conversionProgressText
+        self.conversionCounterText = conversionCounterText
+        self.conversionTimingText = conversionTimingText
+        self.conversionSamplesText = conversionSamplesText
+        self.sceneBytesText = sceneBytesText
+        self.gaussianBytesText = gaussianBytesText
+        self.gaussianSortBytesText = gaussianSortBytesText
+        self.pendingConversionBytesText = pendingConversionBytesText
+        self.trackedBytesText = trackedBytesText
+        self.meshCountText = meshCountText
+        self.materialCountText = materialCountText
+        self.textureCountText = textureCountText
         self.bridgeResources = bridgeResources
     }
 
@@ -246,7 +397,21 @@ struct ResourceTelemetrySnapshot {
             gaussianCountText: appState.gaussianCountText,
             frameCounterText: appState.frameCounterText,
             frameTimingText: appState.frameTimingText,
-            bridgeResources: bridgeResources
+            bridgeResources: bridgeResources,
+            frameFailureText: appState.frameFailureText,
+            conversionProgress: appState.conversionProgress,
+            conversionProgressText: appState.conversionProgressText,
+            conversionCounterText: appState.conversionCounterText,
+            conversionTimingText: appState.conversionTimingText,
+            conversionSamplesText: appState.conversionSamplesText,
+            sceneBytesText: appState.sceneBytesText,
+            gaussianBytesText: appState.gaussianBytesText,
+            gaussianSortBytesText: appState.gaussianSortBytesText,
+            pendingConversionBytesText: appState.pendingConversionBytesText,
+            trackedBytesText: appState.trackedBytesText,
+            meshCountText: appState.meshCountText,
+            materialCountText: appState.materialCountText,
+            textureCountText: appState.textureCountText
         )
     }
 }

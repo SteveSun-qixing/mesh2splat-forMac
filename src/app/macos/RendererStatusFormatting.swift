@@ -1,6 +1,21 @@
 import Foundation
 
 enum RendererStatusFormatting {
+    static func integer(_ value: UInt64) -> String {
+        let rawValue = String(value)
+        var groupedValue = ""
+
+        for (index, character) in rawValue.reversed().enumerated() {
+            if index > 0 && index % 3 == 0 {
+                groupedValue.append(",")
+            }
+
+            groupedValue.append(character)
+        }
+
+        return String(groupedValue.reversed())
+    }
+
     static func bytes(_ byteCount: UInt64) -> String {
         let units = ["B", "KB", "MB", "GB", "TB", "PB"]
 
@@ -60,7 +75,7 @@ enum RendererStatusFormatting {
     }
 
     static func frameCounter(completed: UInt64, submitted: UInt64) -> String {
-        "\(completed) / \(submitted)"
+        "\(integer(completed)) / \(integer(submitted))"
     }
 
     static func frameCounter(completed: UInt64, submitted: UInt64, failed: UInt64) -> String {
@@ -74,7 +89,7 @@ enum RendererStatusFormatting {
     }
 
     static func gaussianCount(_ count: UInt64) -> String {
-        "\(count)"
+        integer(count)
     }
 
     static func drawableStatus(width: UInt32, height: UInt32, backingScale: Float) -> String {

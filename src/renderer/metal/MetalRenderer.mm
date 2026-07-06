@@ -1485,6 +1485,7 @@ mesh2splat::renderer::RendererDiagnostics MetalRenderer::diagnostics() const
     diagnostics.lastError = m_impl->lastErrorMessage;
     diagnostics.loadedScene = loadedSceneSnapshot();
     diagnostics.loadedScenePath = diagnostics.loadedScene.filePath;
+    diagnostics.assetSession = m_impl->assetSession.snapshot();
     diagnostics.sceneCounts = sceneCounts();
     diagnostics.renderSettings = renderSettingsSummary();
     diagnostics.conversion = conversionState();
@@ -1500,10 +1501,9 @@ mesh2splat::renderer::RendererDiagnostics MetalRenderer::diagnostics() const
     diagnostics.hasGaussians = convertedGaussianCount() > 0;
     diagnostics.hasVisibleMesh = diagnostics.sceneCounts.hasVisibleMesh();
     if (diagnostics.message.empty()) {
-        const mesh2splat::renderer::RendererAssetSessionSnapshot session = m_impl->assetSession.snapshot();
-        diagnostics.message = session.statusText.empty()
+        diagnostics.message = diagnostics.assetSession.statusText.empty()
             ? std::string("Metal renderer is ") + rendererStateName(diagnostics.state) + "."
-            : session.statusText;
+            : diagnostics.assetSession.statusText;
     }
     diagnostics.statusText = diagnostics.message;
     return diagnostics;

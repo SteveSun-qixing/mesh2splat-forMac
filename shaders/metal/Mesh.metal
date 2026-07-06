@@ -2,23 +2,23 @@
 
 using namespace metal;
 
-constexpr uint kM2SMeshShaderVertexFloatCount = 17u;
-constexpr uint kM2SMeshShaderPositionOffset = 0u;
-constexpr uint kM2SMeshShaderNormalOffset = 3u;
-constexpr uint kM2SMeshShaderTangentOffset = 6u;
-constexpr uint kM2SMeshShaderUvOffset = 10u;
-constexpr uint kM2SMeshShaderNormalizedUvOffset = 12u;
+constant constexpr uint kM2SMeshShaderVertexFloatCount = 17u;
+constant constexpr uint kM2SMeshShaderPositionOffset = 0u;
+constant constexpr uint kM2SMeshShaderNormalOffset = 3u;
+constant constexpr uint kM2SMeshShaderTangentOffset = 6u;
+constant constexpr uint kM2SMeshShaderUvOffset = 10u;
+constant constexpr uint kM2SMeshShaderNormalizedUvOffset = 12u;
 
-constexpr uint kM2SMeshShaderRenderModeColor = 0u;
-constexpr uint kM2SMeshShaderRenderModeDepth = 1u;
-constexpr uint kM2SMeshShaderRenderModeNormal = 2u;
-constexpr uint kM2SMeshShaderRenderModeGeometryColor = 3u;
-constexpr uint kM2SMeshShaderRenderModeDensity = 4u;
-constexpr uint kM2SMeshShaderRenderModePbr = 5u;
-constexpr uint kM2SMeshShaderRenderModeLitPreview = 6u;
+constant constexpr uint kM2SMeshShaderRenderModeColor = 0u;
+constant constexpr uint kM2SMeshShaderRenderModeDepth = 1u;
+constant constexpr uint kM2SMeshShaderRenderModeNormal = 2u;
+constant constexpr uint kM2SMeshShaderRenderModeGeometryColor = 3u;
+constant constexpr uint kM2SMeshShaderRenderModeDensity = 4u;
+constant constexpr uint kM2SMeshShaderRenderModePbr = 5u;
+constant constexpr uint kM2SMeshShaderRenderModeLitPreview = 6u;
 
-constexpr float kM2SMeshShaderMinimumLengthSquared = 1.0e-12f;
-constexpr float kM2SMeshShaderAlphaDiscardThreshold = 1.0e-4f;
+constant constexpr float kM2SMeshShaderMinimumLengthSquared = 1.0e-12f;
+constant constexpr float kM2SMeshShaderAlphaDiscardThreshold = 1.0e-4f;
 
 struct M2SMeshShaderMatrix4 {
     float4 columns[4];

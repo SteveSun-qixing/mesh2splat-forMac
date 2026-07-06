@@ -160,6 +160,8 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.diagnosticSeverity = bridgeSeverity(summary.diagnosticSeverity);
     status.statusText = bridgeString(summary.statusText);
     status.loadedScenePath = bridgeString(summary.loadedScenePath);
+    status.loadedSceneName = bridgeString(summary.loadedSceneDisplayName);
+    status.exportedFilePath = bridgeString(summary.exportPath);
     status.errorMessage = summary.lastError.empty() ? bridgeString(summary.diagnosticMessage) : bridgeString(summary.lastError);
     status.drawableWidth = summary.drawableWidth;
     status.drawableHeight = summary.drawableHeight;
@@ -171,6 +173,13 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.converting = conversionStats.active;
     status.hasScene = summary.hasScene;
     status.hasGaussians = summary.hasGaussians || status.convertedGaussianCount > 0;
+    status.hasVisibleMesh = summary.hasVisibleMesh;
+    status.canImportScene = summary.canImportScene;
+    status.canStartConversion = summary.canStartConversion;
+    status.canExportGaussians = summary.canExportGaussians;
+    status.exportMatchesCurrentConversion = summary.exportMatchesCurrentConversion;
+    status.meshRenderingEnabled = summary.meshRenderingEnabled;
+    status.gaussianRenderingEnabled = summary.gaussianRenderingEnabled;
     status.frameStats = frameStats;
     status.backendStatus = bridgeBackendStatus(summary);
     status.resourceStats = resourceStats;

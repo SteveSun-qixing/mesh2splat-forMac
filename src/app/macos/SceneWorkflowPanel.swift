@@ -98,19 +98,15 @@ struct SceneWorkflowPanel: View {
     }
 
     private var canImport: Bool {
-        appState.metalView != nil && !isChoosingImportFile && !isExporting
+        appState.canImportMesh
     }
 
     private var canExport: Bool {
-        appState.metalView != nil &&
-            appState.importedFileName != nil &&
-            hasGaussians &&
-            !isConverting &&
-            !isExporting
+        appState.canExportGaussians
     }
 
     private var hasGaussians: Bool {
-        (Int(appState.gaussianCountText) ?? 0) > 0
+        appState.gaussianCount > 0
     }
 
     private var showsConversionProgress: Bool {
@@ -145,6 +141,10 @@ struct SceneWorkflowPanel: View {
             return "Export in progress"
         }
 
+        if !appState.rendererCanImportScene {
+            return appState.rendererRuntimeStatus
+        }
+
         return "Ready"
     }
 
@@ -167,6 +167,10 @@ struct SceneWorkflowPanel: View {
 
         if !hasGaussians {
             return "No gaussians ready"
+        }
+
+        if !appState.rendererCanExportGaussians {
+            return appState.rendererRuntimeStatus
         }
 
         return "Ready"

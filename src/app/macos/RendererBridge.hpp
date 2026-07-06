@@ -84,6 +84,8 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) M2SRendererDiagnosticSeverity diagnosticSeverity;
 @property (nonatomic, copy) NSString* statusText;
 @property (nonatomic, copy) NSString* loadedScenePath;
+@property (nonatomic, copy) NSString* loadedSceneName;
+@property (nonatomic, copy) NSString* exportedFilePath;
 @property (nonatomic, copy) NSString* errorMessage;
 @property (nonatomic, assign) uint32_t drawableWidth;
 @property (nonatomic, assign) uint32_t drawableHeight;
@@ -95,6 +97,13 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign, getter=isConverting) BOOL converting;
 @property (nonatomic, assign) BOOL hasScene;
 @property (nonatomic, assign) BOOL hasGaussians;
+@property (nonatomic, assign) BOOL hasVisibleMesh;
+@property (nonatomic, assign) BOOL canImportScene;
+@property (nonatomic, assign) BOOL canStartConversion;
+@property (nonatomic, assign) BOOL canExportGaussians;
+@property (nonatomic, assign) BOOL exportMatchesCurrentConversion;
+@property (nonatomic, assign) BOOL meshRenderingEnabled;
+@property (nonatomic, assign) BOOL gaussianRenderingEnabled;
 @property (nonatomic, strong) M2SRendererFrameStats* frameStats;
 @property (nonatomic, strong) M2SRendererBackendStatus* backendStatus;
 @property (nonatomic, strong) M2SRendererResourceStats* resourceStats;

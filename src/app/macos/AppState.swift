@@ -88,6 +88,13 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var meshCountText = "0"
     @Published var materialCountText = "0"
     @Published var textureCountText = "0"
+    @Published var rendererCanImportScene = false
+    @Published var rendererCanStartConversion = false
+    @Published var rendererCanExportGaussians = false
+    @Published var rendererHasVisibleMesh = false
+    @Published var exportMatchesCurrentConversion = false
+    @Published var rendererMeshRenderingEnabled = true
+    @Published var rendererGaussianRenderingEnabled = true
     @Published var renderMode: RenderMode = .final { didSet { submitRenderSettings() } }
     @Published var splatSize = 1.0 { didSet { submitRenderSettings() } }
     @Published var exposure = 1.0 { didSet { submitRenderSettings() } }
@@ -250,15 +257,13 @@ final class Mesh2SplatAppState: ObservableObject {
     }
 
     var canImportMesh: Bool {
-        metalView != nil &&
+        rendererCanImportScene &&
             !importStatus.localizedCaseInsensitiveContains("choosing") &&
             !isExporting
     }
 
     var canExportGaussians: Bool {
-        metalView != nil &&
-            importedFileName != nil &&
-            gaussianCount > 0 &&
+        rendererCanExportGaussians &&
             !isConverting &&
             !isExporting
     }
@@ -356,8 +361,22 @@ final class Mesh2SplatAppState: ObservableObject {
 
         statusText = RendererStatusFormatting.rendererStatusText(status.statusText, fallbackRuntimeTitle: rendererRuntimeStatus)
 
-        if !status.loadedScenePath.isEmpty {
+        if !status.loadedSceneName.isEmpty {
+            importedFileName = status.loadedSceneName
+        } else if !status.loadedScenePath.isEmpty {
             importedFileName = URL(fileURLWithPath: status.loadedScenePath).lastPathComponent
+        }
+
+        rendererCanImportScene = status.canImportScene
+        rendererCanStartConversion = status.canStartConversion
+        rendererCanExportGaussians = status.canExportGaussians
+        rendererHasVisibleMesh = status.hasVisibleMesh
+        exportMatchesCurrentConversion = status.exportMatchesCurrentConversion
+        rendererMeshRenderingEnabled = status.meshRenderingEnabled
+        rendererGaussianRenderingEnabled = status.gaussianRenderingEnabled
+
+        if status.exportMatchesCurrentConversion && !status.exportedFilePath.isEmpty {
+            exportedFileName = URL(fileURLWithPath: status.exportedFilePath).lastPathComponent
         }
 
         conversionStatus = RendererStatusFormatting.conversionStatus(
@@ -365,8 +384,13 @@ final class Mesh2SplatAppState: ObservableObject {
             progress: conversionProgress,
             gaussianCountValue: UInt64(status.convertedGaussianCount)
         )
-        if status.hasGaussians && !status.isConverting && exportStatus == "Export: waiting" {
+        if status.canExportGaussians && !status.isConverting &&
+            (exportStatus == "Export: waiting" || exportStatus == "Export: not ready") {
             exportStatus = "Export: ready"
+        } else if status.isConverting {
+            exportStatus = "Export: waiting for conversion"
+        } else if !status.hasGaussians && status.hasScene {
+            exportStatus = "Export: waiting"
         }
 
         if status.diagnosticSeverity.rawValue >= M2SRendererDiagnosticSeverity.error.rawValue && !status.errorMessage.isEmpty {

@@ -11,8 +11,13 @@ struct ExportWorkflowPanel: View {
 
             GroupBox("Output") {
                 VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("Gaussians", value: appState.gaussianCountText)
-                    LabeledContent("Conversion", value: appState.conversionStatus)
+                    LabeledContent("Source", value: appState.importedFileName ?? "None")
+                    LabeledContent("Gaussians", value: gaussiansOutputSummary)
+                    LabeledContent("Gaussian buffers", value: appState.gaussianBytesText)
+                    LabeledContent("Sort workspace", value: appState.gaussianSortBytesText)
+                    LabeledContent("Pending memory", value: appState.pendingConversionBytesText)
+                    LabeledContent("Conversion jobs", value: appState.conversionCounterText)
+                    LabeledContent("Conversion timing", value: appState.conversionTimingText)
                     LabeledContent("Export", value: appState.exportStatus)
                     LabeledContent("Last saved", value: appState.exportedFileName ?? "None")
                 }
@@ -72,7 +77,7 @@ struct ExportWorkflowPanel: View {
         [
             ExportWorkflowItem(
                 title: "Import",
-                detail: appState.importedFileName ?? "Choose a GLB or GLTF mesh.",
+                detail: importDetail,
                 state: hasImportedMesh ? .complete : .waiting,
                 systemImage: "square.and.arrow.down"
             ),
@@ -119,6 +124,11 @@ struct ExportWorkflowPanel: View {
                 isSatisfied: hasGaussians
             ),
             ExportPreflightItem(
+                title: "Export idle",
+                detail: exportIdleDetail,
+                isSatisfied: !isExporting
+            ),
+            ExportPreflightItem(
                 title: "Renderer healthy",
                 detail: rendererHealthDetail,
                 isSatisfied: !hasRendererError
@@ -127,7 +137,7 @@ struct ExportWorkflowPanel: View {
     }
 
     private var canExport: Bool {
-        preflightItems.allSatisfy(\.isSatisfied)
+        appState.canExportGaussians && preflightItems.allSatisfy(\.isSatisfied)
     }
 
     private var viewportReady: Bool {
@@ -139,18 +149,21 @@ struct ExportWorkflowPanel: View {
         return !importedFileName.isEmpty
     }
 
-    private var gaussianCount: Int {
-        Int(appState.gaussianCountText.replacingOccurrences(of: ",", with: "")) ?? 0
-    }
-
     private var hasGaussians: Bool {
-        gaussianCount > 0
+        appState.gaussianCount > 0
     }
 
     private var isConverting: Bool {
         appState.rendererRuntimeStatus == "Converting" ||
             appState.conversionStatus.localizedCaseInsensitiveContains("running") ||
-            appState.conversionStatus.localizedCaseInsensitiveContains("converting")
+            appState.conversionStatus.localizedCaseInsensitiveContains("converting") ||
+            appState.conversionStatus.contains("%")
+    }
+
+    private var isExporting: Bool {
+        appState.rendererRuntimeStatus == "Exporting" ||
+            appState.exportStatus.localizedCaseInsensitiveContains("choosing") ||
+            appState.exportStatus.localizedCaseInsensitiveContains("writing")
     }
 
     private var hasRendererError: Bool {
@@ -174,8 +187,7 @@ struct ExportWorkflowPanel: View {
         if appState.exportStatus.localizedCaseInsensitiveContains("failed") {
             return .failed
         }
-        if appState.exportStatus.localizedCaseInsensitiveContains("writing") ||
-            appState.rendererRuntimeStatus == "Exporting" {
+        if isExporting {
             return .active
         }
         if appState.exportStatus.localizedCaseInsensitiveContains("saved") {
@@ -184,10 +196,23 @@ struct ExportWorkflowPanel: View {
         return canExport ? .waiting : .idle
     }
 
+    private var importDetail: String {
+        guard let importedFileName = appState.importedFileName, !importedFileName.isEmpty else {
+            return "Choose a GLB or GLTF mesh."
+        }
+
+        return "\(importedFileName) - \(sceneInventoryDetail)"
+    }
+
     private var conversionDetail: String {
         if isConverting {
-            return "\(appState.conversionStatus) (\(appState.conversionProgressText))"
+            return "\(appState.conversionProgressText), \(appState.conversionCounterText), \(appState.conversionTimingText)"
         }
+
+        if hasGaussians {
+            return "\(appState.gaussianCountText) gaussians, \(appState.conversionSamplesText)"
+        }
+
         return appState.conversionStatus
     }
 
@@ -195,7 +220,24 @@ struct ExportWorkflowPanel: View {
         if let exportedFileName = appState.exportedFileName, !exportedFileName.isEmpty {
             return "\(appState.exportStatus) - \(exportedFileName)"
         }
+
+        if canExport {
+            return "Ready to write a Gaussian PLY."
+        }
+
         return appState.exportStatus
+    }
+
+    private var sceneInventoryDetail: String {
+        "\(appState.meshCountText) meshes, \(appState.materialCountText) materials, \(appState.textureCountText) textures"
+    }
+
+    private var gaussiansOutputSummary: String {
+        guard hasGaussians else {
+            return "\(appState.gaussianCountText) ready"
+        }
+
+        return "\(appState.gaussianCountText) ready, \(appState.gaussianBytesText) resident"
     }
 
     private var conversionEnabledDetail: String {
@@ -207,20 +249,24 @@ struct ExportWorkflowPanel: View {
 
     private var conversionFinishedDetail: String {
         if isConverting {
-            return "Wait for conversion to finish before exporting."
+            return "Wait for \(appState.conversionProgressText) conversion to finish before exporting."
         }
         return appState.conversionStatus
     }
 
     private var gaussiansAvailableDetail: String {
-        hasGaussians ? "\(appState.gaussianCountText) gaussians ready for export." : "No gaussian points are ready yet."
+        hasGaussians ? "\(appState.gaussianCountText) gaussians ready, \(appState.gaussianBytesText) in buffers." : "No gaussian points are ready yet."
+    }
+
+    private var exportIdleDetail: String {
+        isExporting ? appState.exportStatus : "No export write is currently active."
     }
 
     private var rendererHealthDetail: String {
         if hasRendererError {
             return appState.lastError ?? "Resolve the renderer error before exporting."
         }
-        return "Runtime \(appState.rendererRuntimeStatus), diagnostic \(appState.diagnosticStatus)."
+        return "Runtime \(appState.rendererRuntimeStatus), diagnostic \(appState.diagnosticStatus), backend \(appState.backendSupportStatus)."
     }
 
     private var exportButtonHelp: String {
