@@ -306,6 +306,8 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
 - (void)setGaussianScale:(float)scale;
 - (float)gaussianScale;
 - (BOOL)setConversionSamplesPerTriangle:(uint32_t)samplesPerTriangle;
+- (mesh2splat::renderer::RendererModeResult)applyRenderSettings:
+    (const mesh2splat::core::RenderSettingsSnapshot&)settings;
 - (void)resizeDrawableToSize:(CGSize)size backingScale:(float)backingScale;
 - (void)handleInputEvent:(const mesh2splat::renderer::RendererInputEvent&)event;
 - (void)resetFrameClock;
@@ -470,6 +472,36 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     return _renderer != nullptr && _renderer->setConversionSamplesPerTriangle(samplesPerTriangle) ? YES : NO;
 }
 
+- (mesh2splat::renderer::RendererModeResult)applyRenderSettings:
+    (const mesh2splat::core::RenderSettingsSnapshot&)settings
+{
+    mesh2splat::renderer::RendererModeResult result;
+    if (_renderer == nullptr) {
+        result.diagnostic = "Renderer is not initialized.";
+        return result;
+    }
+
+    mesh2splat::renderer::RendererModeRequest request;
+    request.viewMode = rendererViewModeFromRenderMode(
+        static_cast<NSInteger>(settings.mode),
+        settings.meshRenderingEnabled,
+        settings.gaussianRenderingEnabled);
+    request.gaussianVisualizationMode =
+        gaussianVisualizationModeFromRenderMode(static_cast<NSInteger>(settings.mode));
+    request.gaussianScale = settings.gaussianScale;
+    request.exposure = settings.exposure;
+    request.gamma = settings.gamma;
+    request.backgroundBrightness = settings.backgroundBrightness;
+    request.gaussianSortingEnabled = settings.gaussianSortingEnabled;
+    request.meshToGaussianConversionEnabled = settings.meshToGaussianConversionEnabled;
+    result = _renderer->setRenderMode(request);
+
+    if (settings.meshToGaussianConversionEnabled && settings.conversionSamplesPerTriangle > 0) {
+        _renderer->setConversionSamplesPerTriangle(settings.conversionSamplesPerTriangle);
+    }
+    return result;
+}
+
 - (void)resizeDrawableToSize:(CGSize)size backingScale:(float)backingScale
 {
     if (_renderer == nullptr) {
@@ -598,9 +630,11 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     const mesh2splat::renderer::RendererDiagnostics diagnostics = _renderer->diagnostics();
     const mesh2splat::renderer::RendererStats& stats = diagnostics.stats;
     const mesh2splat::renderer::RendererSceneCounts& sceneCounts = diagnostics.sceneCounts;
+    const mesh2splat::renderer::RendererRenderSettingsSummary& renderSettings = diagnostics.renderSettings;
     summary.runtimeState = macRuntimeStateFromRenderer(diagnostics.state);
     summary.diagnosticSeverity = macSeverityFromRenderer(diagnostics.severity);
-    summary.viewMode = macViewModeFromRenderer(diagnostics.viewMode);
+    summary.viewMode = macViewModeFromRenderer(renderSettings.viewMode);
+    summary.gaussianVisualizationMode = static_cast<std::uint32_t>(renderSettings.gaussianVisualizationMode);
     summary.backend.runtimeState = summary.runtimeState;
     summary.backend.supported = true;
     summary.backend.initialized = true;
@@ -618,9 +652,12 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
         diagnostics.message;
     summary.lastError = diagnostics.lastError;
     summary.convertedGaussianCount = diagnostics.convertedGaussianCount;
-    summary.gaussianScale = diagnostics.gaussianScale;
+    summary.gaussianScale = renderSettings.gaussianScale;
+    summary.exposure = renderSettings.exposure;
+    summary.gamma = renderSettings.gamma;
+    summary.backgroundBrightness = renderSettings.backgroundBrightness;
     summary.conversionProgress = diagnostics.progress;
-    summary.conversionSamplesPerTriangle = diagnostics.conversionSamplesPerTriangle;
+    summary.conversionSamplesPerTriangle = renderSettings.conversionSamplesPerTriangle;
     summary.submittedConversionCount = stats.submittedConversionCount;
     summary.completedConversionCount = stats.completedConversionCount;
     summary.failedConversionCount = stats.failedConversionCount;
@@ -654,8 +691,10 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.hasGaussians = diagnostics.hasGaussians;
     summary.hasVisibleMesh = diagnostics.hasVisibleMesh;
     summary.isConverting = diagnostics.converting;
-    summary.meshRenderingEnabled = diagnostics.renderSettings.meshRenderingEnabled;
-    summary.gaussianRenderingEnabled = diagnostics.renderSettings.gaussianRenderingEnabled;
+    summary.meshRenderingEnabled = renderSettings.meshRenderingEnabled;
+    summary.gaussianRenderingEnabled = renderSettings.gaussianRenderingEnabled;
+    summary.gaussianSortingEnabled = renderSettings.gaussianSortingEnabled;
+    summary.meshToGaussianConversionEnabled = renderSettings.meshToGaussianConversionEnabled;
     summary.exportMatchesCurrentConversion = diagnostics.assetSession.exportMatchesCurrentConversion;
     const bool rendererFailed =
         diagnostics.state == mesh2splat::renderer::RendererRuntimeState::Failed ||
@@ -1162,15 +1201,7 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
     const double clear = _bridgeBackgroundBrightness;
     self.clearColor = MTLClearColorMake(clear * 0.75, clear, clear * 1.25, 1.0);
 
-    [self.meshDelegate setViewMode:rendererViewModeFromRenderMode(_bridgeRenderMode,
-                                                                  _bridgeMeshRenderingEnabled,
-                                                                  _bridgeGaussianRenderingEnabled)];
-    [self.meshDelegate setGaussianVisualizationMode:gaussianVisualizationModeFromRenderMode(_bridgeRenderMode)];
-    [self.meshDelegate setGaussianScale:settings.gaussianScale];
-
-    if (settings.meshToGaussianConversionEnabled && settings.conversionSamplesPerTriangle > 0) {
-        [self.meshDelegate setConversionSamplesPerTriangle:settings.conversionSamplesPerTriangle];
-    }
+    [self.meshDelegate applyRenderSettings:settings];
 
     [self refreshRendererStatus];
 }
@@ -1554,6 +1585,20 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
         break;
     case mesh2splat::macos::MacBridgeUiCommandKind::SetConversionSamplesPerTriangle:
         result = [self.meshDelegate startConversionWithSamplesPerTriangle:command.conversionSamplesPerTriangle];
+        break;
+    case mesh2splat::macos::MacBridgeUiCommandKind::ApplyRenderSettings:
+        [self applyRenderMode:static_cast<NSInteger>(command.renderMode)
+                    splatSize:command.gaussianScale
+                     exposure:command.exposure
+                        gamma:command.gamma
+         backgroundBrightness:command.backgroundBrightness
+conversionSamplesPerTriangle:static_cast<NSInteger>(command.conversionSamplesPerTriangle)
+               sortingEnabled:command.gaussianSortingEnabled
+         meshRenderingEnabled:command.meshRenderingEnabled
+     gaussianRenderingEnabled:command.gaussianRenderingEnabled
+            conversionEnabled:command.meshToGaussianConversionEnabled];
+        result.completed = true;
+        result.message = "Render settings updated.";
         break;
     case mesh2splat::macos::MacBridgeUiCommandKind::RefreshRendererStatus:
         [self refreshRendererStatus];

@@ -374,6 +374,7 @@ final class Mesh2SplatAppState: ObservableObject {
         exportMatchesCurrentConversion = status.exportMatchesCurrentConversion
         rendererMeshRenderingEnabled = status.meshRenderingEnabled
         rendererGaussianRenderingEnabled = status.gaussianRenderingEnabled
+        syncRenderSettings(from: status)
 
         if status.exportMatchesCurrentConversion && !status.exportedFilePath.isEmpty {
             exportedFileName = URL(fileURLWithPath: status.exportedFilePath).lastPathComponent
@@ -439,6 +440,42 @@ final class Mesh2SplatAppState: ObservableObject {
             cpuSubmitMs: conversionStats.lastCpuSubmitMs,
             gpuMs: conversionStats.lastGpuMs
         )
+    }
+
+    private func syncRenderSettings(from status: M2SRendererStatus) {
+        isResettingRenderSettings = true
+        renderMode = renderMode(fromViewMode: Int(status.viewMode), gaussianVisualizationMode: Int(status.gaussianVisualizationMode))
+        splatSize = Double(status.gaussianScale)
+        exposure = Double(status.exposure)
+        gamma = Double(status.gamma)
+        backgroundBrightness = Double(status.backgroundBrightness)
+        sortingEnabled = status.gaussianSortingEnabled
+        meshRenderingEnabled = status.meshRenderingEnabled
+        gaussianRenderingEnabled = status.gaussianRenderingEnabled
+        conversionEnabled = status.meshToGaussianConversionEnabled
+        if let quality = ConversionQuality(rawValue: Int(status.conversionSamplesPerTriangle)) {
+            conversionQuality = quality
+        }
+        isResettingRenderSettings = false
+    }
+
+    private func renderMode(fromViewMode viewMode: Int, gaussianVisualizationMode: Int) -> RenderMode {
+        switch gaussianVisualizationMode {
+        case 0: return .albedo
+        case 1: return .depth
+        case 2: return .normal
+        case 3: return .geometry
+        case 4: return .overdraw
+        case 5: return .pbr
+        default:
+            if viewMode == 1 {
+                return .meshOnly
+            }
+            if viewMode == 2 {
+                return .gaussianOnly
+            }
+            return .final
+        }
     }
 
     private var isConverting: Bool {

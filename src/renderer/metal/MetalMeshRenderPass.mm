@@ -314,6 +314,7 @@ void MetalMeshRenderPass::encode(
     [encoder setRenderPipelineState:pipelineState];
     [encoder setDepthStencilState:depthStencilState];
     [encoder setVertexBuffer:frameBuffer offset:0 atIndex:bindings::mesh::vertex_buffers::kFrameUniforms];
+    [encoder setFragmentBuffer:frameBuffer offset:0 atIndex:bindings::mesh::fragment_buffers::kFrameUniforms];
     [encoder setFragmentSamplerState:samplerState atIndex:bindings::mesh::fragment_samplers::kMaterialTextures];
 
     for (std::size_t meshIndex = 0; meshIndex < sceneResources.meshCount(); ++meshIndex) {

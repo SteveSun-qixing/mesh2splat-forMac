@@ -9,7 +9,6 @@ constant constexpr uint kM2SMeshShaderTangentOffset = 6u;
 constant constexpr uint kM2SMeshShaderUvOffset = 10u;
 constant constexpr uint kM2SMeshShaderNormalizedUvOffset = 12u;
 
-constant constexpr uint kM2SMeshShaderRenderModeColor = 0u;
 constant constexpr uint kM2SMeshShaderRenderModeDepth = 1u;
 constant constexpr uint kM2SMeshShaderRenderModeNormal = 2u;
 constant constexpr uint kM2SMeshShaderRenderModeGeometryColor = 3u;
@@ -224,6 +223,14 @@ static float3 m2sMeshShaderLitPreviewColor(
     return baseColor * ((diffuse * diffuseWeight + 0.08f) * occlusion) + specular + emissive;
 }
 
+static float3 m2sMeshShaderToneMappedColor(float3 color, constant M2SMeshShaderFrameUniforms& frame)
+{
+    const float exposure = max(frame.gaussianParams.y, 0.0f);
+    const float gamma = max(frame.gaussianParams.z, 0.1f);
+    const float3 exposed = 1.0f - exp(-max(color, float3(0.0f)) * exposure);
+    return pow(saturate(exposed), float3(1.0f / gamma));
+}
+
 vertex M2SMeshShaderVertexOut meshVertex(
     uint vertexID [[vertex_id]],
     const device float* vertices [[buffer(0)]],
@@ -263,6 +270,7 @@ fragment float4 meshFragment(
     M2SMeshShaderVertexOut in [[stage_in]],
     constant M2SMeshShaderMaterial* materials [[buffer(0)]],
     constant uint& materialIndex [[buffer(1)]],
+    constant M2SMeshShaderFrameUniforms& frame [[buffer(2)]],
     texture2d<float> baseColorTexture [[texture(0)]],
     texture2d<float> metallicRoughnessTexture [[texture(1)]],
     texture2d<float> normalTexture [[texture(2)]],
@@ -348,8 +356,8 @@ fragment float4 meshFragment(
             roughness,
             occlusion,
             emissive);
-        return float4(max(litColor, float3(0.0f)), baseColor.a);
+        return float4(m2sMeshShaderToneMappedColor(litColor, frame), baseColor.a);
     }
 
-    return float4(baseColor.rgb + emissive, baseColor.a);
+    return float4(m2sMeshShaderToneMappedColor(baseColor.rgb + emissive, frame), baseColor.a);
 }

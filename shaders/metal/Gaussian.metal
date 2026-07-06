@@ -341,6 +341,19 @@ static float3 finalPreviewColor(GaussianVertexOut in, constant FrameUniforms& fr
     return baseColor * ((diffuse * diffuseWeight + 0.08) * occlusion) + specular + baseColor * emissiveStrength;
 }
 
+static float3 toneMappedColor(float3 color, constant FrameUniforms& frame)
+{
+    const float exposure = max(frame.gaussianParams.y, 0.0);
+    const float gamma = max(frame.gaussianParams.z, 0.1);
+    const float3 exposed = 1.0 - exp(-max(color, float3(0.0)) * exposure);
+    return pow(saturate(exposed), float3(1.0 / gamma));
+}
+
+static bool renderModeUsesToneMapping(uint renderMode)
+{
+    return renderMode == kRenderModeAlbedo || renderMode == kRenderModeFinal;
+}
+
 static float3 visualizationColor(GaussianVertexOut in, constant FrameUniforms& frame)
 {
     if ((frame.flags & kDebugFlagShowSortOrder) != 0u) {
@@ -485,6 +498,9 @@ fragment float4 gaussianPreviewFragment(
         discard_fragment();
     }
 
-    const float3 color = visualizationColor(in, frame);
+    float3 color = visualizationColor(in, frame);
+    if (renderModeUsesToneMapping(frame.renderMode)) {
+        color = toneMappedColor(color, frame);
+    }
     return float4(color * alpha, alpha);
 }

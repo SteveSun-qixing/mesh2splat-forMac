@@ -170,6 +170,11 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.conversionSamplesPerTriangle = conversionStats.samplesPerTriangle;
     status.conversionProgress = conversionStats.progress;
     status.gaussianScale = summary.gaussianScale;
+    status.exposure = summary.exposure;
+    status.gamma = summary.gamma;
+    status.backgroundBrightness = summary.backgroundBrightness;
+    status.viewMode = static_cast<NSUInteger>(summary.viewMode);
+    status.gaussianVisualizationMode = static_cast<NSUInteger>(summary.gaussianVisualizationMode);
     status.converting = conversionStats.active;
     status.hasScene = summary.hasScene;
     status.hasGaussians = summary.hasGaussians || status.convertedGaussianCount > 0;
@@ -180,6 +185,8 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.exportMatchesCurrentConversion = summary.exportMatchesCurrentConversion;
     status.meshRenderingEnabled = summary.meshRenderingEnabled;
     status.gaussianRenderingEnabled = summary.gaussianRenderingEnabled;
+    status.gaussianSortingEnabled = summary.gaussianSortingEnabled;
+    status.meshToGaussianConversionEnabled = summary.meshToGaussianConversionEnabled;
     status.frameStats = frameStats;
     status.backendStatus = bridgeBackendStatus(summary);
     status.resourceStats = resourceStats;

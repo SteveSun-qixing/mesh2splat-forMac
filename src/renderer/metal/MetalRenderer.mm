@@ -387,6 +387,14 @@ uint32_t normalizedConversionSamples(uint32_t samplesPerTriangle)
     return core::normalizeConversionSamplesPerTriangle(samplesPerTriangle);
 }
 
+float clampedFinite(float value, float minimum, float maximum, float fallback)
+{
+    if (!std::isfinite(value)) {
+        return fallback;
+    }
+    return std::clamp(value, minimum, maximum);
+}
+
 bool matrixApproximatelyEquals(
     const core::Matrix4& lhs,
     const core::Matrix4& rhs,
@@ -664,10 +672,15 @@ struct MetalRenderer::Impl {
     mesh2splat::renderer::RendererRuntimeState runtimeState =
         mesh2splat::renderer::RendererRuntimeState::Unknown;
     bool hasSortedGaussianDepths = false;
+    bool gaussianSortingEnabled = true;
+    bool meshToGaussianConversionEnabled = true;
     bool initialized = false;
     bool renderingFrame = false;
     bool exportPending = false;
     float gaussianScale = 1.0f;
+    float exposure = 1.0f;
+    float gamma = 2.2f;
+    float backgroundBrightness = 0.04f;
     uint32_t conversionSamplesPerTriangle = kDefaultMetalConversionSamplesPerTriangle;
     uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
@@ -1526,15 +1539,30 @@ mesh2splat::renderer::RendererConversionResult MetalRenderer::startConversion(
 mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     const mesh2splat::renderer::RendererModeRequest& request)
 {
+    const bool sortingChanged = m_impl->gaussianSortingEnabled != request.gaussianSortingEnabled;
     setViewMode(request.viewMode);
     setGaussianVisualizationMode(request.gaussianVisualizationMode);
     setGaussianScale(request.gaussianScale);
+    m_impl->exposure = clampedFinite(request.exposure, 0.0f, 16.0f, 1.0f);
+    m_impl->gamma = clampedFinite(request.gamma, 0.1f, 4.0f, 2.2f);
+    m_impl->backgroundBrightness = clampedFinite(request.backgroundBrightness, 0.0f, 1.0f, 0.04f);
+    m_impl->gaussianSortingEnabled = request.gaussianSortingEnabled;
+    m_impl->meshToGaussianConversionEnabled = request.meshToGaussianConversionEnabled;
+    if (sortingChanged) {
+        m_impl->hasSortedGaussianDepths = false;
+    }
 
     mesh2splat::renderer::RendererModeResult result;
+    result.requestId = request.requestId;
     result.applied = true;
     result.viewMode = viewMode();
     result.gaussianVisualizationMode = gaussianVisualizationMode();
     result.gaussianScale = gaussianScale();
+    result.exposure = m_impl->exposure;
+    result.gamma = m_impl->gamma;
+    result.backgroundBrightness = m_impl->backgroundBrightness;
+    result.gaussianSortingEnabled = m_impl->gaussianSortingEnabled;
+    result.meshToGaussianConversionEnabled = m_impl->meshToGaussianConversionEnabled;
     result.diagnostic = lastDiagnostic();
     return result;
 }
@@ -1603,6 +1631,26 @@ mesh2splat::renderer::RendererExportPlyResult MetalRenderer::exportPly(
     }
     m_impl->transitionTo(mesh2splat::renderer::RendererRuntimeState::Ready);
     return result;
+}
+
+mesh2splat::renderer::RendererRenderSettingsSummary MetalRenderer::renderSettingsSummary() const
+{
+    mesh2splat::renderer::RendererRenderSettingsSummary settings;
+    settings.drawableWidth = m_impl->width;
+    settings.drawableHeight = m_impl->height;
+    settings.backingScale = m_impl->backingScale;
+    settings.viewMode = viewMode();
+    settings.gaussianVisualizationMode = gaussianVisualizationMode();
+    settings.gaussianScale = gaussianScale();
+    settings.exposure = m_impl->exposure;
+    settings.gamma = m_impl->gamma;
+    settings.backgroundBrightness = m_impl->backgroundBrightness;
+    settings.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
+    settings.meshRenderingEnabled = settings.viewMode != RenderViewMode::GaussianOnly;
+    settings.gaussianRenderingEnabled = settings.viewMode != RenderViewMode::MeshOnly;
+    settings.gaussianSortingEnabled = m_impl->gaussianSortingEnabled;
+    settings.meshToGaussianConversionEnabled = m_impl->meshToGaussianConversionEnabled;
+    return settings;
 }
 
 bool MetalRenderer::handleInputEvent(const mesh2splat::renderer::RendererInputEvent& event)
@@ -1744,6 +1792,9 @@ void MetalRenderer::draw(
     m_impl->frameUniforms.frameIndex = frameResourceIndex;
     m_impl->frameUniforms.renderMode = static_cast<uint32_t>(m_impl->gaussianVisualizationMode);
     m_impl->frameUniforms.gaussianParams[0] = m_impl->gaussianScale;
+    m_impl->frameUniforms.gaussianParams[1] = m_impl->exposure;
+    m_impl->frameUniforms.gaussianParams[2] = m_impl->gamma;
+    m_impl->frameUniforms.gaussianParams[3] = m_impl->backgroundBrightness;
     if (m_impl->frameUniformBuffer == nullptr ||
         !m_impl->frameUniformBuffer->update(frameResourceIndex, m_impl->frameUniforms)) {
         m_impl->recordDiagnostic(
@@ -1844,17 +1895,34 @@ void MetalRenderer::draw(
         m_impl->viewMode == RenderViewMode::Combined || m_impl->viewMode == RenderViewMode::GaussianOnly;
     if (showGaussians && m_impl->gaussianSortPass != nullptr && m_impl->gaussianBuffer != nullptr &&
         m_impl->gaussianSortBuffer != nullptr && m_impl->frameUniformBuffer != nullptr) {
-        const bool needsGaussianSort = !m_impl->hasSortedGaussianDepths ||
-            m_impl->gaussianSortBuffer->count() != m_impl->gaussianBuffer->count() ||
-            !matrixApproximatelyEquals(m_impl->lastSortedViewMatrix, m_impl->frameUniforms.viewMatrix);
-        if (needsGaussianSort) {
-            m_impl->hasSortedGaussianDepths = m_impl->gaussianSortPass->encodeDepthKeys(
+        const bool gaussianCountChanged =
+            m_impl->gaussianSortBuffer->count() != m_impl->gaussianBuffer->count();
+        const bool needsSortedIndices = m_impl->gaussianSortingEnabled &&
+            (!m_impl->hasSortedGaussianDepths ||
+                gaussianCountChanged ||
+                !matrixApproximatelyEquals(m_impl->lastSortedViewMatrix, m_impl->frameUniforms.viewMatrix));
+        const bool needsIdentityIndices = !m_impl->gaussianSortingEnabled &&
+            (!m_impl->hasSortedGaussianDepths || gaussianCountChanged);
+        if (needsSortedIndices) {
+            const bool encodedSort = m_impl->gaussianSortPass->encodeDepthKeys(
                 (__bridge void*)commandBuffer,
                 *m_impl->gaussianBuffer,
                 *m_impl->gaussianSortBuffer,
                 m_impl->frameUniformBuffer->buffer(frameResourceIndex));
-            if (m_impl->hasSortedGaussianDepths) {
+            m_impl->hasSortedGaussianDepths = encodedSort;
+            if (encodedSort) {
                 sortedGaussiansThisFrame = true;
+                m_impl->lastSortedViewMatrix = m_impl->frameUniforms.viewMatrix;
+            } else {
+                m_impl->recordDiagnostic(m_impl->gaussianSortPass->lastDiagnostic());
+            }
+        } else if (needsIdentityIndices) {
+            const bool encodedIdentity = m_impl->gaussianSortPass->encodeIdentityIndices(
+                (__bridge void*)commandBuffer,
+                *m_impl->gaussianBuffer,
+                *m_impl->gaussianSortBuffer);
+            m_impl->hasSortedGaussianDepths = encodedIdentity;
+            if (encodedIdentity) {
                 m_impl->lastSortedViewMatrix = m_impl->frameUniforms.viewMatrix;
             } else {
                 m_impl->recordDiagnostic(m_impl->gaussianSortPass->lastDiagnostic());

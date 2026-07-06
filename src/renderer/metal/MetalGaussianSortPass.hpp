@@ -31,6 +31,10 @@ public:
         const MetalGaussianBuffer& gaussianBuffer,
         MetalGaussianSortBuffer& sortBuffer,
         void* frameUniformBuffer) const;
+    bool encodeIdentityIndices(
+        void* commandBuffer,
+        const MetalGaussianBuffer& gaussianBuffer,
+        MetalGaussianSortBuffer& sortBuffer) const;
     const std::string& lastDiagnostic() const;
 
 private:

@@ -53,6 +53,7 @@ namespace fragment_buffers {
 
 inline constexpr BindingIndex kMaterials = 0;
 inline constexpr BindingIndex kMaterialIndex = 1;
+inline constexpr BindingIndex kFrameUniforms = 2;
 
 } // namespace fragment_buffers
 

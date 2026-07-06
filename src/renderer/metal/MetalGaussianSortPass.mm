@@ -64,6 +64,7 @@ std::string sortBufferStatsDescription(const MetalGaussianSortBuffer& sortBuffer
 } // namespace
 
 struct MetalGaussianSortPass::Impl {
+    void* identityIndexPipelineState = nullptr;
     void* depthKeyPipelineState = nullptr;
     void* radixCountPipelineState = nullptr;
     void* radixPrefixPipelineState = nullptr;
@@ -106,6 +107,12 @@ bool MetalGaussianSortPass::initialize(
     };
 
     MetalComputePipelineDesc desc;
+    desc.label = "Gaussian Identity Index Pipeline";
+    desc.function = "gaussianIdentityIndexKernel";
+    if (!createPipeline(desc, m_impl->identityIndexPipelineState)) {
+        return false;
+    }
+
     desc.label = "Gaussian Depth Key Pipeline";
     desc.function = "gaussianDepthKeyKernel";
     if (!createPipeline(desc, m_impl->depthKeyPipelineState)) {
@@ -141,7 +148,8 @@ bool MetalGaussianSortPass::initialize(
 
 bool MetalGaussianSortPass::isReady() const
 {
-    return m_impl->depthKeyPipelineState != nullptr &&
+    return m_impl->identityIndexPipelineState != nullptr &&
+        m_impl->depthKeyPipelineState != nullptr &&
         m_impl->radixCountPipelineState != nullptr &&
         m_impl->radixPrefixPipelineState != nullptr &&
         m_impl->radixReorderPipelineState != nullptr;
@@ -367,6 +375,98 @@ bool MetalGaussianSortPass::encodeDepthKeys(
         std::swap(sourceIndexBuffer, destinationIndexBuffer);
     }
 
+    return true;
+}
+
+bool MetalGaussianSortPass::encodeIdentityIndices(
+    void* commandBuffer,
+    const MetalGaussianBuffer& gaussianBuffer,
+    MetalGaussianSortBuffer& sortBuffer) const
+{
+    m_impl->lastDiagnostic.clear();
+    const auto fail = [this](std::string message) {
+        m_impl->lastDiagnostic = std::move(message);
+        return false;
+    };
+
+    if (m_impl->identityIndexPipelineState == nullptr) {
+        return fail("Gaussian identity index pass is not initialized.");
+    }
+    if (commandBuffer == nullptr) {
+        return fail("Gaussian identity index pass cannot encode without a command buffer.");
+    }
+    if (!gaussianBuffer.isValid()) {
+        return fail("Gaussian identity index pass received an invalid gaussian buffer.");
+    }
+
+    const uint32_t gaussianCount = gaussianBuffer.count();
+    if (gaussianCount == 0) {
+        sortBuffer.setCount(0);
+        return true;
+    }
+
+    if (!sortBuffer.ensureCapacity(gaussianCount, kSortBufferLabel)) {
+        sortBuffer.setCount(0);
+        return fail("Gaussian sort buffer could not grow for identity indices for " +
+            std::to_string(gaussianCount) + " gaussians: " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    if (!sortBuffer.isValid()) {
+        sortBuffer.setCount(0);
+        return fail("Gaussian identity index pass received an invalid sort buffer: " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    if (!sortBuffer.hasCapacityFor(gaussianCount)) {
+        sortBuffer.setCount(0);
+        return fail("Gaussian identity index buffer capacity is too small for " +
+            std::to_string(gaussianCount) + " gaussians: " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    if (!sortBuffer.setCount(gaussianCount)) {
+        return fail("Gaussian identity index buffer rejected active count " +
+            std::to_string(gaussianCount) + ": " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    id<MTLCommandBuffer> nativeCommandBuffer = (__bridge id<MTLCommandBuffer>)commandBuffer;
+    id<MTLComputePipelineState> pipelineState =
+        (__bridge id<MTLComputePipelineState>)m_impl->identityIndexPipelineState;
+    id<MTLBuffer> indexBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeIndexBuffer();
+    id<MTLBuffer> keyBuffer = (__bridge id<MTLBuffer>)sortBuffer.nativeKeyBuffer();
+    if (nativeCommandBuffer == nil) {
+        return fail("Gaussian identity index command buffer bridge returned nil.");
+    }
+    if (pipelineState == nil) {
+        return fail("Gaussian identity index pass has a nil Metal pipeline state.");
+    }
+    if (indexBuffer == nil || keyBuffer == nil) {
+        return fail("Gaussian identity index pass has a nil Metal buffer binding: " +
+            sortBufferStatsDescription(sortBuffer));
+    }
+
+    id<MTLComputeCommandEncoder> encoder = [nativeCommandBuffer computeCommandEncoder];
+    if (encoder == nil) {
+        return fail("Failed to create gaussian identity index compute encoder.");
+    }
+
+    GaussianSortParams params;
+    params.gaussianCount = gaussianCount;
+    params.keyCapacity = static_cast<uint32_t>(sortBuffer.capacity());
+    params.indexCapacity = static_cast<uint32_t>(sortBuffer.capacity());
+
+    encoder.label = @"Mesh2Splat Gaussian Identity Indices";
+    [encoder setComputePipelineState:pipelineState];
+    [encoder setBuffer:indexBuffer offset:0 atIndex:0];
+    [encoder setBuffer:keyBuffer offset:0 atIndex:1];
+    [encoder setBytes:&params length:sizeof(params) atIndex:2];
+    const NSUInteger threadsPerGroup =
+        static_cast<NSUInteger>(computeThreadgroupSize1D((__bridge void*)pipelineState));
+    [encoder dispatchThreads:MTLSizeMake(gaussianCount, 1, 1)
+       threadsPerThreadgroup:MTLSizeMake(threadsPerGroup, 1, 1)];
+    [encoder endEncoding];
     return true;
 }
 

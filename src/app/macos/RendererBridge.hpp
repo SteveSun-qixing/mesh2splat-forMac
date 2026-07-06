@@ -94,6 +94,11 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) uint32_t conversionSamplesPerTriangle;
 @property (nonatomic, assign) float conversionProgress;
 @property (nonatomic, assign) float gaussianScale;
+@property (nonatomic, assign) float exposure;
+@property (nonatomic, assign) float gamma;
+@property (nonatomic, assign) float backgroundBrightness;
+@property (nonatomic, assign) NSUInteger viewMode;
+@property (nonatomic, assign) NSUInteger gaussianVisualizationMode;
 @property (nonatomic, assign, getter=isConverting) BOOL converting;
 @property (nonatomic, assign) BOOL hasScene;
 @property (nonatomic, assign) BOOL hasGaussians;
@@ -104,6 +109,8 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) BOOL exportMatchesCurrentConversion;
 @property (nonatomic, assign) BOOL meshRenderingEnabled;
 @property (nonatomic, assign) BOOL gaussianRenderingEnabled;
+@property (nonatomic, assign) BOOL gaussianSortingEnabled;
+@property (nonatomic, assign) BOOL meshToGaussianConversionEnabled;
 @property (nonatomic, strong) M2SRendererFrameStats* frameStats;
 @property (nonatomic, strong) M2SRendererBackendStatus* backendStatus;
 @property (nonatomic, strong) M2SRendererResourceStats* resourceStats;

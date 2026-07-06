@@ -22,14 +22,23 @@ enum class MacBridgeUiCommandKind : std::uint32_t {
     SetGaussianScale = 7,
     SetConversionSamplesPerTriangle = 8,
     RefreshRendererStatus = 9,
+    ApplyRenderSettings = 10,
 };
 
 struct MacBridgeUiCommand {
     MacBridgeUiCommandKind kind = MacBridgeUiCommandKind::None;
+    std::uint32_t renderMode = 0;
     MacBridgeViewMode viewMode = MacBridgeViewMode::Combined;
     std::string filePath;
     float gaussianScale = 1.0f;
+    float exposure = 1.0f;
+    float gamma = 2.2f;
+    float backgroundBrightness = 0.04f;
     std::uint32_t conversionSamplesPerTriangle = 1;
+    bool gaussianSortingEnabled = true;
+    bool meshRenderingEnabled = true;
+    bool gaussianRenderingEnabled = true;
+    bool meshToGaussianConversionEnabled = true;
     std::uint64_t commandId = 0;
 };
 
@@ -159,6 +168,7 @@ struct MacBridgeRendererStatusSummary {
     MacBridgeRendererRuntimeState runtimeState = MacBridgeRendererRuntimeState::Unknown;
     MacBridgeDiagnosticSeverity diagnosticSeverity = MacBridgeDiagnosticSeverity::Info;
     MacBridgeViewMode viewMode = MacBridgeViewMode::Combined;
+    std::uint32_t gaussianVisualizationMode = 6;
     MacBridgeBackendStatus backend;
     MacBridgeFrameTimingStatus frameTiming;
     MacBridgeResourceStatus resources;
@@ -176,6 +186,9 @@ struct MacBridgeRendererStatusSummary {
     float conversionProgress = 0.0f;
     std::uint32_t convertedGaussianCount = 0;
     float gaussianScale = 1.0f;
+    float exposure = 1.0f;
+    float gamma = 2.2f;
+    float backgroundBrightness = 0.04f;
     std::uint32_t conversionSamplesPerTriangle = 1;
     std::uint64_t submittedConversionCount = 0;
     std::uint64_t completedConversionCount = 0;
@@ -210,6 +223,8 @@ struct MacBridgeRendererStatusSummary {
     bool exportMatchesCurrentConversion = false;
     bool meshRenderingEnabled = true;
     bool gaussianRenderingEnabled = true;
+    bool gaussianSortingEnabled = true;
+    bool meshToGaussianConversionEnabled = true;
     bool lastFrameRenderedMesh = false;
     bool lastFrameRenderedGaussians = false;
     bool lastFrameSortedGaussians = false;

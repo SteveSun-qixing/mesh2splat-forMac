@@ -90,6 +90,25 @@ static uint descendingDepthKey(float positiveDepth)
     return 0xffffffffu - sortableFloatKey(positiveDepth);
 }
 
+kernel void gaussianIdentityIndexKernel(
+    uint threadID [[thread_position_in_grid]],
+    device uint* indices [[buffer(0)]],
+    device uint* depthKeys [[buffer(1)]],
+    constant GaussianSortParams& params [[buffer(2)]])
+{
+    const uint writableCount = min(
+        params.gaussianCount,
+        min(
+            paramCapacityLimit(params.keyCapacity, params.gaussianCount),
+            paramCapacityLimit(params.indexCapacity, params.gaussianCount)));
+    if (threadID >= writableCount) {
+        return;
+    }
+
+    indices[threadID] = threadID;
+    depthKeys[threadID] = threadID;
+}
+
 static bool validRadixParams(RadixSortParams params)
 {
     return params.itemCount > 0u &&

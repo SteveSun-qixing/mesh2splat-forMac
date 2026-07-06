@@ -152,9 +152,14 @@ struct RendererRenderSettingsSummary {
     RenderViewMode viewMode = RenderViewMode::Combined;
     GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
     float gaussianScale = 1.0f;
+    float exposure = 1.0f;
+    float gamma = 2.2f;
+    float backgroundBrightness = 0.04f;
     uint32_t conversionSamplesPerTriangle = 1;
     bool meshRenderingEnabled = true;
     bool gaussianRenderingEnabled = true;
+    bool gaussianSortingEnabled = true;
+    bool meshToGaussianConversionEnabled = true;
     bool depthTestEnabled = true;
     bool lightingEnabled = true;
     bool splitScreenEnabled = false;
@@ -240,6 +245,11 @@ struct RendererModeRequest {
     RenderViewMode viewMode = RenderViewMode::Combined;
     GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
     float gaussianScale = 1.0f;
+    float exposure = 1.0f;
+    float gamma = 2.2f;
+    float backgroundBrightness = 0.04f;
+    bool gaussianSortingEnabled = true;
+    bool meshToGaussianConversionEnabled = true;
     uint64_t requestId = 0;
 };
 
@@ -248,6 +258,11 @@ struct RendererModeResult {
     RenderViewMode viewMode = RenderViewMode::Combined;
     GaussianVisualizationMode gaussianVisualizationMode = GaussianVisualizationMode::Final;
     float gaussianScale = 1.0f;
+    float exposure = 1.0f;
+    float gamma = 2.2f;
+    float backgroundBrightness = 0.04f;
+    bool gaussianSortingEnabled = true;
+    bool meshToGaussianConversionEnabled = true;
     std::string diagnostic;
     uint64_t requestId = 0;
 };
@@ -482,6 +497,11 @@ public:
         result.viewMode = viewMode();
         result.gaussianVisualizationMode = gaussianVisualizationMode();
         result.gaussianScale = gaussianScale();
+        result.exposure = request.exposure;
+        result.gamma = request.gamma;
+        result.backgroundBrightness = request.backgroundBrightness;
+        result.gaussianSortingEnabled = request.gaussianSortingEnabled;
+        result.meshToGaussianConversionEnabled = request.meshToGaussianConversionEnabled;
         result.diagnostic = lastDiagnostic();
         return result;
     }
@@ -630,6 +650,8 @@ public:
         settings.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
         settings.meshRenderingEnabled = settings.viewMode != RenderViewMode::GaussianOnly;
         settings.gaussianRenderingEnabled = settings.viewMode != RenderViewMode::MeshOnly;
+        settings.gaussianSortingEnabled = true;
+        settings.meshToGaussianConversionEnabled = true;
         return settings;
     }
 

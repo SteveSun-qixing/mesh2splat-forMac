@@ -46,6 +46,7 @@ public:
         const mesh2splat::renderer::RendererModeRequest& request) override;
     mesh2splat::renderer::RendererExportPlyResult exportPly(
         const mesh2splat::renderer::RendererExportPlyRequest& request) override;
+    mesh2splat::renderer::RendererRenderSettingsSummary renderSettingsSummary() const override;
     bool handleInputEvent(const mesh2splat::renderer::RendererInputEvent& event) override;
     mesh2splat::renderer::RendererFrameResult tickFrame(
         const mesh2splat::renderer::RendererFrameTick& frame) override;
