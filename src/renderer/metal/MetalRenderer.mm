@@ -1463,6 +1463,14 @@ mesh2splat::renderer::RendererFrameResult MetalRenderer::tickFrame(
     mesh2splat::renderer::RendererFrameResult result;
     result.stats = rendererStats();
     result.submitted = result.stats.submittedFrameCount > submittedBefore;
+    result.drawableAvailable = frame.renderPassDescriptor != nullptr && frame.drawable != nullptr;
+    result.frameIndex = frame.frameIndex;
+    result.frameNumber = frame.frameNumber;
+    result.state = runtimeState();
+    result.sceneCounts = sceneCounts();
+    result.conversion = conversionState();
+    result.renderedMesh = result.stats.lastFrameRenderedMesh;
+    result.renderedGaussians = result.stats.lastFrameRenderedGaussians;
     result.diagnostic = lastDiagnostic();
     return result;
 }
