@@ -78,6 +78,7 @@ constant constexpr uint kRenderModePbr = 5u;
 constant constexpr uint kRenderModeFinal = 6u;
 constant constexpr uint kDebugFlagShowGaussianCenters = 1u << 2u;
 constant constexpr uint kDebugFlagShowSortOrder = 1u << 4u;
+constant constexpr uint kDebugFlagDisableToneMapping = 1u << 6u;
 
 static bool isFiniteFloat(float value)
 {
@@ -343,6 +344,10 @@ static float3 finalPreviewColor(GaussianVertexOut in, constant FrameUniforms& fr
 
 static float3 toneMappedColor(float3 color, constant FrameUniforms& frame)
 {
+    if ((frame.flags & kDebugFlagDisableToneMapping) != 0u) {
+        return max(color, float3(0.0));
+    }
+
     const float exposure = max(frame.gaussianParams.y, 0.0);
     const float gamma = max(frame.gaussianParams.z, 0.1);
     const float3 exposed = 1.0 - exp(-max(color, float3(0.0)) * exposure);

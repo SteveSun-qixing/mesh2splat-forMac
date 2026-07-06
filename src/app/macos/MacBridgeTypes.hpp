@@ -34,6 +34,7 @@ struct MacBridgeUiCommand {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    std::uint32_t debugFlags = 0;
     std::uint32_t conversionSamplesPerTriangle = 1;
     bool gaussianSortingEnabled = true;
     bool meshRenderingEnabled = true;
@@ -189,6 +190,7 @@ struct MacBridgeRendererStatusSummary {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    std::uint32_t debugFlags = 0;
     std::uint32_t conversionSamplesPerTriangle = 1;
     std::uint64_t submittedConversionCount = 0;
     std::uint64_t completedConversionCount = 0;

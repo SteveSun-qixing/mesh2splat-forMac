@@ -6,6 +6,7 @@
 #include "core/GaussianData.hpp"
 #include "core/CameraController.hpp"
 #include "core/PrimitiveMeshFactory.hpp"
+#include "core/RenderSettings.hpp"
 #include "io/GltfLoader.hpp"
 #include "io/PlyWriter.hpp"
 #include "MetalCommandScheduler.hpp"
@@ -681,6 +682,7 @@ struct MetalRenderer::Impl {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    uint32_t debugFlags = 0;
     uint32_t conversionSamplesPerTriangle = kDefaultMetalConversionSamplesPerTriangle;
     uint32_t convertedGaussianCount = 0;
     uint32_t width = 0;
@@ -1546,6 +1548,7 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     m_impl->exposure = clampedFinite(request.exposure, 0.0f, 16.0f, 1.0f);
     m_impl->gamma = clampedFinite(request.gamma, 0.1f, 4.0f, 2.2f);
     m_impl->backgroundBrightness = clampedFinite(request.backgroundBrightness, 0.0f, 1.0f, 0.04f);
+    m_impl->debugFlags = request.debugFlags & core::kKnownRenderDebugFlags;
     m_impl->gaussianSortingEnabled = request.gaussianSortingEnabled;
     m_impl->meshToGaussianConversionEnabled = request.meshToGaussianConversionEnabled;
     if (sortingChanged) {
@@ -1561,6 +1564,7 @@ mesh2splat::renderer::RendererModeResult MetalRenderer::setRenderMode(
     result.exposure = m_impl->exposure;
     result.gamma = m_impl->gamma;
     result.backgroundBrightness = m_impl->backgroundBrightness;
+    result.debugFlags = m_impl->debugFlags;
     result.gaussianSortingEnabled = m_impl->gaussianSortingEnabled;
     result.meshToGaussianConversionEnabled = m_impl->meshToGaussianConversionEnabled;
     result.diagnostic = lastDiagnostic();
@@ -1645,6 +1649,7 @@ mesh2splat::renderer::RendererRenderSettingsSummary MetalRenderer::renderSetting
     settings.exposure = m_impl->exposure;
     settings.gamma = m_impl->gamma;
     settings.backgroundBrightness = m_impl->backgroundBrightness;
+    settings.debugFlags = m_impl->debugFlags;
     settings.conversionSamplesPerTriangle = conversionSamplesPerTriangle();
     settings.meshRenderingEnabled = settings.viewMode != RenderViewMode::GaussianOnly;
     settings.gaussianRenderingEnabled = settings.viewMode != RenderViewMode::MeshOnly;
@@ -1791,6 +1796,7 @@ void MetalRenderer::draw(
     const uint32_t frameResourceIndex = m_impl->frameResources->currentFrameIndex();
     m_impl->frameUniforms.frameIndex = frameResourceIndex;
     m_impl->frameUniforms.renderMode = static_cast<uint32_t>(m_impl->gaussianVisualizationMode);
+    m_impl->frameUniforms.flags = m_impl->debugFlags;
     m_impl->frameUniforms.gaussianParams[0] = m_impl->gaussianScale;
     m_impl->frameUniforms.gaussianParams[1] = m_impl->exposure;
     m_impl->frameUniforms.gaussianParams[2] = m_impl->gamma;

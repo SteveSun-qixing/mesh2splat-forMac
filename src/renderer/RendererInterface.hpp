@@ -155,6 +155,7 @@ struct RendererRenderSettingsSummary {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    uint32_t debugFlags = 0;
     uint32_t conversionSamplesPerTriangle = 1;
     bool meshRenderingEnabled = true;
     bool gaussianRenderingEnabled = true;
@@ -248,6 +249,7 @@ struct RendererModeRequest {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    uint32_t debugFlags = 0;
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
     uint64_t requestId = 0;
@@ -261,6 +263,7 @@ struct RendererModeResult {
     float exposure = 1.0f;
     float gamma = 2.2f;
     float backgroundBrightness = 0.04f;
+    uint32_t debugFlags = 0;
     bool gaussianSortingEnabled = true;
     bool meshToGaussianConversionEnabled = true;
     std::string diagnostic;
@@ -500,6 +503,7 @@ public:
         result.exposure = request.exposure;
         result.gamma = request.gamma;
         result.backgroundBrightness = request.backgroundBrightness;
+        result.debugFlags = request.debugFlags;
         result.gaussianSortingEnabled = request.gaussianSortingEnabled;
         result.meshToGaussianConversionEnabled = request.meshToGaussianConversionEnabled;
         result.diagnostic = lastDiagnostic();

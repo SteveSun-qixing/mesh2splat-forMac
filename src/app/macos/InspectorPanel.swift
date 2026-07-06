@@ -20,6 +20,8 @@ struct InspectorPanel: View {
                     Toggle("Mesh", isOn: $appState.meshRenderingEnabled)
                     Toggle("Gaussians", isOn: $appState.gaussianRenderingEnabled)
                     Toggle("Sort gaussians", isOn: $appState.sortingEnabled)
+                    Toggle("Centers", isOn: $appState.showGaussianCenters)
+                    Toggle("Sort order", isOn: $appState.showSortOrder)
 
                     LabeledSlider(
                         title: "Splat size",

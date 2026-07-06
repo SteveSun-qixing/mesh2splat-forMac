@@ -76,18 +76,19 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           BOOL sortingEnabled,
                                           BOOL meshRenderingEnabled,
                                           BOOL gaussianRenderingEnabled,
-                                          BOOL conversionEnabled)
+                                          BOOL conversionEnabled,
+                                          uint32_t debugFlags)
 {
     if (![view isKindOfClass:Mesh2SplatMetalView.class]) {
         return;
     }
 
-    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:");
+    SEL selector = NSSelectorFromString(@"applyRenderMode:splatSize:exposure:gamma:backgroundBrightness:conversionSamplesPerTriangle:sortingEnabled:meshRenderingEnabled:gaussianRenderingEnabled:conversionEnabled:debugFlags:");
     if (![view respondsToSelector:selector]) {
         return;
     }
 
-    using ApplySettingsMessage = void (*)(id, SEL, NSInteger, double, double, double, double, NSInteger, BOOL, BOOL, BOOL, BOOL);
+    using ApplySettingsMessage = void (*)(id, SEL, NSInteger, double, double, double, double, NSInteger, BOOL, BOOL, BOOL, BOOL, uint32_t);
     ApplySettingsMessage message = reinterpret_cast<ApplySettingsMessage>(objc_msgSend);
     message(view,
             selector,
@@ -100,5 +101,6 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
             sortingEnabled,
             meshRenderingEnabled,
             gaussianRenderingEnabled,
-            conversionEnabled);
+            conversionEnabled,
+            debugFlags);
 }

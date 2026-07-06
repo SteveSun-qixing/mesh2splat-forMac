@@ -173,6 +173,7 @@ M2SRendererStatus* bridgeStatus(const mesh2splat::macos::MacBridgeRendererStatus
     status.exposure = summary.exposure;
     status.gamma = summary.gamma;
     status.backgroundBrightness = summary.backgroundBrightness;
+    status.debugFlags = summary.debugFlags;
     status.viewMode = static_cast<NSUInteger>(summary.viewMode);
     status.gaussianVisualizationMode = static_cast<NSUInteger>(summary.gaussianVisualizationMode);
     status.converting = conversionStats.active;

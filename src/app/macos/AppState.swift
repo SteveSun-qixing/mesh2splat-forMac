@@ -105,6 +105,8 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var meshRenderingEnabled = true { didSet { submitRenderSettings() } }
     @Published var gaussianRenderingEnabled = true { didSet { submitRenderSettings() } }
     @Published var conversionEnabled = true { didSet { submitRenderSettings() } }
+    @Published var showGaussianCenters = false { didSet { submitRenderSettings() } }
+    @Published var showSortOrder = false { didSet { submitRenderSettings() } }
 
     private var isResettingRenderSettings = false
     private var rendererBridge: M2SRendererBridge?
@@ -242,7 +244,8 @@ final class Mesh2SplatAppState: ObservableObject {
             sortingEnabled,
             meshRenderingEnabled,
             gaussianRenderingEnabled,
-            conversionEnabled
+            conversionEnabled,
+            renderDebugFlags
         )
         Mesh2SplatRefreshMetalViewStatus(metalView)
         refreshRendererStatusFromBridge()
@@ -453,6 +456,8 @@ final class Mesh2SplatAppState: ObservableObject {
         meshRenderingEnabled = status.meshRenderingEnabled
         gaussianRenderingEnabled = status.gaussianRenderingEnabled
         conversionEnabled = status.meshToGaussianConversionEnabled
+        showGaussianCenters = (status.debugFlags & Self.showGaussianCentersFlag) != 0
+        showSortOrder = (status.debugFlags & Self.showSortOrderFlag) != 0
         if let quality = ConversionQuality(rawValue: Int(status.conversionSamplesPerTriangle)) {
             conversionQuality = quality
         }
@@ -520,11 +525,27 @@ final class Mesh2SplatAppState: ObservableObject {
         meshRenderingEnabled = preset.toggles.meshRenderingEnabled
         gaussianRenderingEnabled = preset.toggles.gaussianRenderingEnabled
         conversionEnabled = preset.toggles.conversionEnabled
+        showGaussianCenters = false
+        showSortOrder = false
         isResettingRenderSettings = false
 
         if submit {
             submitRenderSettings()
         }
+    }
+
+    private static let showGaussianCentersFlag: UInt32 = 1 << 2
+    private static let showSortOrderFlag: UInt32 = 1 << 4
+
+    private var renderDebugFlags: UInt32 {
+        var flags: UInt32 = 0
+        if showGaussianCenters {
+            flags |= Self.showGaussianCentersFlag
+        }
+        if showSortOrder {
+            flags |= Self.showSortOrderFlag
+        }
+        return flags
     }
 }
 

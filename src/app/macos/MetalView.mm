@@ -103,7 +103,8 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     BOOL sortingEnabled,
     BOOL meshRenderingEnabled,
     BOOL gaussianRenderingEnabled,
-    BOOL conversionEnabled)
+    BOOL conversionEnabled,
+    uint32_t debugFlags)
 {
     mesh2splat::core::RenderSettings settings;
     settings.mode = static_cast<mesh2splat::core::RenderMode>(std::max<NSInteger>(0, renderMode));
@@ -115,6 +116,7 @@ mesh2splat::core::RenderSettingsSnapshot renderSettingsSnapshotFromBridge(
     settings.exposure = static_cast<float>(exposure);
     settings.gamma = static_cast<float>(gamma);
     settings.backgroundBrightness = static_cast<float>(backgroundBrightness);
+    settings.debugFlags = debugFlags;
     settings.conversionSamplesPerTriangle = conversionSamplesPerTriangle <= 0
         ? 0
         : static_cast<uint32_t>(conversionSamplesPerTriangle);
@@ -492,6 +494,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     request.exposure = settings.exposure;
     request.gamma = settings.gamma;
     request.backgroundBrightness = settings.backgroundBrightness;
+    request.debugFlags = settings.debugFlags;
     request.gaussianSortingEnabled = settings.gaussianSortingEnabled;
     request.meshToGaussianConversionEnabled = settings.meshToGaussianConversionEnabled;
     result = _renderer->setRenderMode(request);
@@ -656,6 +659,7 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     summary.exposure = renderSettings.exposure;
     summary.gamma = renderSettings.gamma;
     summary.backgroundBrightness = renderSettings.backgroundBrightness;
+    summary.debugFlags = renderSettings.debugFlags;
     summary.conversionProgress = diagnostics.progress;
     summary.conversionSamplesPerTriangle = renderSettings.conversionSamplesPerTriangle;
     summary.submittedConversionCount = stats.submittedConversionCount;
@@ -1175,6 +1179,7 @@ conversionSamplesPerTriangle:(NSInteger)conversionSamplesPerTriangle
    meshRenderingEnabled:(BOOL)meshRenderingEnabled
 gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
       conversionEnabled:(BOOL)conversionEnabled
+             debugFlags:(uint32_t)debugFlags
 {
     const mesh2splat::core::RenderSettingsSnapshot settings =
         renderSettingsSnapshotFromBridge(
@@ -1187,7 +1192,8 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
             sortingEnabled,
             meshRenderingEnabled,
             gaussianRenderingEnabled,
-            conversionEnabled);
+            conversionEnabled,
+            debugFlags);
 
     _bridgeRenderMode = static_cast<NSInteger>(settings.mode);
     _bridgeExposure = settings.exposure;
@@ -1596,7 +1602,8 @@ conversionSamplesPerTriangle:static_cast<NSInteger>(command.conversionSamplesPer
                sortingEnabled:command.gaussianSortingEnabled
          meshRenderingEnabled:command.meshRenderingEnabled
      gaussianRenderingEnabled:command.gaussianRenderingEnabled
-            conversionEnabled:command.meshToGaussianConversionEnabled];
+            conversionEnabled:command.meshToGaussianConversionEnabled
+                  debugFlags:command.debugFlags];
         result.completed = true;
         result.message = "Render settings updated.";
         break;

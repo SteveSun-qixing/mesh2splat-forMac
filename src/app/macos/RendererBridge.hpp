@@ -97,6 +97,7 @@ typedef NS_ENUM(NSUInteger, M2SRendererDiagnosticSeverity) {
 @property (nonatomic, assign) float exposure;
 @property (nonatomic, assign) float gamma;
 @property (nonatomic, assign) float backgroundBrightness;
+@property (nonatomic, assign) uint32_t debugFlags;
 @property (nonatomic, assign) NSUInteger viewMode;
 @property (nonatomic, assign) NSUInteger gaussianVisualizationMode;
 @property (nonatomic, assign, getter=isConverting) BOOL converting;

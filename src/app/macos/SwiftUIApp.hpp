@@ -4,6 +4,8 @@
 
 #import <AppKit/AppKit.h>
 
+#include <stdint.h>
+
 NS_ASSUME_NONNULL_BEGIN
 
 #ifdef __cplusplus
@@ -25,7 +27,8 @@ void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           BOOL sortingEnabled,
                                           BOOL meshRenderingEnabled,
                                           BOOL gaussianRenderingEnabled,
-                                          BOOL conversionEnabled);
+                                          BOOL conversionEnabled,
+                                          uint32_t debugFlags);
 
 #ifdef __cplusplus
 }

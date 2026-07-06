@@ -21,6 +21,8 @@ struct RenderControlsPanel: View {
                 }
 
                 Toggle("Sort gaussians", isOn: $appState.sortingEnabled)
+                Toggle("Centers", isOn: $appState.showGaussianCenters)
+                Toggle("Sort order", isOn: $appState.showSortOrder)
 
                 RenderControlSlider(
                     title: "Splat size",

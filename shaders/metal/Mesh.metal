@@ -15,6 +15,7 @@ constant constexpr uint kM2SMeshShaderRenderModeGeometryColor = 3u;
 constant constexpr uint kM2SMeshShaderRenderModeDensity = 4u;
 constant constexpr uint kM2SMeshShaderRenderModePbr = 5u;
 constant constexpr uint kM2SMeshShaderRenderModeLitPreview = 6u;
+constant constexpr uint kM2SMeshShaderDebugFlagDisableToneMapping = 1u << 6u;
 
 constant constexpr float kM2SMeshShaderMinimumLengthSquared = 1.0e-12f;
 constant constexpr float kM2SMeshShaderAlphaDiscardThreshold = 1.0e-4f;
@@ -225,6 +226,10 @@ static float3 m2sMeshShaderLitPreviewColor(
 
 static float3 m2sMeshShaderToneMappedColor(float3 color, constant M2SMeshShaderFrameUniforms& frame)
 {
+    if ((frame.flags & kM2SMeshShaderDebugFlagDisableToneMapping) != 0u) {
+        return max(color, float3(0.0f));
+    }
+
     const float exposure = max(frame.gaussianParams.y, 0.0f);
     const float gamma = max(frame.gaussianParams.z, 0.1f);
     const float3 exposed = 1.0f - exp(-max(color, float3(0.0f)) * exposure);
