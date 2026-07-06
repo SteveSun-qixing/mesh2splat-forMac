@@ -174,6 +174,49 @@ final class Mesh2SplatAppState: ObservableObject {
         documentActions.exportGaussians(defaultName: defaultExportFileName)
     }
 
+    func buildSplats() {
+        guard let rendererBridge else {
+            lastError = "Renderer is not ready."
+            statusText = "Conversion failed"
+            conversionStatus = "Conversion: failed"
+            return
+        }
+
+        if !conversionEnabled {
+            conversionEnabled = true
+        }
+
+        conversionStatus = "Conversion: starting"
+        statusText = conversionStatus
+        let result = rendererBridge.startConversion(withSamplesPerTriangle: UInt32(conversionQuality.rawValue))
+        applyRendererStatus(result.status)
+
+        let message = result.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if result.isAccepted {
+            lastError = nil
+            if result.status.isConverting {
+                conversionStatus = "Conversion: running"
+                statusText = message.isEmpty ? conversionStatus : message
+            } else if result.status.hasGaussians {
+                conversionStatus = RendererStatusFormatting.conversionStatus(
+                    isConverting: false,
+                    progress: RendererStatusFormatting.normalizedProgress(result.status.conversionProgress),
+                    gaussianCountValue: UInt64(result.status.convertedGaussianCount)
+                )
+                statusText = message.isEmpty ? conversionStatus : message
+            } else {
+                conversionStatus = message.isEmpty ? "Conversion: waiting" : message
+                statusText = conversionStatus
+            }
+        } else {
+            lastError = message.isEmpty ? "Could not start conversion." : message
+            statusText = "Conversion failed"
+            conversionStatus = "Conversion: failed"
+        }
+
+        refreshRendererStatusFromBridge()
+    }
+
     func importMesh(at url: URL) {
         guard let metalView else {
             lastError = "Viewport is not ready."
@@ -298,6 +341,12 @@ final class Mesh2SplatAppState: ObservableObject {
 
     var canExportGaussians: Bool {
         rendererCanExportGaussians &&
+            !isConverting &&
+            !isExporting
+    }
+
+    var canBuildSplats: Bool {
+        rendererCanStartConversion &&
             !isConverting &&
             !isExporting
     }

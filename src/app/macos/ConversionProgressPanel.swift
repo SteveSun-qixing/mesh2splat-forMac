@@ -44,6 +44,17 @@ struct ConversionProgressPanel: View {
                     tone: startStopTone
                 )
             }
+
+            Button {
+                appState.buildSplats()
+            } label: {
+                Label(buildActionTitle, systemImage: "sparkles")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(!appState.canBuildSplats)
+            .help(buildActionHelp)
         }
         .padding(14)
         .frame(minWidth: 240, idealWidth: 280, maxWidth: 340, maxHeight: .infinity, alignment: .topLeading)
@@ -189,6 +200,29 @@ struct ConversionProgressPanel: View {
         }
 
         return "Off; enable conversion before importing or rebuilding."
+    }
+
+    private var buildActionTitle: String {
+        hasGaussians ? "Rebuild Splats" : "Build Splats"
+    }
+
+    private var buildActionHelp: String {
+        if appState.canBuildSplats {
+            return hasGaussians ? "Rebuild splats with the current quality setting" : "Build splats from the loaded mesh"
+        }
+        if appState.metalView == nil {
+            return "Viewport unavailable"
+        }
+        if !appState.conversionEnabled {
+            return "Turn on Mesh to Splats before building"
+        }
+        if isConverting {
+            return "Splats are already building"
+        }
+        if !hasImportedMesh {
+            return "Import a GLB or GLTF mesh first"
+        }
+        return appState.rendererRuntimeStatus
     }
 }
 
