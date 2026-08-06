@@ -2,6 +2,11 @@
 
 本文档描述未来 SwiftUI 前端如何接入当前 macOS Metal 运行时。目标是在不破坏现有 `AppKit + MTKView + RendererInterface` 边界的前提下，把菜单、文件打开、参数面板和状态展示迁移到 SwiftUI，同时继续让 C++/Objective-C++ renderer 独占 Metal 资源和渲染循环。
 
+> **现状标注（2026-08-06）**：本文档所述 SwiftUI 前端已按此架构落地（2026-07-06
+> 提交，SwiftUI 工作台 + `RendererBridge`）。下方"未来 SwiftUI"表述保留为设计历史；
+> 当前实现见 `src/app/macos/*.swift`。Swift 源仅在 Ninja/Xcode 生成器下编译，
+> Makefiles 自动退回 AppKit-only 路径。
+
 ## 当前事实
 
 当前 macOS 入口位于 `src/app/macos`：

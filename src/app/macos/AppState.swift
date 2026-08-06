@@ -119,10 +119,6 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var rendererCanImportScene = false
     @Published var rendererCanStartConversion = false
     @Published var rendererCanExportGaussians = false
-    @Published var rendererHasVisibleMesh = false
-    @Published var exportMatchesCurrentConversion = false
-    @Published var rendererMeshRenderingEnabled = true
-    @Published var rendererGaussianRenderingEnabled = true
     @Published var renderMode: RenderMode = .final { didSet { submitRenderSettings() } }
     @Published var splatSize = 1.0 { didSet { submitRenderSettings() } }
     @Published var exposure = 1.0 { didSet { submitRenderSettings() } }
@@ -403,12 +399,14 @@ final class Mesh2SplatAppState: ObservableObject {
 
     var canExportGaussians: Bool {
         rendererCanExportGaussians &&
+            importedFileName != nil &&
             !isConverting &&
             !isExporting
     }
 
     var canBuildSplats: Bool {
         rendererCanStartConversion &&
+            importedFileName != nil &&
             !isConverting &&
             !isExporting
     }
@@ -527,10 +525,6 @@ final class Mesh2SplatAppState: ObservableObject {
         rendererCanImportScene = status.canImportScene
         rendererCanStartConversion = status.canStartConversion
         rendererCanExportGaussians = status.canExportGaussians
-        rendererHasVisibleMesh = status.hasVisibleMesh
-        exportMatchesCurrentConversion = status.exportMatchesCurrentConversion
-        rendererMeshRenderingEnabled = status.meshRenderingEnabled
-        rendererGaussianRenderingEnabled = status.gaussianRenderingEnabled
         syncRenderSettings(from: status)
 
         if status.exportMatchesCurrentConversion && !status.exportedFilePath.isEmpty {
@@ -542,8 +536,10 @@ final class Mesh2SplatAppState: ObservableObject {
             progress: conversionProgress,
             gaussianCountValue: UInt64(status.convertedGaussianCount)
         )
-        if status.canExportGaussians && !status.isConverting &&
-            (exportStatus == "Export: waiting" || exportStatus == "Export: not ready") {
+        if status.canExportGaussians && !status.isConverting && importedFileName != nil &&
+            (exportStatus == "Export: waiting" ||
+             exportStatus == "Export: not ready" ||
+             exportStatus == "Export: waiting for conversion") {
             exportStatus = "Export: ready"
         } else if status.isConverting {
             exportStatus = "Export: waiting for conversion"

@@ -206,6 +206,29 @@ void setDiagnostic(std::string* output, const std::vector<std::string>& diagnost
 bool loadRendererShaderLibrary(MetalShaderLibrary& shaderLibrary, std::string* diagnostic)
 {
     std::vector<std::string> diagnostics;
+
+    const char* environmentMetallibPath = std::getenv("MESH2SPLAT_METALLIB_PATH");
+    if (environmentMetallibPath != nullptr && environmentMetallibPath[0] != '\0') {
+        const std::string envMetallibPath = environmentMetallibPath;
+        NSString* envMetallibNsPath = [NSString stringWithUTF8String:envMetallibPath.c_str()];
+        if (envMetallibNsPath != nil &&
+            [[NSFileManager defaultManager] isReadableFileAtPath:envMetallibNsPath]) {
+            std::string errorMessage;
+            if (shaderLibrary.loadFromFile(envMetallibPath, &errorMessage)) {
+                appendDiagnostic(
+                    diagnostics,
+                    "Loaded Metal shaders from MESH2SPLAT_METALLIB_PATH: " + envMetallibPath);
+                setDiagnostic(diagnostic, diagnostics);
+                return true;
+            }
+            appendDiagnostic(diagnostics, errorMessage);
+        } else {
+            appendDiagnostic(
+                diagnostics,
+                "MESH2SPLAT_METALLIB_PATH is set but the file cannot be read: " + envMetallibPath);
+        }
+    }
+
     const std::string metallibPath = bundledMetallibPath();
     if (!metallibPath.empty()) {
         std::string errorMessage;
@@ -1790,6 +1813,7 @@ mesh2splat::renderer::RendererExportPlyResult MetalRenderer::exportPly(
         m_impl->recordDiagnostic(result.diagnostic);
         return result;
     }
+    m_impl->finalizePendingConversion();
     if (m_impl->gaussianBuffer == nullptr || m_impl->gaussianBuffer->count() == 0) {
         result.diagnostic = "PLY export requires converted gaussians.";
         m_impl->recordDiagnostic(result.diagnostic);
@@ -1892,6 +1916,15 @@ bool MetalRenderer::handleInputEvent(const mesh2splat::renderer::RendererInputEv
         break;
     }
     return false;
+}
+
+bool MetalRenderer::pumpPendingConversion()
+{
+    if (m_impl->deviceContext == nullptr || !m_impl->deviceContext->isValid()) {
+        return false;
+    }
+    m_impl->finalizePendingConversion();
+    return true;
 }
 
 mesh2splat::renderer::RendererFrameResult MetalRenderer::tickFrame(

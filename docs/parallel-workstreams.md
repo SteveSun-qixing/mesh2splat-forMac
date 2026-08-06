@@ -2,6 +2,12 @@
 
 This document converts the original sequential migration plan into parallel lanes. Each lane can move independently when its write scope is isolated and the integration owner keeps the Metal target buildable.
 
+> **Status note (2026-08-06)**: the SwiftUI lane has **landed** (2026-07-06 commits),
+> Metal shadow/PBR/split-screen work is complete, and the legacy OpenGL path was
+> **removed** on 2026-08-06 (`4ef4d60`). Remaining active work is Stage 11: GPU smoke
+> test, CLI converter, and performance/verification records. The lane table below is
+> kept as historical record.
+
 ## Integration Rules
 
 - Keep macOS runtime work on `mac-metal-refactor`.
@@ -18,8 +24,8 @@ This document converts the original sequential migration plan into parallel lane
 | Metal Infrastructure | `src/renderer/metal/MetalDeviceContext.*`, `MetalBuffer.*`, `MetalTexture.*`, `MetalPipelineCache.*`, `MetalShaderLibrary.*` | Resource labels, capability reporting, pipeline diagnostics, upload modes | Core / IO, UI planning |
 | Mesh Upload / Materials | `src/renderer/metal/MetalMesh.*`, `MetalSceneResources.*`, `MetalMeshRenderPass.*` | Texture fallback correctness, material constants, private resource upload | UI planning, tests/docs |
 | Conversion / Gaussian Loop | `MetalConversionPass.*`, `MetalGaussianBuffer.*`, `MetalGaussianRenderPass.*`, `MetalGaussianSortPass.*`, `shaders/metal/*.metal` | GPU conversion, count readback, gaussian draw and sort correctness | SwiftUI planning, docs |
-| App Shell / Future SwiftUI | `src/app/macos`, future SwiftUI app target | AppKit bridge stability now, SwiftUI command/workflow design later | Core / IO, Metal backend |
-| Verification / Docs | `docs`, `tests`, CMake test targets | Acceptance evidence, smoke tests, migration notes | All lanes |
+| App Shell / SwiftUI | `src/app/macos`, SwiftUI app target | SwiftUI workbench landed 2026-07-06; workbench polish ongoing | Core / IO, Metal backend |
+| Verification / Docs | `docs`, `tests`, CMake test targets | Acceptance evidence, smoke tests, migration notes. Stage 11 records; GPU smoke test + CLI pending | All lanes |
 
 ## Near-Term Parallel Backlog
 
@@ -30,7 +36,7 @@ This document converts the original sequential migration plan into parallel lane
 | Metal capability snapshot | Metal Infrastructure | Capability fields in `MetalDeviceContext` and docs | `Mesh2SplatMetal` build |
 | Resource label audit | Metal Infrastructure | Clear labels for buffers/textures/pipelines | Metal target build and code search |
 | Mesh texture fallback audit | Mesh Upload / Materials | Confirm fallback textures and material mapping | Metal target build |
-| SwiftUI boundary plan | App Shell / Future SwiftUI | SwiftUI integration design doc | No build required |
+| SwiftUI boundary plan | App Shell / SwiftUI | SwiftUI integration design doc | Done - see `docs/swiftui-app-architecture.md`, workbench landed 2026-07-06 |
 
 ## Integration Cadence
 

@@ -12,6 +12,8 @@ Currently, the only way to do so is to generate a synthetic dataset (camera pose
 
 **Mesh2Splat** instead, by directly using the geometry, materials and texture information from the 3D model, rather than going through the classical 3DGS pipeline, is able to obtain a 3DGS representation of the input 3D models in milliseconds.<br>
 
+> **Note**: This repository is the **macOS native refactor** of the upstream [Electronic Arts / Mesh2Splat](https://github.com/electronicarts/mesh2splat) project. The legacy OpenGL/GLFW/GLEW/ImGui code path has been removed; macOS Metal is now the only backend. The upstream project description, method, citation and licensing below are preserved from the original repository.
+
 ## Use Cases
 
 **Mesh2Splat** is built for fast and flexible integration into 3D Gaussian Splatting (3DGS) workflows, especially when traditional pipelines may be too slow or incompatible with certain scenarios. Below are some key use cases:
@@ -25,35 +27,35 @@ Currently, the only way to do so is to generate a synthetic dataset (camera pose
 - **Enhancing Traditional Renderers with Gaussian Primitives**  
   In pipelines where triangle meshes are the primary representation but 3DGS rendering is supported, Mesh2Splat can be used to convert selected assets into Gaussians. This enables developers and artists to leverage the unique properties of Gaussians.
 
+## Features (macOS Native Implementation)
 
-## Features
 ### Converter
 
-- **Direct 3D Model Processing**: Directly obtain a 3DGS model from a 3D mesh (only `.glb` format is supported for now).
-- **Sampling density**: you can easily tweak the sampling density (conversion quality) in the settings via a slider.
-- **Texture map support**: For now, Mesh2Splat supports the following texture maps:
-    - Diffuse
-    - Metallic-Roughness
-    - Normal
-- **Enhanced Performance**: Significantly reduce the time needed to transform a 3D mesh into a 3DGS.
-- **Relightability**: Can easily relight the gaussians given a renderer that supports it.
+- **Direct 3D Model Processing**: Directly obtain a 3DGS model from a 3D mesh (`.glb` / `.gltf` import supported).
+- **GPU conversion**: Mesh-to-splat conversion runs as a pure Metal compute kernel (`Conversion.metal`) with GPU counter readback.
+- **Sampling density**: conversion quality is tweakable in the workbench settings.
+- **Texture map support**: Diffuse, Metallic-Roughness and Normal maps.
+- **Relightability**: Gaussians can be relit in the built-in PBR renderer.
+- **PLY export / import**: Gaussian PLY export and import in Pbr3DGS format (position, color, scale, rotation, normal, PBR factors).
+
+### 3DGS Renderer (Metal)
+
+- **Visualization options**: albedo, normals, depth, geometry, overdraw, PBR properties and more (7 visualization modes).
+- **Gaussian shading**: GGX PBR based shading ported to Metal shaders.
+- **Lighting and shadows**: point light lighting with Metal shadow map passes for both meshes and Gaussians.
+- **Split-screen comparison**: restored native split-screen comparison between render paths.
+- **Mesh-Gaussian occlusion**: "Enable mesh-gaussian depth test" uses the mesh as occluder in the depth prepass.
+- **Debug views**: wireframe, overdraw, conversion enablement, render debug flags wired through the SwiftUI workbench.
+
+### SwiftUI Workbench
+
+- Native SwiftUI macOS frontend: scene import/export workflow, render/convert controls, render presets, diagnostics, resource telemetry, conversion progress, background color picker and viewport toolbar.
+
 <div align="center">
     <img src="./res/conversion.gif" width="850px">
 </div>
 
-**3D model by**: M. Pavlovic, “Sci-fi helmet model,” 2024, provided by Quixel. License: CC Attribution Share Alike 3.0. (https://creativecommons.org/licenses/by-sa/3.0/.), you can download it from [here](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SciFiHelmet/glTF)
-
-### 3DGS Renderer
-
-- **Visualization options**: albedo, normals, depth, geometry, overdraw and pbr properties.
-- **Gaussian shading**: supports PBR based shading.
-- **Lighting and shadows**: simple point light and omnidirectional shadow mapping.
-- **Shader hot-reload**: if you want to experiment with the shaders and 3DGS math, hot-reload is there to make your life easier.
-- **Mesh-Gaussian occlusion**: to improve performance you can use the "Enable mesh-gaussian depth test" to use the mesh as occluder in depth prepass.
-
-<div align="center">
-    <img src="./res/pbrShading.gif" width="850px">
-</div>
+**3D model by**: M. Pavlovic, "Sci-fi helmet model," 2024, provided by Quixel. License: CC Attribution Share Alike 3.0. (https://creativecommons.org/licenses/by-sa/3.0/.), you can download it from [here](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SciFiHelmet/glTF)
 
 ## Method
 The (current) core concept behind **Mesh2Splat** is rather simple:
@@ -75,77 +77,139 @@ $`{\Sigma_{2D}} = \begin{bmatrix} \sigma^{2}_x & 0 \\\ 0 & \sigma^{2}_y \end{bma
 - Perform texture fetches and set this data per gaussian in Fragment Shader. 
 - Each fragment now atomically appends one gaussian into a shared [SSBO](https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object). 
 
+> **Note**: In this macOS native port, the geometry-shader based conversion is replaced by a pure Metal compute conversion kernel (`shaders/metal/Conversion.metal`) that reproduces the same triplanar-projection / Jacobian math on the GPU.
+
 ## Performance
-Mesh2Splat is able to convert a 3D mesh into a 3DGS on average in **<0.5ms**.
-<br>
+Mesh2Splat is able to convert a 3D mesh into a 3DGS on average in **<0.5ms** (upstream figure; native Metal conversion timing is tracked in the workbench performance stats).
 
-
-
-## Build Instructions (Windows)
-
-To build **Mesh2Splat**, follow the following steps:
+## Build Instructions (macOS)
 
 ### Prerequisites
 
-- **CMake ≥ 3.21.1**  
-  Required to support **Visual Studio 2022** project generation. Older versions may default to unsupported generators.
+- **macOS 14 or later** (Metal 3 capable Apple Silicon or Intel Mac).
+- **Xcode Command Line Tools** or a full Xcode installation, including the **Metal shader toolchain** (`xcrun -sdk macosx --find metal` must succeed). If the Metal compiler is missing, install it with:
+  ```sh
+  xcode-select --install
+  # or, for the Metal toolchain component inside Xcode:
+  xcodebuild -downloadComponent MetalToolchain
+  ```
+- **CMake ≥ 3.15** (any recent CMake works; 3.21+ recommended).
+- **Ninja** (recommended): `brew install ninja`.
 
-- **Visual Studio 2019 or 2022**  
-  Must include the **"Desktop development with C++"** workload. Make sure your CMake version is compatible with your Visual Studio version.
-
-- **OpenGL-compatible GPU and drivers**
-
-> 💡 If you're using Visual Studio 2022, make sure you're running CMake ≥ 3.21.1. Older versions (like 3.10 or 3.11) do **not** recognize VS 2022 and will fail to generate a solution.
-
+> The SwiftUI workbench is compiled from Swift sources. CMake enables Swift only for the **Ninja** (or Xcode) generators. With `Unix Makefiles`, CMake automatically falls back to the AppKit-only frontend (no SwiftUI panels). Use Ninja to get the full SwiftUI workbench.
 
 ### Build Steps
-1. Open a terminal (`cmd` or `PowerShell`) in the project root directory.
-2. Run one of the provided batch scripts:
-   - `run_build_debug.bat`
-   - `run_build_release.bat`
-3. Open the `bin` folder and run the executable or open the `build` folder and open the `.sln` file
-     
-<br>
 
-   > **Tip**: Use the release build if you only need the final executable in optimized (Release) mode.
+1. Configure with Ninja (recommended, full SwiftUI workbench):
+   ```sh
+   cmake -B build-mac -G Ninja
+   cmake --build build-mac -j8
+   ```
+   Alternative configure without Ninja (AppKit-only frontend):
+   ```sh
+   cmake -B build-mac-make
+   cmake --build build-mac-make -j8
+   ```
 
-## Build Instructions (Linux)
+2. Build outputs:
+   - App bundle: `bin/Metal/Mesh2SplatMetal.app`
+   - Static library: `libMesh2SplatMetalLib.a` (in the build directory)
+   - Smoke tests and CLI tools: see [Tests](#tests) below.
 
-### Prerequisites
+3. The `.metal` shaders are compiled offline into `Mesh2SplatMetal.metallib` and copied into the app bundle automatically.
 
-Install dependencies:
+> **Tip**: Use `cmake -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Release` for an optimized build.
 
-```bash
-sudo apt install build-essential cmake pkg-config git \
-    libfreeimage-dev libglew-dev libglfw3-dev libgl1-mesa-dev \
-    libxinerama-dev libxcursor-dev libxi-dev libxxf86vm-dev
+## Run
+
+```sh
+open bin/Metal/Mesh2SplatMetal.app
 ```
 
-### Build Steps
+The workbench opens a native macOS window. Drag & drop (or use File > Open) a `.glb` / `.gltf` / Gaussian `.ply` file to load a scene, convert the mesh to Gaussians, inspect the 7 visualization modes, adjust lighting, and export the result as Gaussian PLY (Pbr3DGS).
 
-1. Create and enter the build directory:
-   ```bash
-   mkdir build && cd build
-   ```
+## Command Line Converter
 
-2. Configure and build:
-   ```bash
-   cmake ..
-   cmake --build . -j16
-   ```
+`Mesh2SplatConvert` converts a mesh (or Gaussian PLY) to Gaussian PLY headlessly, linked against `Mesh2SplatMetalLib`:
 
-3. Run the executable located in the `build` directory.
+```sh
+Usage: Mesh2SplatConvert <input.(glb|gltf|ply)> <output.ply> [options]
+  --samples N         gaussian samples per mesh triangle (default 8)
+  --format NAME       export format: pbr3dgs (default) or 3dgs
+  --scale MULT        gaussian scale multiplier applied on export (default 1.0)
+  --verify            read the exported PLY back and validate gaussian records
+  --stats             print renderer resource and timing statistics
+```
 
-<br>
+Example:
 
-   > **Tip**: Use `cmake .. -DCMAKE_BUILD_TYPE=Release` if you only need the final executable in optimized (Release) mode.
+```sh
+cmake --build build-mac --target Mesh2SplatConvert -j8
+./bin/Mesh2SplatConvert model.glb model.ply --samples 8 --format pbr3dgs --verify --stats
+```
 
+The shader library is resolved through `MESH2SPLAT_METALLIB_PATH` (falling back to the app bundle path / runtime source fallback).
+
+> **Status**: the CLI source landed in the working tree on 2026-08-06 as part of the
+> Stage 11 integration pass. Build and end-to-end run results are 待运行验证 until
+> the integrated build executes the tool.
+
+## Tests
+
+| Test | Layer | Status |
+|---|---|---|
+| `CoreIoSmokeTest` (`tests/CoreIoSmokeTest.cpp`) | CPU side: core data, camera, Gaussian ABI, GLTF error handling, PLY Pbr3DGS write/read round-trip | Implemented; passes on 2026-08-06 |
+| `MetalGpuSmokeTest` (`tests/MetalGpuSmokeTest.cpp`) | GPU side, headless Metal compute/conversion smoke test | Planned; CMake target declared, source pending |
+
+Run the CPU smoke test:
+
+```sh
+cmake --build build-mac --target CoreIoSmokeTest -j8
+./build-mac/CoreIoSmokeTest
+```
+
+Exit code 0 means all checks passed.
+
+## Architecture Overview
+
+The project is organized in three layers around the shared static library `Mesh2SplatMetalLib`:
+
+```text
+src/
+  core/                 # API-neutral data, math, camera, parsing outputs
+  io/                   # API-neutral import/export: GltfLoader, PlyReader, PlyWriter
+  renderer/metal/       # Metal resources, passes, pipelines, command scheduling
+  app/
+    macos/              # AppKit, MTKView, SwiftUI workbench, RendererBridge
+    cli/                # Mesh2SplatConvert CLI (planned)
+shaders/
+  metal/                # MSL sources: Mesh, Conversion, Gaussian, Sort, Shadow, GpuTypes
+tests/                  # CoreIoSmokeTest (GPU smoke test planned)
+docs/                   # Migration and verification documentation
+```
+
+- `Mesh2SplatMetalLib` is a static library combining the API-neutral core, the IO layer and the Metal renderer backend. It has **no AppKit/MTKView dependencies**, so the same library serves the macOS app, headless tests and the CLI.
+- The **app** (`Mesh2SplatMetal`) adds the native macOS frontend: SwiftUI workbench (Ninja/Xcode builds) or AppKit-only shell (Makefiles), speaking to the renderer through `RendererInterface`.
+- The **CLI** (`Mesh2SplatConvert`) is the planned headless converter.
+
+## Documentation
+
+The `docs/` directory contains the migration and verification documentation:
+
+- [target-architecture.md](docs/target-architecture.md) — frozen target layout and backend boundaries
+- [mac-metal-native-port-plan.md](docs/mac-metal-native-port-plan.md) — original port plan (Chinese)
+- [migration-priority.md](docs/migration-priority.md) — stage gate priorities
+- [parallel-workstreams.md](docs/parallel-workstreams.md) — parallel work lanes
+- [stage-1-acceptance.md](docs/stage-1-acceptance.md) / [stage-11-acceptance.md](docs/stage-11-acceptance.md) — stage acceptance records
+- [refactor-baseline.md](docs/refactor-baseline.md) — migration baseline snapshot
+- [shader-inventory.md](docs/shader-inventory.md) / [pass-inventory.md](docs/pass-inventory.md) — GLSL → MSL and pass migration maps
+- [gpu-data-layout.md](docs/gpu-data-layout.md), [metal-buffer-memory-policy.md](docs/metal-buffer-memory-policy.md), [metal-frame-resources-notes.md](docs/metal-frame-resources-notes.md), [metal-gaussian-sort-notes.md](docs/metal-gaussian-sort-notes.md), [metal-mesh-material-upload-notes.md](docs/metal-mesh-material-upload-notes.md), [metal-shader-library-strategy.md](docs/metal-shader-library-strategy.md), [swiftui-app-architecture.md](docs/swiftui-app-architecture.md), [cmake-metal-target-isolation.md](docs/cmake-metal-target-isolation.md), [apple-silicon-performance-verification.md](docs/apple-silicon-performance-verification.md)
 
 ## Limitations
 - Volumetric Data such as foliage, grass, hair, clouds, etc. has not being targeted and will probably not be converted correctly if using primitives different from triangles.<br>
 
 ## How to Cite
-To cite this repository, click the **“Cite this repository”** button at the top of the GitHub page.  
+To cite this repository, click the **"Cite this repository"** button at the top of the GitHub page.  
 Alternatively, you can use the following BibTeX entry:
 ```bibtex 
 @misc{
@@ -190,10 +254,3 @@ Before you can contribute, EA must have a Contributor License Agreement (CLA) on
 # License
 
 The source code is released under an open license as detailed in [LICENSE.txt](./LICENSE.txt)
-
-
-
-
-
-
-

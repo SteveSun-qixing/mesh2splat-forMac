@@ -2,11 +2,18 @@
 
 This document freezes the shader migration map from legacy GLSL to Metal Shading Language.
 
+> **Status note (2026-08-06)**: all legacy `src/shaders/*.glsl` files have been
+> **removed** (commit `4ef4d60`); `shaders/metal/` is the only shader tree
+> (`Conversion`, `Gaussian`, `Mesh`, `Shadow`, `Sort`, `GpuTypes`). Rows marked
+> "Future ..." below are now implemented in the corresponding `.metal` files
+> (shadow compute/render in `Shadow.metal`, PBR in `Gaussian.metal`/`Mesh.metal`).
+> The table is kept as the historical migration map.
+
 ## Current Metal Shader Files
 
 | MSL File | Purpose |
 |---|---|
-| `shaders/metal/Clear.metal` | Clear/fullscreen placeholder shader |
+| `shaders/metal/Clear.metal` | Clear/fullscreen placeholder shader (**removed**; clear is handled inline by render passes) |
 | `shaders/metal/Mesh.metal` | Mesh vertex/fragment rendering |
 | `shaders/metal/Conversion.metal` | Mesh-to-gaussian compute conversion |
 | `shaders/metal/Gaussian.metal` | Gaussian preview instanced rendering |
@@ -55,7 +62,7 @@ This document freezes the shader migration map from legacy GLSL to Metal Shading
 - New macOS shaders must live under `shaders/metal`.
 - MSL function names must be represented in `MetalPipelineCache` descriptors.
 - Pipeline creation errors must include function name and pipeline label.
-- Runtime shader source fallback remains required until the local Metal Toolchain component is installed.
+- Runtime shader source fallback remains required until the local Metal Toolchain component is installed. (**Resolved 2026-08-06**: the Metal toolchain is available and `Mesh2SplatMetal.metallib` is compiled offline; the fallback stays as a defensive path.)
 
 ## Stage 0 Acceptance
 

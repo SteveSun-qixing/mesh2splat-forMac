@@ -2,6 +2,12 @@
 
 This document freezes the migration priority so the port progresses stage by stage.
 
+> **Status note (2026-08-06)**: Priorities 1-4 below are effectively **complete**
+> (stages 0-10 accepted; the SwiftUI frontend, shadow maps, split-screen and PBR
+> landed 2026-07-06; the legacy OpenGL path was removed 2026-08-06). The only open
+> work is Stage 11 (export/testing/perf records) — see `stage-11-acceptance.md`.
+> The priority lists below are kept as historical freeze.
+
 ## Execution Rule
 
 From this point forward, stages are advanced by gate:
@@ -59,7 +65,15 @@ These features are later-stage work:
 
 ## Current Stage Gate
 
-The project must first close Stage 0 documentation and architecture freeze. After that, Stage 1 macOS app shell is audited, then Stage 2 core decoupling, then Stage 3 Metal backend infrastructure. Later work already landed remains useful, but it does not allow skipping an earlier gate.
+**Updated 2026-08-06**: Stage 0-10 gates are closed. The project is now executing
+Stage 11 (export, tests and performance engineering):
+
+- PLY export path: implemented (GPU readback + Pbr3DGS writer), end-to-end sample validation pending.
+- Basic correctness tests: `CoreIoSmokeTest` implemented and passing (2026-08-06).
+- GPU smoke test (`MetalGpuSmokeTest`) and CLI (`Mesh2SplatConvert`): CMake targets declared, source files pending — 待实现 / 待运行验证.
+- Benchmark, Metal capture checklist and visual regression gallery: records pending.
+
+See `stage-11-acceptance.md` for the acceptance record.
 
 ## Stage 0 Acceptance
 

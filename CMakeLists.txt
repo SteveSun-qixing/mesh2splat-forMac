@@ -356,16 +356,23 @@ add_executable(CoreIoSmokeTest
 target_compile_features(CoreIoSmokeTest PRIVATE cxx_std_17)
 target_link_libraries(CoreIoSmokeTest PRIVATE Mesh2SplatMetalLib)
 
-if(EXISTS ${CMAKE_SOURCE_DIR}/tests/MetalGpuSmokeTest.cpp)
+if(EXISTS ${CMAKE_SOURCE_DIR}/tests/MetalGpuSmokeTest.mm)
     add_executable(MetalGpuSmokeTest
-        ${CMAKE_SOURCE_DIR}/tests/MetalGpuSmokeTest.cpp
+        ${CMAKE_SOURCE_DIR}/tests/MetalGpuSmokeTest.mm
     )
     target_compile_features(MetalGpuSmokeTest PRIVATE cxx_std_17)
-    target_compile_options(MetalGpuSmokeTest PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    target_compile_options(MetalGpuSmokeTest PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fno-objc-arc>)
+    target_link_options(MetalGpuSmokeTest PRIVATE -lobjc)
     target_link_libraries(MetalGpuSmokeTest PRIVATE Mesh2SplatMetalLib)
     if(APPLE)
         find_library(METAL_LIBRARY Metal REQUIRED)
-        target_link_libraries(MetalGpuSmokeTest PRIVATE ${METAL_LIBRARY})
+        find_library(APPKIT_LIBRARY AppKit REQUIRED)
+        find_library(FOUNDATION_LIBRARY Foundation REQUIRED)
+        target_link_libraries(MetalGpuSmokeTest PRIVATE
+            ${METAL_LIBRARY}
+            ${APPKIT_LIBRARY}
+            ${FOUNDATION_LIBRARY}
+        )
     endif()
 endif()
 
@@ -373,18 +380,31 @@ endif()
 # Command line converter
 # ---------------------------------------------------------------------------
 
-if(EXISTS ${CMAKE_SOURCE_DIR}/src/app/cli/Mesh2SplatConvert.cpp)
+if(EXISTS ${CMAKE_SOURCE_DIR}/src/app/cli/Mesh2SplatConvert.mm)
+    add_executable(Mesh2SplatConvert
+        ${CMAKE_SOURCE_DIR}/src/app/cli/Mesh2SplatConvert.mm
+    )
+elseif(EXISTS ${CMAKE_SOURCE_DIR}/src/app/cli/Mesh2SplatConvert.cpp)
     add_executable(Mesh2SplatConvert
         ${CMAKE_SOURCE_DIR}/src/app/cli/Mesh2SplatConvert.cpp
     )
+endif()
+if(TARGET Mesh2SplatConvert)
     target_compile_features(Mesh2SplatConvert PRIVATE cxx_std_17)
-    target_compile_options(Mesh2SplatConvert PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    target_compile_options(Mesh2SplatConvert PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fno-objc-arc>)
+    target_link_options(Mesh2SplatConvert PRIVATE -lobjc)
     target_link_libraries(Mesh2SplatConvert PRIVATE Mesh2SplatMetalLib)
     set_target_properties(Mesh2SplatConvert PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
     )
     if(APPLE)
         find_library(METAL_LIBRARY Metal REQUIRED)
-        target_link_libraries(Mesh2SplatConvert PRIVATE ${METAL_LIBRARY})
+        find_library(APPKIT_LIBRARY AppKit REQUIRED)
+        find_library(FOUNDATION_LIBRARY Foundation REQUIRED)
+        target_link_libraries(Mesh2SplatConvert PRIVATE
+            ${METAL_LIBRARY}
+            ${APPKIT_LIBRARY}
+            ${FOUNDATION_LIBRARY}
+        )
     endif()
 endif()

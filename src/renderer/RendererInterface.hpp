@@ -450,6 +450,11 @@ public:
         const core::InputState& inputState,
         double deltaTimeSeconds) = 0;
 
+    // Advances asynchronous backend state (for example finalizing completed
+    // conversions) without requiring a drawable. Backends that cannot make
+    // progress without drawing a frame return false.
+    virtual bool pumpPendingConversion() { return false; }
+
     virtual void resize(const RendererResizeRequest& request)
     {
         if (request.minimized) {

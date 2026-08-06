@@ -60,6 +60,7 @@ public:
         void* drawable,
         const core::InputState& inputState,
         double deltaTimeSeconds) override;
+    bool pumpPendingConversion() override;
 
 private:
     struct Impl;

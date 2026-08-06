@@ -2,6 +2,12 @@
 
 This document records the current CMake target-isolation problem on macOS and proposes a follow-up refactor. Task 19 is documentation-only: no `CMakeLists.txt` or source files are changed here.
 
+> **Status note (2026-08-06)**: this problem is **resolved beyond the proposal**. Commit
+> `4ef4d60` removed the legacy OpenGL target, GLFW/GLEW/OpenGL discovery and the old
+> third-party include pollution entirely; the project is now a Metal single-backend
+> tree with the shared `Mesh2SplatMetalLib`. The remainder of this document is kept as
+> the historical analysis and proposal.
+
 ## Current State
 
 The root `CMakeLists.txt` still configures the legacy OpenGL application before the macOS Metal application:

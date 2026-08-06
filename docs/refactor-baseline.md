@@ -2,13 +2,19 @@
 
 This document freezes the current migration baseline for the macOS native Metal port.
 
+> **Status note (2026-08-06)**: the legacy `Mesh2Splat` target and all
+> OpenGL/GLFW/GLEW/ImGui code were **removed** on 2026-08-06 (commit `4ef4d60`),
+> and the offline Metal shader toolchain caveat below is **resolved** (`.metallib`
+> is now built into `build-mac*`). This baseline is kept as the historical snapshot
+> from the migration start.
+
 ## Project Snapshot
 
 - Project root: `/Users/sevenstars/Documents/4DGS/mesh2splat/Project-01/mesh2splat-forMac`
 - Active branch: `mac-metal-refactor`
 - Remote: `origin = git@github.com:SteveSun-qixing/mesh2splat-forMac.git`
 - Current macOS target: `Mesh2SplatMetal`
-- Current legacy target: `Mesh2Splat`
+- Current legacy target: `Mesh2Splat` (removed 2026-08-06, commit `4ef4d60`)
 
 ## Local Toolchain
 

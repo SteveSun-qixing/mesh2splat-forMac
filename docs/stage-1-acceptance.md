@@ -99,6 +99,11 @@ The Metal target does not link OpenGL, GLFW, or GLEW.
 
 ## Caveat
 
+> **Status note (2026-08-06)**: this caveat is **resolved**. Offline `.metallib`
+> generation now works on the build machine: `build-mac` / `build-mac-swift` contain
+> `Mesh2SplatMetal.metallib` (built 2026-07-06) and per-shader `.air` outputs. The
+> text below is kept as the historical Stage 1 record.
+
 Offline `.metallib` generation is still skipped locally because Xcode's Metal Toolchain component is missing:
 
 ```text

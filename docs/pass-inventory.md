@@ -2,6 +2,13 @@
 
 This document maps the legacy OpenGL passes to the frozen macOS Metal migration tasks.
 
+> **Status note (2026-08-06)**: all legacy `src/renderer/renderPasses/*` files and
+> GLSL shaders have been **removed** (commit `4ef4d60`). The Metal counterparts
+> marked "Future/Deferred to stage 9" below are now **implemented**: shadow passes
+> (`f99c5cf`, `5a7e6cb`, `86e1d78`), GGX PBR lighting (`675045f`) and split-screen
+> comparison (`5ff2744`) landed 2026-07-06. The table is kept as the historical
+> migration map.
+
 ## Summary
 
 | Legacy Pass | Legacy File | Current OpenGL Role | Metal Target | Status |

@@ -5,6 +5,12 @@
 目标项目：Mesh2Splat  
 目标平台：macOS / Apple Silicon / Metal
 
+> **现状标注（2026-08-06）**：本文档为重构起始时的策划书，保留为历史记录。截至
+> 2026-08-06，策划中的核心目标已基本达成：Metal 单后端（旧 OpenGL/GLFW/GLEW/ImGui
+> 路径已删除，提交 `4ef4d60`）、pure compute conversion、GPU radix sort、Gaussian
+> 渲染、GGX PBR、点光源阴影、split-screen、SwiftUI 工作台与 PLY 导入/导出均已落地；
+> 剩余为阶段 11 的测试/CLI/性能验证工作（见 `stage-11-acceptance.md`）。
+
 ## 1. 项目摘要
 
 本文档用于规划 Mesh2Splat 的 macOS 原生高性能重构工作。目标不是让当前 OpenGL 版本在 Mac 上勉强运行，而是将项目重构为以 Metal、macOS 原生窗口系统、原生 GPU 资源管理和 Apple Silicon 性能优化为核心的一等平台版本。
