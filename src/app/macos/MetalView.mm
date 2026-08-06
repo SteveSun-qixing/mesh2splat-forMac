@@ -938,6 +938,15 @@ mesh2splat::macos::MacBridgeDiagnosticSeverity macSeverityFromRenderer(mesh2spla
     return YES;
 }
 
+- (NSSize)intrinsicContentSize
+{
+    // SwiftUI hosts this view inside a flexible viewport; do not fight the
+    // layout engine with a fixed intrinsic size, otherwise MTKView reports an
+    // unbounded preferred size and SwiftUI enters an endless layout loop that
+    // starves frame drawing.
+    return NSMakeSize(NSViewNoIntrinsicMetric, NSViewNoIntrinsicMetric);
+}
+
 - (void)viewDidMoveToWindow
 {
     [super viewDidMoveToWindow];

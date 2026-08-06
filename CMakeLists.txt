@@ -193,6 +193,7 @@ if(APPLE)
 
         set(MACOS_APP_OPTIONAL_SWIFTUI_SOURCES
             ${CMAKE_SOURCE_DIR}/src/app/macos/AppCommands.swift
+            ${CMAKE_SOURCE_DIR}/src/app/macos/AppDelegate.swift
             ${CMAKE_SOURCE_DIR}/src/app/macos/AppEnvironment.swift
             ${CMAKE_SOURCE_DIR}/src/app/macos/ConversionProgressPanel.swift
             ${CMAKE_SOURCE_DIR}/src/app/macos/DiagnosticsPanel.swift

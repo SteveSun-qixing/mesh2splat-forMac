@@ -183,10 +183,15 @@ final class Mesh2SplatAppState: ObservableObject {
     func bindMetalView(_ view: NSView) {
         metalView = view
         rendererBridge = M2SRendererBridge(metalView: view)
+        Mesh2SplatAppDelegate.appState = self
         statusText = "Metal viewport ready"
         submitRenderSettings()
         refreshRendererStatusFromBridge()
         startRendererStatusLoop()
+        if let pendingURL = Mesh2SplatAppDelegate.pendingOpenURL {
+            Mesh2SplatAppDelegate.pendingOpenURL = nil
+            Mesh2SplatAppDelegate.handleOpenURL(pendingURL)
+        }
     }
 
     func openImportPanel() {

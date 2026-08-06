@@ -215,8 +215,17 @@ private struct BackendStatusPanel: View {
 private struct MetalViewport: NSViewRepresentable {
     @EnvironmentObject private var appState: Mesh2SplatAppState
 
+    // SwiftUI can recreate NSViewRepresentable hosts (window restoration,
+    // scene re-evaluation), which would otherwise spawn a fresh Metal
+    // renderer per incarnation. Reuse one view for the whole process.
+    private static var sharedView: NSView?
+
     func makeNSView(context: Context) -> NSView {
+        if let shared = MetalViewport.sharedView {
+            return shared
+        }
         let view = Mesh2SplatCreateMetalView(NSRect(x: 0, y: 0, width: 960, height: 640))
+        MetalViewport.sharedView = view
         DispatchQueue.main.async {
             appState.bindMetalView(view)
             Mesh2SplatFocusMetalView(view)

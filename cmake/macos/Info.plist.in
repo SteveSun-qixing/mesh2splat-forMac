@@ -23,7 +23,38 @@
     <string>@MESH2SPLAT_MIN_MACOS_VERSION@</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSQuitAlwaysKeepsWindows</key>
+    <false/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>glTF Scene</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.gltf</string>
+                <string>public.gltransmission-binary</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Gaussian Splat PLY</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.ply</string>
+                <string>com.mesh2splat.ply</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
