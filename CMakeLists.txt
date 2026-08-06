@@ -251,6 +251,16 @@ if(APPLE)
     find_library(SWIFTUI_LIBRARY SwiftUI REQUIRED)
     find_library(UNIFORMTYPEIDENTIFIERS_LIBRARY UniformTypeIdentifiers REQUIRED)
 
+    set(MESH2SPLAT_EXECUTABLE_NAME "Mesh2SplatMetal")
+    set(MESH2SPLAT_BUNDLE_IDENTIFIER "com.mesh2splat.metal")
+    set(MESH2SPLAT_MIN_MACOS_VERSION "14.0")
+    set(MESH2SPLAT_GENERATED_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Mesh2SplatMetal-Info.plist)
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/cmake/macos/Info.plist.in
+        ${MESH2SPLAT_GENERATED_INFO_PLIST}
+        @ONLY
+    )
+
     target_link_libraries(Mesh2SplatMetal PRIVATE
         Mesh2SplatMetalLib
         ${APPKIT_LIBRARY}
@@ -266,7 +276,7 @@ if(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.mesh2splat.metal"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
         MACOSX_BUNDLE_BUNDLE_VERSION "1"
-        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/cmake/macos/Info.plist.in
+        MACOSX_BUNDLE_INFO_PLIST ${MESH2SPLAT_GENERATED_INFO_PLIST}
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/Metal
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.mesh2splat.metal"
