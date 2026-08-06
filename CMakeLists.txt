@@ -9,146 +9,131 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS deployment target")
 endif()
 
-set(THIRD_PARTY_DIR         ${CMAKE_SOURCE_DIR}/thirdParty)
-set(GLFW_DIR                ${THIRD_PARTY_DIR}/glfw)
-set(GLEW_DIR                ${THIRD_PARTY_DIR}/glew)
-set(GLM_DIR                 ${THIRD_PARTY_DIR}/glm)
-set(IMGUI_DIR               ${THIRD_PARTY_DIR}/imgui)
-set(IGFD_DIR                ${THIRD_PARTY_DIR}/ImGuiFileDialog)
-set(IMGUIZMO_DIR            ${THIRD_PARTY_DIR}/imguizmo)
-set(XATLAS_DIR              ${THIRD_PARTY_DIR}/xatlas)
-
-if(APPLE)
-    set(MESH2SPLAT_BUILD_LEGACY_OPENGL_DEFAULT OFF)
-else()
-    set(MESH2SPLAT_BUILD_LEGACY_OPENGL_DEFAULT ON)
-endif()
-option(MESH2SPLAT_BUILD_LEGACY_OPENGL "Build the legacy OpenGL/GLFW/GLEW Mesh2Splat target" ${MESH2SPLAT_BUILD_LEGACY_OPENGL_DEFAULT})
-
-file(GLOB_RECURSE SOURCES 
-        ${CMAKE_SOURCE_DIR}/src/*.cpp
-        ${CMAKE_SOURCE_DIR}/src/*.hpp
-        ${CMAKE_SOURCE_DIR}/src/*.h
-)
-
-file(GLOB IMGUI_SOURCES
-        ${IMGUI_DIR}/*.cpp
-        ${IMGUI_DIR}/*.hpp
-        ${IMGUI_DIR}/*.h
-)
-list(APPEND SOURCES ${IMGUI_SOURCES})
-
-file(GLOB IMGUIZMO_SOURCES
-        ${IMGUIZMO_DIR}/*.cpp
-        ${IMGUIZMO_DIR}/*.hpp
-        ${IMGUIZMO_DIR}/*.h
-)
-list(APPEND SOURCES ${IMGUIZMO_SOURCES})
-
-file(GLOB IGFD_SOURCE
-        ${IGFD_DIR}/*.cpp
-        ${IGFD_DIR}/*.hpp
-        ${IGFD_DIR}/*.h
-)
-list(APPEND SOURCES ${IGFD_SOURCE})
-
-file(GLOB XATLAS_SOURCE
-        ${XATLAS_DIR}/*.cpp
-        ${XATLAS_DIR}/*.hpp
-        ${XATLAS_DIR}/*.h
-)
-list(APPEND SOURCES ${XATLAS_SOURCE})
-
-set(THIRD_PARTY_SOURCES ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES} ${IGFD_SOURCE} ${XATLAS_SOURCE})
-if(MSVC)
-    set_source_files_properties(${THIRD_PARTY_SOURCES} PROPERTIES COMPILE_FLAGS "/W0")
-else()
-    set_source_files_properties(${THIRD_PARTY_SOURCES} PROPERTIES COMPILE_FLAGS "-w")
+set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/thirdParty)
+set(METAL_SHADER_DIR ${CMAKE_SOURCE_DIR}/shaders/metal)
+file(GLOB METAL_SHADER_SOURCES ${METAL_SHADER_DIR}/*.metal)
+if(METAL_SHADER_SOURCES)
+    set_source_files_properties(${METAL_SHADER_SOURCES} PROPERTIES HEADER_FILE_ONLY TRUE)
 endif()
 
-if(MESH2SPLAT_BUILD_LEGACY_OPENGL)
-    add_executable(Mesh2Splat ${SOURCES})
+# ---------------------------------------------------------------------------
+# Mesh2SplatMetalLib
+#
+# API-neutral core, IO and Metal renderer backend. No AppKit/MTKView
+# dependencies, so the same library can serve the macOS app, headless tests
+# and the command line converter.
+# ---------------------------------------------------------------------------
 
-    target_compile_definitions(Mesh2Splat PRIVATE GLEW_STATIC)
-    target_include_directories(Mesh2Splat PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_include_directories(Mesh2Splat SYSTEM PRIVATE
-        ${GLFW_DIR}/include
-        ${GLEW_DIR}/include
-        ${GLM_DIR}
-        ${IMGUI_DIR}
-        ${IGFD_DIR}
-        ${IMGUIZMO_DIR}
-        ${XATLAS_DIR}
-        ${THIRD_PARTY_DIR}
-    )
-endif()
-
-add_executable(CoreIoSmokeTest
-    ${CMAKE_SOURCE_DIR}/tests/CoreIoSmokeTest.cpp
+set(M2S_CORE_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/core/AssetFileTypes.hpp
     ${CMAKE_SOURCE_DIR}/src/core/CameraController.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CameraController.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/ConversionSettings.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/FrameData.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/GaussianData.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/GaussianVisibility.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/GpuTypes.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/InputState.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/MeshData.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/NumericUtils.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/PathUtils.hpp
     ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/RenderSettings.hpp
+    ${CMAKE_SOURCE_DIR}/src/core/SceneData.hpp
+)
+
+set(M2S_IO_SOURCES
     ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.hpp
     ${CMAKE_SOURCE_DIR}/src/io/PlyReader.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/PlyReader.hpp
     ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.cpp
-    ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp
+    ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.hpp
     ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
     ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_write_impl.cpp
+    ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp
 )
-target_compile_features(CoreIoSmokeTest PRIVATE cxx_std_17)
-target_include_directories(CoreIoSmokeTest PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_include_directories(CoreIoSmokeTest SYSTEM PRIVATE ${THIRD_PARTY_DIR})
 
-if(MESH2SPLAT_BUILD_LEGACY_OPENGL AND MSVC)
-    target_compile_options(Mesh2Splat PRIVATE
-        /wd4244   # conversion, possible loss of data
-        /wd4267   # size_t to smaller integer conversion
-        /wd4018   # signed/unsigned mismatch
-        /wd4101   # unreferenced local variable
-    )
-    target_link_options(Mesh2Splat PRIVATE
-        /ignore:4098  # defaultlib runtime library conflict (glew32s.lib)
-        /ignore:4099  # PDB not found for glew32s.lib
-    )
-endif()
+set(M2S_RENDERER_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/renderer/event.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/RenderCommandQueue.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/RendererAssetSession.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/RendererInterface.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBindingValidation.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBindings.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalCommandScheduler.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalCommandScheduler.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalConversionJob.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalConversionPass.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalConversionPass.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDebugLabels.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDiagnostics.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDispatchUtils.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDispatchUtils.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameCapture.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameGraph.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.cpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameUniformBuffer.cpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameUniformBuffer.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.cpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianRenderPass.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianRenderPass.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianShadowPass.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianShadowPass.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortBuffer.cpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortBuffer.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortPass.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortPass.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMeshRenderPass.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMeshRenderPass.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPassContext.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPipelineCache.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPipelineCache.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderTarget.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderTarget.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderTargetPool.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderStateCache.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderStateCache.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalResourceLedger.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalResourceUploader.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalResourceUploader.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalSceneResources.cpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalSceneResources.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalShaderLibrary.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalShaderLibrary.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalSortPlanner.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalTexture.mm
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalTexture.hpp
+    ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalUploadBatch.hpp
+)
 
-if(MESH2SPLAT_BUILD_LEGACY_OPENGL)
-    if(WIN32)
-        target_link_libraries(Mesh2Splat
-            ${GLFW_DIR}/lib-vc2022/glfw3.lib
-            ${GLEW_DIR}/lib/Release/x64/glew32s.lib
-            opengl32)
-    elseif(APPLE)
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(GLFW REQUIRED glfw3)
-        pkg_check_modules(GLEW REQUIRED glew)
-        find_library(OPENGL_LIBRARY OpenGL REQUIRED)
+add_library(Mesh2SplatMetalLib STATIC
+    ${M2S_CORE_SOURCES}
+    ${M2S_IO_SOURCES}
+    ${M2S_RENDERER_SOURCES}
+)
+target_compile_features(Mesh2SplatMetalLib PRIVATE cxx_std_17)
+target_compile_options(Mesh2SplatMetalLib PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+target_include_directories(Mesh2SplatMetalLib PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(Mesh2SplatMetalLib SYSTEM PUBLIC ${THIRD_PARTY_DIR})
+source_group("Core" FILES ${M2S_CORE_SOURCES})
+source_group("IO" FILES ${M2S_IO_SOURCES})
+source_group("Renderer/Metal" FILES ${M2S_RENDERER_SOURCES})
 
-        target_include_directories(Mesh2Splat PRIVATE
-            ${GLFW_INCLUDE_DIRS}
-            ${GLEW_INCLUDE_DIRS}
-        )
-        target_link_directories(Mesh2Splat PRIVATE
-            ${GLFW_LIBRARY_DIRS}
-            ${GLEW_LIBRARY_DIRS}
-        )
-        target_link_libraries(Mesh2Splat
-            ${GLFW_LIBRARIES}
-            ${GLEW_LIBRARIES}
-            ${OPENGL_LIBRARY}
-        )
-    else()
-        target_link_libraries(Mesh2Splat glfw GLEW GL X11 Xrandr Xinerama Xcursor Xi Xxf86vm pthread dl) #todo
-    endif()
-
-    set_target_properties(Mesh2Splat PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/bin/Debug
-        RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/bin/Release
-        ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/lib/Debug
-        ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib/Release
-        LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_SOURCE_DIR}/lib/Debug
-        LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/lib/Release
-    )
-endif()
+# ---------------------------------------------------------------------------
+# macOS app
+# ---------------------------------------------------------------------------
 
 if(APPLE)
     set(MESH2SPLAT_ENABLE_SWIFTUI_APP OFF)
@@ -159,12 +144,6 @@ if(APPLE)
         message(STATUS "SwiftUI app frontend disabled for ${CMAKE_GENERATOR}; use Xcode or Ninja to enable Swift sources.")
     endif()
 
-    set(METAL_SHADER_DIR ${CMAKE_SOURCE_DIR}/shaders/metal)
-    file(GLOB METAL_SHADER_SOURCES ${METAL_SHADER_DIR}/*.metal)
-    if(METAL_SHADER_SOURCES)
-        set_source_files_properties(${METAL_SHADER_SOURCES} PROPERTIES HEADER_FILE_ONLY TRUE)
-    endif()
-
     set(MACOS_APP_OBJCXX_SOURCES
         ${CMAKE_SOURCE_DIR}/src/app/macos/MacApp.mm
         ${CMAKE_SOURCE_DIR}/src/app/macos/MetalView.mm
@@ -173,83 +152,6 @@ if(APPLE)
 
     set(MACOS_APP_SWIFTUI_SOURCES)
 
-    set(MACOS_APP_CORE_SOURCES
-        ${CMAKE_SOURCE_DIR}/src/core/FrameData.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/GaussianData.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/GpuTypes.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/InputState.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/CameraController.cpp
-        ${CMAKE_SOURCE_DIR}/src/core/CameraController.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/MeshData.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.cpp
-        ${CMAKE_SOURCE_DIR}/src/core/PrimitiveMeshFactory.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/SceneData.hpp
-    )
-
-    set(MACOS_APP_IO_SOURCES
-        ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.cpp
-        ${CMAKE_SOURCE_DIR}/src/io/GltfLoader.hpp
-        ${CMAKE_SOURCE_DIR}/src/io/PlyReader.cpp
-        ${CMAKE_SOURCE_DIR}/src/io/PlyReader.hpp
-        ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.cpp
-        ${CMAKE_SOURCE_DIR}/src/io/PlyWriter.hpp
-        ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_impl.cpp
-        ${CMAKE_SOURCE_DIR}/src/implementationFiles/stb_image_write_impl.cpp
-        ${CMAKE_SOURCE_DIR}/src/implementationFiles/tiny_gltf_impl.cpp
-    )
-
-    set(MACOS_APP_RENDERER_SOURCES
-        ${CMAKE_SOURCE_DIR}/src/renderer/event.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/RendererInterface.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBindings.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBuffer.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalCommandScheduler.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalCommandScheduler.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalConversionPass.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalConversionPass.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDeviceContext.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDiagnostics.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDispatchUtils.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDispatchUtils.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameUniformBuffer.cpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameUniformBuffer.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.cpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameResources.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.cpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianBuffer.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianRenderPass.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianRenderPass.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianShadowPass.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianShadowPass.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortBuffer.cpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortBuffer.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortPass.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalGaussianSortPass.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMesh.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMeshRenderPass.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalMeshRenderPass.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPassContext.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPipelineCache.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalPipelineCache.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderTarget.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderTarget.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderer.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderStateCache.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderStateCache.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalResourceUploader.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalResourceUploader.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalSceneResources.cpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalSceneResources.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalShaderLibrary.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalShaderLibrary.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalTexture.mm
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalTexture.hpp
-    )
-
     set(MACOS_APP_OPTIONAL_OBJCXX_SOURCES
         ${CMAKE_SOURCE_DIR}/src/app/macos/RendererBridge.mm
         ${CMAKE_SOURCE_DIR}/src/app/macos/RendererBridge.hpp
@@ -257,40 +159,6 @@ if(APPLE)
     foreach(MACOS_APP_OPTIONAL_SOURCE IN LISTS MACOS_APP_OPTIONAL_OBJCXX_SOURCES)
         if(EXISTS ${MACOS_APP_OPTIONAL_SOURCE})
             list(APPEND MACOS_APP_OBJCXX_SOURCES ${MACOS_APP_OPTIONAL_SOURCE})
-        endif()
-    endforeach()
-
-    set(MACOS_APP_OPTIONAL_CORE_SOURCES
-        ${CMAKE_SOURCE_DIR}/src/core/AssetFileTypes.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/ConversionSettings.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/GaussianVisibility.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/NumericUtils.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/PathUtils.hpp
-        ${CMAKE_SOURCE_DIR}/src/core/RenderSettings.hpp
-    )
-    foreach(MACOS_APP_OPTIONAL_SOURCE IN LISTS MACOS_APP_OPTIONAL_CORE_SOURCES)
-        if(EXISTS ${MACOS_APP_OPTIONAL_SOURCE})
-            list(APPEND MACOS_APP_CORE_SOURCES ${MACOS_APP_OPTIONAL_SOURCE})
-        endif()
-    endforeach()
-
-    set(MACOS_APP_OPTIONAL_RENDERER_SOURCES
-        ${CMAKE_SOURCE_DIR}/src/renderer/RenderCommandQueue.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/RendererAssetSession.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalBindingValidation.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalConversionJob.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalDebugLabels.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameCapture.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalFrameGraph.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalRenderTargetPool.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalResourceLedger.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalShaderSourcePackage.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalSortPlanner.hpp
-        ${CMAKE_SOURCE_DIR}/src/renderer/metal/MetalUploadBatch.hpp
-    )
-    foreach(MACOS_APP_OPTIONAL_SOURCE IN LISTS MACOS_APP_OPTIONAL_RENDERER_SOURCES)
-        if(EXISTS ${MACOS_APP_OPTIONAL_SOURCE})
-            list(APPEND MACOS_APP_RENDERER_SOURCES ${MACOS_APP_OPTIONAL_SOURCE})
         endif()
     endforeach()
 
@@ -356,9 +224,6 @@ if(APPLE)
     set(METAL_APP_SOURCES
         ${MACOS_APP_OBJCXX_SOURCES}
         ${MACOS_APP_SWIFTUI_SOURCES}
-        ${MACOS_APP_CORE_SOURCES}
-        ${MACOS_APP_IO_SOURCES}
-        ${MACOS_APP_RENDERER_SOURCES}
     )
 
     add_executable(Mesh2SplatMetal MACOSX_BUNDLE ${METAL_APP_SOURCES} ${METAL_SHADER_SOURCES})
@@ -366,9 +231,6 @@ if(APPLE)
     if(MACOS_APP_SWIFTUI_SOURCES)
         source_group("App/SwiftUI" FILES ${MACOS_APP_SWIFTUI_SOURCES})
     endif()
-    source_group("Core" FILES ${MACOS_APP_CORE_SOURCES})
-    source_group("IO" FILES ${MACOS_APP_IO_SOURCES})
-    source_group("Renderer/Metal" FILES ${MACOS_APP_RENDERER_SOURCES})
     if(METAL_SHADER_SOURCES)
         source_group("Shaders/Metal" FILES ${METAL_SHADER_SOURCES})
     endif()
@@ -381,8 +243,6 @@ if(APPLE)
         )
         target_compile_definitions(Mesh2SplatMetal PRIVATE MESH2SPLAT_USE_SWIFTUI_APP)
     endif()
-    target_include_directories(Mesh2SplatMetal PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_include_directories(Mesh2SplatMetal SYSTEM PRIVATE ${THIRD_PARTY_DIR})
 
     find_library(APPKIT_LIBRARY AppKit REQUIRED)
     find_library(METAL_LIBRARY Metal REQUIRED)
@@ -392,6 +252,7 @@ if(APPLE)
     find_library(UNIFORMTYPEIDENTIFIERS_LIBRARY UniformTypeIdentifiers REQUIRED)
 
     target_link_libraries(Mesh2SplatMetal PRIVATE
+        Mesh2SplatMetalLib
         ${APPKIT_LIBRARY}
         ${METAL_LIBRARY}
         ${METALKIT_LIBRARY}
@@ -482,5 +343,48 @@ if(APPLE)
         else()
             message(WARNING "Metal shader tools are unavailable; skipping .metallib generation for now. Install them with: xcodebuild -downloadComponent MetalToolchain")
         endif()
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+add_executable(CoreIoSmokeTest
+    ${CMAKE_SOURCE_DIR}/tests/CoreIoSmokeTest.cpp
+)
+target_compile_features(CoreIoSmokeTest PRIVATE cxx_std_17)
+target_link_libraries(CoreIoSmokeTest PRIVATE Mesh2SplatMetalLib)
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/tests/MetalGpuSmokeTest.cpp)
+    add_executable(MetalGpuSmokeTest
+        ${CMAKE_SOURCE_DIR}/tests/MetalGpuSmokeTest.cpp
+    )
+    target_compile_features(MetalGpuSmokeTest PRIVATE cxx_std_17)
+    target_compile_options(MetalGpuSmokeTest PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    target_link_libraries(MetalGpuSmokeTest PRIVATE Mesh2SplatMetalLib)
+    if(APPLE)
+        find_library(METAL_LIBRARY Metal REQUIRED)
+        target_link_libraries(MetalGpuSmokeTest PRIVATE ${METAL_LIBRARY})
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
+# Command line converter
+# ---------------------------------------------------------------------------
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/src/app/cli/Mesh2SplatConvert.cpp)
+    add_executable(Mesh2SplatConvert
+        ${CMAKE_SOURCE_DIR}/src/app/cli/Mesh2SplatConvert.cpp
+    )
+    target_compile_features(Mesh2SplatConvert PRIVATE cxx_std_17)
+    target_compile_options(Mesh2SplatConvert PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    target_link_libraries(Mesh2SplatConvert PRIVATE Mesh2SplatMetalLib)
+    set_target_properties(Mesh2SplatConvert PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin
+    )
+    if(APPLE)
+        find_library(METAL_LIBRARY Metal REQUIRED)
+        target_link_libraries(Mesh2SplatConvert PRIVATE ${METAL_LIBRARY})
     endif()
 endif()
