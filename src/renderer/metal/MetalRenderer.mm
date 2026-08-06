@@ -866,7 +866,7 @@ bool MetalRenderer::Impl::ensureDrawableDepthTarget(uint32_t targetWidth, uint32
     }
 
     const MetalRenderTargetDesc desc = makeDrawableDepthTargetDesc(targetWidth, targetHeight);
-    if (drawableDepthTarget == nullptr) {
+    if (drawableDepthTarget == nullptr || !drawableDepthTarget->isValid()) {
         drawableDepthTarget = std::make_unique<MetalRenderTarget>(*deviceContext);
         if (!drawableDepthTarget->create(desc)) {
             recordDiagnostic(drawableDepthTarget->lastErrorMessage());
