@@ -58,12 +58,15 @@ struct RenderPreset: Codable, Equatable {
         exposure: 1.0,
         gamma: 2.2,
         backgroundBrightness: 0.04,
+        backgroundColorRed: 0.03,
+        backgroundColorGreen: 0.04,
+        backgroundColorBlue: 0.05,
         lighting: .defaults,
         quality: .balanced,
         toggles: .defaults
     )
 
-    private static let currentVersion = 3
+    private static let currentVersion = 4
 
     private var version: Int
     private var renderModeRawValue: Int
@@ -71,6 +74,9 @@ struct RenderPreset: Codable, Equatable {
     var exposure: Double
     var gamma: Double
     var backgroundBrightness: Double
+    var backgroundColorRed: Double?
+    var backgroundColorGreen: Double?
+    var backgroundColorBlue: Double?
     var lighting: Lighting
     private var qualityRawValue: Int
     var toggles: Toggles
@@ -91,6 +97,9 @@ struct RenderPreset: Codable, Equatable {
         exposure: Double,
         gamma: Double,
         backgroundBrightness: Double,
+        backgroundColorRed: Double? = nil,
+        backgroundColorGreen: Double? = nil,
+        backgroundColorBlue: Double? = nil,
         lighting: Lighting,
         quality: ConversionQuality,
         toggles: Toggles
@@ -101,6 +110,9 @@ struct RenderPreset: Codable, Equatable {
         self.exposure = exposure.clamped(to: 0.0...16.0)
         self.gamma = gamma.clamped(to: 0.1...4.0)
         self.backgroundBrightness = backgroundBrightness.clamped(to: 0.0...1.0)
+        self.backgroundColorRed = backgroundColorRed?.clamped(to: 0.0...1.0)
+        self.backgroundColorGreen = backgroundColorGreen?.clamped(to: 0.0...1.0)
+        self.backgroundColorBlue = backgroundColorBlue?.clamped(to: 0.0...1.0)
         self.lighting = lighting.normalized
         self.qualityRawValue = quality.rawValue
         self.toggles = toggles
@@ -113,6 +125,9 @@ struct RenderPreset: Codable, Equatable {
             exposure: exposure,
             gamma: gamma,
             backgroundBrightness: backgroundBrightness,
+            backgroundColorRed: backgroundColorRed,
+            backgroundColorGreen: backgroundColorGreen,
+            backgroundColorBlue: backgroundColorBlue,
             lighting: lighting,
             quality: quality,
             toggles: toggles

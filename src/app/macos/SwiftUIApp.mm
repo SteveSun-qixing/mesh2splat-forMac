@@ -66,6 +66,22 @@ void Mesh2SplatFocusMetalView(NSView* view)
     [view.window makeFirstResponder:view];
 }
 
+void Mesh2SplatSetBackgroundColorForView(NSView* view, double red, double green, double blue)
+{
+    if (![view isKindOfClass:Mesh2SplatMetalView.class]) {
+        return;
+    }
+
+    SEL selector = NSSelectorFromString(@"setBackgroundColorRed:green:blue:");
+    if (![view respondsToSelector:selector]) {
+        return;
+    }
+
+    using SetBackgroundMessage = void (*)(id, SEL, double, double, double);
+    SetBackgroundMessage message = reinterpret_cast<SetBackgroundMessage>(objc_msgSend);
+    message(view, selector, red, green, blue);
+}
+
 void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           NSInteger renderMode,
                                           double splatSize,

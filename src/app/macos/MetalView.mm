@@ -1325,12 +1325,17 @@ gaussianRenderingEnabled:(BOOL)gaussianRenderingEnabled
     _bridgeGaussianRenderingEnabled = settings.gaussianRenderingEnabled;
     _bridgeConversionEnabled = settings.meshToGaussianConversionEnabled;
 
-    const double clear = _bridgeBackgroundBrightness;
-    self.clearColor = MTLClearColorMake(clear * 0.75, clear, clear * 1.25, 1.0);
-
     [self.meshDelegate applyRenderSettings:settings];
 
     [self refreshRendererStatus];
+}
+
+- (void)setBackgroundColorRed:(double)red green:(double)green blue:(double)blue
+{
+    const double clampedRed = std::clamp(red, 0.0, 1.0);
+    const double clampedGreen = std::clamp(green, 0.0, 1.0);
+    const double clampedBlue = std::clamp(blue, 0.0, 1.0);
+    self.clearColor = MTLClearColorMake(clampedRed, clampedGreen, clampedBlue, 1.0);
 }
 
 - (IBAction)openDocument:(id)sender

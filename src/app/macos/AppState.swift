@@ -128,6 +128,9 @@ final class Mesh2SplatAppState: ObservableObject {
     @Published var exposure = 1.0 { didSet { submitRenderSettings() } }
     @Published var gamma = 2.2 { didSet { submitRenderSettings() } }
     @Published var backgroundBrightness = 0.04 { didSet { submitRenderSettings() } }
+    @Published var backgroundColorRed = 0.03
+    @Published var backgroundColorGreen = 0.04
+    @Published var backgroundColorBlue = 0.05
     @Published var lightingEnabled = true { didSet { submitRenderSettings() } }
     @Published var shadowsEnabled = false { didSet { submitRenderSettings() } }
     @Published var lightPositionX = 3.0 { didSet { submitRenderSettings() } }
@@ -320,6 +323,31 @@ final class Mesh2SplatAppState: ObservableObject {
         submitRenderSettings()
     }
 
+    var backgroundColor: Color {
+        Color(
+            red: backgroundColorRed.clamped(to: 0.0...1.0),
+            green: backgroundColorGreen.clamped(to: 0.0...1.0),
+            blue: backgroundColorBlue.clamped(to: 0.0...1.0)
+        )
+    }
+
+    func setBackgroundColor(_ color: Color) {
+        let resolvedColor = NSColor(color)
+        guard let rgb = resolvedColor.usingColorSpace(.deviceRGB) else { return }
+
+        isResettingRenderSettings = true
+        backgroundColorRed = Double(rgb.redComponent).clamped(to: 0.0...1.0)
+        backgroundColorGreen = Double(rgb.greenComponent).clamped(to: 0.0...1.0)
+        backgroundColorBlue = Double(rgb.blueComponent).clamped(to: 0.0...1.0)
+        backgroundBrightness = (
+            backgroundColorRed * 0.2126 +
+            backgroundColorGreen * 0.7152 +
+            backgroundColorBlue * 0.0722
+        ).clamped(to: 0.0...1.0)
+        isResettingRenderSettings = false
+        submitRenderSettings()
+    }
+
     func submitRenderSettings() {
         guard !isResettingRenderSettings, let metalView else { return }
 
@@ -348,6 +376,12 @@ final class Mesh2SplatAppState: ObservableObject {
             lightColorGreen.clamped(to: 0.0...4.0),
             lightColorBlue.clamped(to: 0.0...4.0),
             renderDebugFlags
+        )
+        Mesh2SplatSetBackgroundColorForView(
+            metalView,
+            backgroundColorRed.clamped(to: 0.0...1.0),
+            backgroundColorGreen.clamped(to: 0.0...1.0),
+            backgroundColorBlue.clamped(to: 0.0...1.0)
         )
         Mesh2SplatRefreshMetalViewStatus(metalView)
         refreshRendererStatusFromBridge()
@@ -637,6 +671,9 @@ final class Mesh2SplatAppState: ObservableObject {
             exposure: exposure,
             gamma: gamma,
             backgroundBrightness: backgroundBrightness,
+            backgroundColorRed: backgroundColorRed,
+            backgroundColorGreen: backgroundColorGreen,
+            backgroundColorBlue: backgroundColorBlue,
             lighting: RenderPreset.Lighting(
                 enabled: lightingEnabled,
                 positionX: lightPositionX,
@@ -665,6 +702,9 @@ final class Mesh2SplatAppState: ObservableObject {
         exposure = preset.exposure
         gamma = preset.gamma
         backgroundBrightness = preset.backgroundBrightness
+        backgroundColorRed = (preset.backgroundColorRed ?? preset.backgroundBrightness * 0.75).clamped(to: 0.0...1.0)
+        backgroundColorGreen = (preset.backgroundColorGreen ?? preset.backgroundBrightness).clamped(to: 0.0...1.0)
+        backgroundColorBlue = (preset.backgroundColorBlue ?? preset.backgroundBrightness * 1.25).clamped(to: 0.0...1.0)
         lightingEnabled = preset.lighting.enabled
         lightPositionX = preset.lighting.positionX
         lightPositionY = preset.lighting.positionY

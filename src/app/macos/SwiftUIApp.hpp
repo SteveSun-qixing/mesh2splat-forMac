@@ -17,6 +17,7 @@ BOOL Mesh2SplatOpenMeshInView(NSView* view, NSURL* url);
 BOOL Mesh2SplatExportGaussianPlyFromView(NSView* view, NSURL* url, uint32_t format);
 void Mesh2SplatRefreshMetalViewStatus(NSView* view);
 void Mesh2SplatFocusMetalView(NSView* view);
+void Mesh2SplatSetBackgroundColorForView(NSView* view, double red, double green, double blue);
 void Mesh2SplatApplyRenderSettingsToView(NSView* view,
                                           NSInteger renderMode,
                                           double splatSize,

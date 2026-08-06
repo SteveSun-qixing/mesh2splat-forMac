@@ -47,11 +47,13 @@ struct InspectorPanel: View {
                         range: 0.1...4.0,
                         format: "%.2f"
                     )
-                    LabeledSlider(
-                        title: "Background",
-                        value: $appState.backgroundBrightness,
-                        range: 0.0...1.0,
-                        format: "%.2f"
+                    ColorPicker(
+                        "Background",
+                        selection: Binding(
+                            get: { appState.backgroundColor },
+                            set: { appState.setBackgroundColor($0) }
+                        ),
+                        supportsOpacity: false
                     )
                 }
                 .padding(.vertical, 4)

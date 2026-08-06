@@ -15,6 +15,7 @@
 - (BOOL)exportGaussianPlyAtURL:(NSURL*)url;
 - (BOOL)exportGaussianPlyAtURL:(NSURL*)url format:(uint32_t)format;
 - (void)refreshRendererStatus;
+- (void)setBackgroundColorRed:(double)red green:(double)green blue:(double)blue;
 - (void)applyRenderMode:(NSInteger)renderMode
               splatSize:(double)splatSize
                exposure:(double)exposure
