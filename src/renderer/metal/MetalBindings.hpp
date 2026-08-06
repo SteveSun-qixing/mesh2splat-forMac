@@ -9,15 +9,6 @@ using BindingIndex = std::uint32_t;
 
 namespace functions {
 
-inline constexpr std::string_view kClearVertex = "clearVertex";
-inline constexpr std::string_view kClearFragment = "clearFragment";
-inline constexpr std::string_view kClearBufferUintKernel = "clearBufferUintKernel";
-inline constexpr std::string_view kResetCounterKernel = "resetCounterKernel";
-inline constexpr std::string_view kResetGaussianCounterKernel = "resetGaussianCounterKernel";
-inline constexpr std::string_view kClearTexture2DFloatKernel = "clearTexture2DFloatKernel";
-inline constexpr std::string_view kClearTexture2DUintKernel = "clearTexture2DUintKernel";
-inline constexpr std::string_view kPackTexture2DRgba8Kernel = "packTexture2DRgba8Kernel";
-inline constexpr std::string_view kPackGaussianTexturesKernel = "packGaussianTexturesKernel";
 inline constexpr std::string_view kMeshVertex = "meshVertex";
 inline constexpr std::string_view kMeshFragment = "meshFragment";
 inline constexpr std::string_view kGaussianPreviewVertex = "gaussianPreviewVertex";
@@ -103,35 +94,6 @@ inline constexpr BindingIndex kMaterialTextures = 0;
 } // namespace samplers
 
 } // namespace mesh_conversion
-
-namespace clear {
-
-namespace buffers {
-
-inline constexpr BindingIndex kBuffer = 0;
-inline constexpr BindingIndex kParams = 1;
-inline constexpr BindingIndex kCounters = 0;
-inline constexpr BindingIndex kGaussianCounter = 0;
-inline constexpr BindingIndex kPackedPixels = 0;
-inline constexpr BindingIndex kGaussians = 0;
-inline constexpr BindingIndex kGaussianTextureCounter = 1;
-inline constexpr BindingIndex kGaussianTexturePackParams = 2;
-
-} // namespace buffers
-
-namespace textures {
-
-inline constexpr BindingIndex kTarget = 0;
-inline constexpr BindingIndex kSource = 0;
-inline constexpr BindingIndex kPositionAndScaleX = 0;
-inline constexpr BindingIndex kScaleZAndNormal = 1;
-inline constexpr BindingIndex kRotation = 2;
-inline constexpr BindingIndex kColor = 3;
-inline constexpr BindingIndex kPbrAndScaleY = 4;
-
-} // namespace textures
-
-} // namespace clear
 
 namespace gaussian_sort {
 

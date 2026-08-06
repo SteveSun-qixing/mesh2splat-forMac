@@ -706,7 +706,6 @@ struct MetalRenderer::Impl {
     float splitScreenPosition = 0.5f;
     bool initialized = false;
     bool renderingFrame = false;
-    bool exportPending = false;
     float gaussianScale = 1.0f;
     float exposure = 1.0f;
     float gamma = 2.2f;
